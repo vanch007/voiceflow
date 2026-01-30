@@ -8,43 +8,20 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
     private let sessionQueue = DispatchQueue(label: "com.voiceflow.capture")
     private let targetSampleRate: Double = 16000
     private var isRecording = false
+    private var currentDeviceID: String?
 
-    /// Call once at app startup to keep the capture session warm
+    /// Call once at app startup
     func prepare() {
-        let session = AVCaptureSession()
-
-        guard let device = AVCaptureDevice.default(for: .audio) else {
-            NSLog("[AudioRecorder] No audio device found!")
-            return
-        }
-
-        NSLog("[AudioRecorder] Audio device: \(device.localizedName)")
-
-        do {
-            let input = try AVCaptureDeviceInput(device: device)
-            if session.canAddInput(input) {
-                session.addInput(input)
-            }
-        } catch {
-            NSLog("[AudioRecorder] Failed to create input: \(error)")
-            return
-        }
-
-        let output = AVCaptureAudioDataOutput()
-        output.setSampleBufferDelegate(self, queue: sessionQueue)
-
-        if session.canAddOutput(output) {
-            session.addOutput(output)
-        }
-
-        captureSession = session
-        sessionQueue.async {
-            session.startRunning()
-            NSLog("[AudioRecorder] Capture session started (standby).")
-        }
+        setupSession()
     }
 
     func startRecording() {
+        // Check if default device changed
+        if let newDevice = AVCaptureDevice.default(for: .audio),
+           newDevice.uniqueID != currentDeviceID {
+            NSLog("[AudioRecorder] Device changed, reconnecting...")
+            setupSession()
+        }
         isRecording = true
         NSLog("[AudioRecorder] Recording started.")
     }
@@ -52,6 +29,48 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
     func stopRecording() {
         isRecording = false
         NSLog("[AudioRecorder] Recording stopped.")
+    }
+
+    private func setupSession() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+
+            // Stop existing session
+            if let existing = self.captureSession {
+                existing.stopRunning()
+            }
+
+            let session = AVCaptureSession()
+
+            guard let device = AVCaptureDevice.default(for: .audio) else {
+                NSLog("[AudioRecorder] No audio device found!")
+                return
+            }
+
+            NSLog("[AudioRecorder] Audio device: \(device.localizedName)")
+            self.currentDeviceID = device.uniqueID
+
+            do {
+                let input = try AVCaptureDeviceInput(device: device)
+                if session.canAddInput(input) {
+                    session.addInput(input)
+                }
+            } catch {
+                NSLog("[AudioRecorder] Failed to create input: \(error)")
+                return
+            }
+
+            let output = AVCaptureAudioDataOutput()
+            output.setSampleBufferDelegate(self, queue: self.sessionQueue)
+
+            if session.canAddOutput(output) {
+                session.addOutput(output)
+            }
+
+            self.captureSession = session
+            session.startRunning()
+            NSLog("[AudioRecorder] Capture session started (standby).")
+        }
     }
 
     // MARK: - AVCaptureAudioDataOutputSampleBufferDelegate
