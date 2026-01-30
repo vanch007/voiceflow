@@ -2,6 +2,9 @@ import AppKit
 import AudioToolbox
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let pythonPath = "/Users/brucechoe/clawd/.venvs/qwen3-asr/bin/python3"
+    private static let serverScriptPath = "/Users/brucechoe/Projects/voiceflow/server/main.py"
+
     private var statusBarController: StatusBarController!
     private var hotkeyManager: HotkeyManager!
     private var audioRecorder: AudioRecorder!
@@ -9,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
     private var isRecording = false
+    private var asrServerProcess: Process?
 
     private var startSoundID: SystemSoundID = 0
     private var stopSoundID: SystemSoundID = 0
@@ -17,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[AppDelegate] applicationDidFinishLaunching called!")
         // Hide dock icon
         NSApp.setActivationPolicy(.accessory)
+
+        // Launch ASR server
+        startASRServer()
 
         // Load sounds via AudioServices (bypasses AVCaptureSession output blocking)
         loadSounds()
@@ -60,8 +67,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager.start()
 
         audioRecorder.prepare()
-        asrClient.connect()
+
+        // Wait briefly for ASR server to start, then connect
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            self?.asrClient.connect()
+        }
     }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        stopASRServer()
+    }
+
+    // MARK: - ASR Server Management
+
+    private func startASRServer() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: Self.pythonPath)
+        process.arguments = [Self.serverScriptPath]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+            asrServerProcess = process
+            NSLog("[ASRServer] Started (PID: %d)", process.processIdentifier)
+        } catch {
+            NSLog("[ASRServer] Failed to start: %@", error.localizedDescription)
+        }
+    }
+
+    private func stopASRServer() {
+        guard let process = asrServerProcess, process.isRunning else { return }
+        process.terminate()
+        process.waitUntilExit()
+        NSLog("[ASRServer] Stopped")
+        asrServerProcess = nil
+    }
+
+    // MARK: - Sounds
 
     private func loadSounds() {
         let startURL = URL(fileURLWithPath: "/System/Library/Sounds/Tink.aiff")
@@ -90,6 +133,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AudioServicesPlaySystemSound(soundID)
         NSLog("[Audio] %@ played via AudioServices", name)
     }
+
+    // MARK: - Recording
 
     private func toggleRecording() {
         if isRecording {
