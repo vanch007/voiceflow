@@ -2,6 +2,16 @@
 
 macOS 메뉴바 음성입력 앱. Ctrl 더블탭으로 녹음 시작/종료, Qwen3-ASR로 음성인식 후 텍스트 자동 입력.
 
+## 빌드
+
+```bash
+scripts/build.sh
+```
+
+xcodebuild → ditto로 앱 복사 (코드사인 보존). **빌드 후 접근성 권한 재승인 필요** (아래 참고).
+
+> `cp -R`은 코드사인을 날려서 접근성 권한이 깨짐. 반드시 `ditto` 사용.
+
 ## 실행
 
 ```bash
@@ -59,6 +69,7 @@ VoiceFlow/
 server/
 ├── main.py                       # Qwen3-ASR WebSocket 서버
 scripts/
+├── build.sh                      # 빌드+배포 (ditto로 코드사인 보존)
 ├── run.sh                        # 실행 스크립트 (레거시)
 ```
 
