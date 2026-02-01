@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var settingsWindowController: SettingsWindowController!
     private var replacementEngine: TextReplacementEngine!
     private var isRecording = false
     private var asrServerProcess: Process?
@@ -47,8 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
 
-        // Initialize replacement engine
+        // Initialize replacement engine and settings
         let storage = ReplacementStorage()
+        settingsWindowController = SettingsWindowController(storage: storage)
         replacementEngine = TextReplacementEngine(storage: storage)
 
         asrClient = ASRClient()
@@ -81,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController = StatusBarController()
         statusBarController.onQuit = {
             NSApp.terminate(nil)
+        }
+        statusBarController.onSettings = { [weak self] in
+            self?.settingsWindowController.showWindow(nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
 
         hotkeyManager = HotkeyManager()
