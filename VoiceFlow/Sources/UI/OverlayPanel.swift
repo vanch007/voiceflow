@@ -151,3 +151,92 @@ private struct OverlayContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
+
+struct VolumeIndicatorView: View {
+    let volume: Double // 0.0 to 1.0
+
+    private var volumeIcon: String {
+        if volume == 0 {
+            return "speaker.slash.fill"
+        } else if volume < 0.33 {
+            return "speaker.fill"
+        } else if volume < 0.66 {
+            return "speaker.wave.1.fill"
+        } else {
+            return "speaker.wave.3.fill"
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: volumeIcon)
+                .foregroundColor(.white)
+                .font(.system(size: 14))
+                .frame(width: 20)
+
+            // Volume bars
+            HStack(spacing: 3) {
+                ForEach(0..<10, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(barColor(for: index))
+                        .frame(width: 3, height: barHeight(for: index))
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            Capsule()
+                .fill(Color.black.opacity(0.85))
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func barHeight(for index: Int) -> CGFloat {
+        let baseHeight: CGFloat = 8
+        let maxHeight: CGFloat = 20
+        let middleIndex = 5
+
+        // Create a symmetric pattern with taller bars in the middle
+        let distance = abs(Double(index - middleIndex))
+        let heightMultiplier = 1.0 - (distance / 5.0) * 0.4
+
+        return baseHeight + (maxHeight - baseHeight) * heightMultiplier
+    }
+
+    private func barColor(for index: Int) -> Color {
+        let threshold = volume * 10.0
+        if Double(index) < threshold {
+            // Active bars
+            if volume > 0.8 {
+                return .red
+            } else if volume > 0.6 {
+                return .yellow
+            } else {
+                return .green
+            }
+        } else {
+            // Inactive bars
+            return Color.white.opacity(0.3)
+        }
+    }
+}
+
+#if DEBUG
+struct VolumeIndicatorView_Previews: PreviewProvider {
+    static var previews: some View {
+        Group {
+            VolumeIndicatorView(volume: 0.0)
+                .previewDisplayName("Muted")
+            VolumeIndicatorView(volume: 0.3)
+                .previewDisplayName("Low")
+            VolumeIndicatorView(volume: 0.6)
+                .previewDisplayName("Medium")
+            VolumeIndicatorView(volume: 0.9)
+                .previewDisplayName("High")
+        }
+        .frame(width: 200, height: 44)
+        .background(Color.gray)
+    }
+}
+#endif
