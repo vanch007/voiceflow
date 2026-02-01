@@ -117,6 +117,20 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         deleteButton.action = #selector(deleteRule)
         contentView.addSubview(deleteButton)
 
+        let exportButton = NSButton(frame: NSRect(x: 290, y: buttonY, width: 80, height: buttonHeight))
+        exportButton.title = "내보내기"
+        exportButton.bezelStyle = .rounded
+        exportButton.target = self
+        exportButton.action = #selector(exportRules)
+        contentView.addSubview(exportButton)
+
+        let importButton = NSButton(frame: NSRect(x: 380, y: buttonY, width: 80, height: buttonHeight))
+        importButton.title = "가져오기"
+        importButton.bezelStyle = .rounded
+        importButton.target = self
+        importButton.action = #selector(importRules)
+        contentView.addSubview(importButton)
+
         window.contentView = contentView
     }
 
@@ -156,6 +170,74 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         if alert.runModal() == .alertFirstButtonReturn {
             storage.delete(id: rule.id)
             loadRules()
+        }
+    }
+
+    @objc private func exportRules() {
+        let savePanel = NSSavePanel()
+        savePanel.title = "규칙 내보내기"
+        savePanel.message = "교체 규칙을 JSON 파일로 저장합니다."
+        savePanel.nameFieldStringValue = "replacement-rules.json"
+        savePanel.allowedFileTypes = ["json"]
+        savePanel.canCreateDirectories = true
+
+        savePanel.begin { response in
+            guard response == .OK, let url = savePanel.url else { return }
+
+            guard let data = self.storage.exportRules() else {
+                self.showAlert(title: "내보내기 실패", message: "규칙을 내보내는 중 오류가 발생했습니다.")
+                return
+            }
+
+            do {
+                try data.write(to: url, options: .atomic)
+                NSLog("[SettingsWindow] Exported rules to \(url.path)")
+                self.showSuccessAlert(title: "내보내기 완료", message: "\(self.rules.count)개의 규칙을 내보냈습니다.")
+            } catch {
+                NSLog("[SettingsWindow] ERROR: Failed to write export file: \(error.localizedDescription)")
+                self.showAlert(title: "내보내기 실패", message: "파일을 저장하는 중 오류가 발생했습니다.")
+            }
+        }
+    }
+
+    @objc private func importRules() {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "규칙 가져오기"
+        openPanel.message = "JSON 파일에서 교체 규칙을 가져옵니다."
+        openPanel.allowedFileTypes = ["json"]
+        openPanel.allowsMultipleSelection = false
+        openPanel.canChooseDirectories = false
+
+        openPanel.begin { response in
+            guard response == .OK, let url = openPanel.url else { return }
+
+            // Confirm before replacing existing rules
+            if !self.rules.isEmpty {
+                let alert = NSAlert()
+                alert.messageText = "규칙 가져오기"
+                alert.informativeText = "기존의 모든 규칙이 삭제되고 파일의 규칙으로 대체됩니다. 계속하시겠습니까?"
+                alert.addButton(withTitle: "가져오기")
+                alert.addButton(withTitle: "취소")
+                alert.alertStyle = .warning
+
+                if alert.runModal() != .alertFirstButtonReturn {
+                    return
+                }
+            }
+
+            do {
+                let data = try Data(contentsOf: url)
+                if self.storage.importRules(from: data) {
+                    self.loadRules()
+                    NSLog("[SettingsWindow] Imported rules from \(url.path)")
+                    self.showSuccessAlert(title: "가져오기 완료", message: "\(self.rules.count)개의 규칙을 가져왔습니다.")
+                } else {
+                    self.showAlert(title: "가져오기 실패", message: "JSON 파일 형식이 올바르지 않습니다.")
+                }
+            } catch {
+                NSLog("[SettingsWindow] ERROR: Failed to read import file: \(error.localizedDescription)")
+                self.showAlert(title: "가져오기 실패", message: "파일을 읽는 중 오류가 발생했습니다.")
+            }
         }
     }
 
@@ -281,6 +363,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         alert.messageText = title
         alert.informativeText = message
         alert.alertStyle = .warning
+        alert.addButton(withTitle: "확인")
+        alert.runModal()
+    }
+
+    private func showSuccessAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .informational
         alert.addButton(withTitle: "확인")
         alert.runModal()
     }
