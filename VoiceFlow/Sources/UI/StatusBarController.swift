@@ -2,6 +2,7 @@ import AppKit
 
 final class StatusBarController {
     var onQuit: (() -> Void)?
+    var onSettings: (() -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
@@ -56,11 +57,21 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        let settingsItem = NSMenuItem(title: "설정...", action: #selector(settingsAction), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(title: "종료", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
         self.statusItem.menu = menu
+    }
+
+    @objc private func settingsAction() {
+        onSettings?()
     }
 
     @objc private func quitAction() {
