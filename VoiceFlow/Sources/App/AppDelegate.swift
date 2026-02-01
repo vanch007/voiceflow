@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private var statusBarController: StatusBarController!
+    private var settingsWindow: SettingsWindow!
     private var hotkeyManager: HotkeyManager!
     private var audioRecorder: AudioRecorder!
     private var asrClient: ASRClient!
@@ -82,6 +83,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController = StatusBarController()
         statusBarController.onQuit = {
             NSApp.terminate(nil)
+        }
+        statusBarController.onSettings = { [weak self] in
+            if self?.settingsWindow == nil {
+                self?.settingsWindow = SettingsWindow()
+            }
+            self?.settingsWindow.show()
         }
 
         hotkeyManager = HotkeyManager()

@@ -42,6 +42,7 @@ async def handle_client(websocket):
     logger.info("Client connected.")
     audio_chunks: list[bytes] = []
     recording = False
+    enable_polish = False
 
     try:
         async for message in websocket:
@@ -50,7 +51,8 @@ async def handle_client(websocket):
                 msg_type = data.get("type")
 
                 if msg_type == "start":
-                    logger.info("Recording started.")
+                    enable_polish = data.get("enable_polish") == "true"
+                    logger.info(f"Recording started. Polish enabled: {enable_polish}")
                     audio_chunks.clear()
                     recording = True
 
@@ -81,11 +83,15 @@ async def handle_client(websocket):
                     else:
                         original_text = str(result)
 
-                    # Polish the transcribed text
-                    polished_text = polisher.polish(original_text)
+                    # Polish the transcribed text only if enabled
+                    if enable_polish:
+                        polished_text = polisher.polish(original_text)
+                        logger.info(f"Transcription ({elapsed:.2f}s): {original_text}")
+                        logger.info(f"Polished text: {polished_text}")
+                    else:
+                        polished_text = original_text
+                        logger.info(f"Transcription ({elapsed:.2f}s): {original_text} (polish disabled)")
 
-                    logger.info(f"Transcription ({elapsed:.2f}s): {original_text}")
-                    logger.info(f"Polished text: {polished_text}")
                     await websocket.send(json.dumps({
                         "type": "final",
                         "text": polished_text,
