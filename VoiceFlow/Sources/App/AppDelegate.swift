@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
     private var recordingHistory: RecordingHistory!
+    private var historyWindowController: HistoryWindowController!
     private var isRecording = false
     private var asrServerProcess: Process?
     private var recordingStartTime: Date?
@@ -49,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         textInjector = TextInjector()
         asrClient = ASRClient()
         recordingHistory = RecordingHistory()
+        historyWindowController = HistoryWindowController(recordingHistory: recordingHistory)
         audioRecorder = AudioRecorder()
         audioRecorder.onAudioChunk = { [weak self] data in
             self?.asrClient.sendAudioChunk(data)
@@ -84,6 +86,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController = StatusBarController()
         statusBarController.onQuit = {
             NSApp.terminate(nil)
+        }
+        statusBarController.onShowHistory = { [weak self] in
+            self?.historyWindowController.showWindow()
         }
 
         hotkeyManager = HotkeyManager()

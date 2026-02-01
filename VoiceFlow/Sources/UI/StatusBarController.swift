@@ -57,7 +57,7 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        let historyItem = NSMenuItem(title: "录音历史", action: #selector(showHistoryAction), keyEquivalent: "h")
+        let historyItem = NSMenuItem(title: "녹음 기록", action: #selector(showHistoryAction), keyEquivalent: "h")
         historyItem.target = self
         menu.addItem(historyItem)
 
