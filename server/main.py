@@ -105,6 +105,7 @@ async def handle_client(websocket):
 
 async def main():
     load_model()
+    warmup_model()
     logger.info(f"Starting WebSocket server on ws://{HOST}:{PORT}")
     async with websockets.serve(handle_client, HOST, PORT):
         await asyncio.Future()
