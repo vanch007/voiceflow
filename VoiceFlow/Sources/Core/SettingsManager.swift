@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import ServiceManagement
 import os
 
 private let logger = Logger(subsystem: "com.voiceflow.app", category: "SettingsManager")
@@ -39,6 +40,7 @@ final class SettingsManager: ObservableObject {
         didSet {
             UserDefaults.standard.set(autoLaunchEnabled, forKey: Keys.autoLaunchEnabled)
             NSLog("[SettingsManager] Auto-launch enabled changed to: \(autoLaunchEnabled)")
+            applyAutoLaunchSetting()
         }
     }
 
@@ -64,5 +66,38 @@ final class SettingsManager: ObservableObject {
         self.autoLaunchEnabled = UserDefaults.standard.object(forKey: Keys.autoLaunchEnabled) as? Bool ?? false
 
         NSLog("[SettingsManager] Initialized with hotkeyEnabled=\(hotkeyEnabled), modelSize=\(modelSize.rawValue), autoLaunchEnabled=\(autoLaunchEnabled)")
+
+        // Apply auto-launch setting on initialization
+        applyAutoLaunchSetting()
+    }
+
+    // MARK: - Auto-Launch
+
+    private func applyAutoLaunchSetting() {
+        if #available(macOS 13.0, *) {
+            let service = SMAppService.mainApp
+
+            do {
+                if autoLaunchEnabled {
+                    if service.status == .enabled {
+                        NSLog("[SettingsManager] Auto-launch already enabled")
+                    } else {
+                        try service.register()
+                        NSLog("[SettingsManager] Auto-launch registered successfully")
+                    }
+                } else {
+                    if service.status == .enabled {
+                        try service.unregister()
+                        NSLog("[SettingsManager] Auto-launch unregistered successfully")
+                    } else {
+                        NSLog("[SettingsManager] Auto-launch already disabled")
+                    }
+                }
+            } catch {
+                NSLog("[SettingsManager] Failed to update auto-launch setting: \(error.localizedDescription)")
+            }
+        } else {
+            NSLog("[SettingsManager] Auto-launch requires macOS 13.0 or later")
+        }
     }
 }
