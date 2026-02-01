@@ -2,7 +2,8 @@ import Foundation
 
 final class ASRClient {
     var onTranscriptionResult: ((String) -> Void)?
-    var onPartialResult: ((String) -> Void)?  // 新增：实时部分结果回调
+    var onPartialResult: ((String) -> Void)?  // 实时部分结果回调
+    var onOriginalTextReceived: ((String) -> Void)?  // 原始文本回调
     var onConnectionStatusChanged: ((Bool) -> Void)?
 
     private var webSocketTask: URLSessionWebSocketTask?
@@ -33,7 +34,8 @@ final class ASRClient {
     }
 
     func sendStart() {
-        sendJSON(["type": "start"])
+        let enablePolish = UserDefaults.standard.isTextPolishEnabled
+        sendJSON(["type": "start", "enable_polish": enablePolish ? "true" : "false"])
     }
 
     func sendStop() {
@@ -91,11 +93,15 @@ final class ASRClient {
               let type = json["type"] as? String,
               let text = json["text"] as? String else { return }
 
-        NSLog("[ASRClient] Received: type=\(type), text=\(text)")
+        let originalText = json["original_text"] as? String
+        NSLog("[ASRClient] Received: type=\(type), text=\(text), original_text=\(originalText ?? "nil")")
 
         if type == "final" {
             // 最终结果
             onTranscriptionResult?(text)
+            if let originalText {
+                onOriginalTextReceived?(originalText)
+            }
         } else if type == "partial" {
             // 实时部分结果
             onPartialResult?(text)

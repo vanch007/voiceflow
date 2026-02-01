@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import websockets
 from qwen_asr import Qwen3ASRModel
+from text_polisher import TextPolisher
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -18,6 +19,7 @@ HOST = "localhost"
 PORT = 9876
 
 model: Qwen3ASRModel = None
+polisher: TextPolisher = None
 config = {}
 
 
@@ -43,7 +45,7 @@ def load_config():
 
 def load_model():
     """加载 Qwen3-ASR 模型"""
-    global model
+    global model, polisher
 
     model_size = config.get("model_size", "1.7B")
     model_name = f"Qwen/Qwen3-ASR-{model_size}"
@@ -69,7 +71,7 @@ def load_model():
 
 def warmup_model():
     """Warm up the model with a short silent audio segment."""
-    global model
+    global model, polisher
     if model is None:
         raise RuntimeError("Model not loaded. Call load_model() first.")
 
@@ -79,10 +81,15 @@ def warmup_model():
 
     try:
         # Perform warmup inference
-        _ = model.transcribe(audio=(silent_audio, 16000), language="Korean")
+        language = config.get("language", "Chinese")
+        _ = model.transcribe(audio=(silent_audio, 16000), language=language)
         logger.info("Model warmup completed.")
     except Exception as e:
         logger.warning(f"Warmup failed: {e}")
+
+    logger.info("Initializing text polisher...")
+    polisher = TextPolisher()
+    logger.info("Text polisher initialized.")
 
 
 async def handle_client(websocket):
@@ -90,6 +97,7 @@ async def handle_client(websocket):
     logger.info("客户端已连接")
     audio_chunks: list[bytes] = []
     recording = False
+    enable_polish = False
 
     try:
         async for message in websocket:
@@ -98,7 +106,8 @@ async def handle_client(websocket):
                 msg_type = data.get("type")
 
                 if msg_type == "start":
-                    logger.info("🎤 开始录音")
+                    enable_polish = data.get("enable_polish") == "true"
+                    logger.info(f"🎤 开始录音. Polish enabled: {enable_polish}")
                     audio_chunks.clear()
                     recording = True
 
@@ -123,16 +132,28 @@ async def handle_client(websocket):
 
                     # 提取文本
                     if isinstance(result, str):
-                        text = result
+                        original_text = result
                     elif isinstance(result, list) and len(result) > 0:
-                        text = result[0].text if hasattr(result[0], 'text') else str(result[0])
+                        original_text = result[0].text if hasattr(result[0], 'text') else str(result[0])
                     elif hasattr(result, 'text'):
-                        text = result.text
+                        original_text = result.text
                     else:
-                        text = str(result)
+                        original_text = str(result)
 
-                    logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {text}")
-                    await websocket.send(json.dumps({"type": "final", "text": text}))
+                    # Polish the transcribed text only if enabled
+                    if enable_polish:
+                        polished_text = polisher.polish(original_text)
+                        logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text}")
+                        logger.info(f"✨ 润色后文本: {polished_text}")
+                    else:
+                        polished_text = original_text
+                        logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text} (polish disabled)")
+
+                    await websocket.send(json.dumps({
+                        "type": "final",
+                        "text": polished_text,
+                        "original_text": original_text
+                    }))
 
             elif isinstance(message, bytes) and recording:
                 audio_chunks.append(message)

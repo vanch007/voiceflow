@@ -24,7 +24,7 @@ final class SettingsWindow {
 
     private func createWindow() {
         let windowWidth: CGFloat = 500
-        let windowHeight: CGFloat = 450
+        let windowHeight: CGFloat = 500
 
         let contentView = NSHostingView(
             rootView: SettingsContentView(settingsManager: settingsManager)
@@ -86,6 +86,19 @@ private struct SettingsContentView: View {
             }
 
             Section {
+                Toggle("启用 AI 文本润色", isOn: $settingsManager.textPolishEnabled)
+                Text("自动去除语气词（嗯、那个、然后等）并改善语法")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } header: {
+                Text("文本处理")
+            } footer: {
+                Text("开启后将自动优化识别结果，使文本更加流畅")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section {
                 Toggle("开机自动启动", isOn: $settingsManager.autoLaunchEnabled)
                 Text("启用后，应用将在您登录 macOS 时自动启动")
                     .font(.caption)
@@ -100,6 +113,6 @@ private struct SettingsContentView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 500, height: 450)
+        .frame(width: 500, height: 500)
     }
 }

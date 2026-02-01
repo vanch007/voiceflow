@@ -44,6 +44,13 @@ final class SettingsManager: ObservableObject {
         }
     }
 
+    @Published var textPolishEnabled: Bool {
+        didSet {
+            UserDefaults.standard.isTextPolishEnabled = textPolishEnabled
+            NSLog("[SettingsManager] Text polish enabled changed to: \(textPolishEnabled)")
+        }
+    }
+
     private enum Keys {
         static let hotkeyEnabled = "hotkeyEnabled"
         static let modelSize = "modelSize"
@@ -65,7 +72,10 @@ final class SettingsManager: ObservableObject {
         // Load auto-launch enabled (default: false)
         self.autoLaunchEnabled = UserDefaults.standard.object(forKey: Keys.autoLaunchEnabled) as? Bool ?? false
 
-        NSLog("[SettingsManager] Initialized with hotkeyEnabled=\(hotkeyEnabled), modelSize=\(modelSize.rawValue), autoLaunchEnabled=\(autoLaunchEnabled)")
+        // Load text polish enabled (default: false)
+        self.textPolishEnabled = UserDefaults.standard.isTextPolishEnabled
+
+        NSLog("[SettingsManager] Initialized with hotkeyEnabled=\(hotkeyEnabled), modelSize=\(modelSize.rawValue), autoLaunchEnabled=\(autoLaunchEnabled), textPolishEnabled=\(textPolishEnabled)")
 
         // Apply auto-launch setting on initialization
         applyAutoLaunchSetting()
