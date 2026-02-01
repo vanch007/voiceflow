@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var replacementEngine: TextReplacementEngine!
     private var isRecording = false
     private var asrServerProcess: Process?
 
@@ -45,6 +46,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
+
+        // Initialize replacement engine
+        let storage = ReplacementStorage()
+        replacementEngine = TextReplacementEngine(storage: storage)
+
         asrClient = ASRClient()
         audioRecorder = AudioRecorder()
         audioRecorder.onAudioChunk = { [weak self] data in
@@ -56,7 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self.overlayPanel.showDone()
                 if !text.isEmpty {
-                    self.textInjector.inject(text: text)
+                    // Apply text replacements before injecting
+                    let processedText = self.replacementEngine.applyReplacements(to: text)
+                    self.textInjector.inject(text: processedText)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     self.overlayPanel.hide()
