@@ -32,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var startSoundID: SystemSoundID = 0
     private var stopSoundID: SystemSoundID = 0
 
+    /// Store the last original (unpolished) transcription for potential future comparison UI
+    private var lastOriginalText: String?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[AppDelegate] applicationDidFinishLaunching called!")
         // Hide dock icon
@@ -62,6 +65,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.overlayPanel.hide()
                 }
             }
+        }
+
+        asrClient.onOriginalTextReceived = { [weak self] originalText in
+            guard let self else { return }
+            self.lastOriginalText = originalText
+            NSLog("[AppDelegate] Original text stored: %@", originalText)
         }
 
         asrClient.onConnectionStatusChanged = { [weak self] connected in
