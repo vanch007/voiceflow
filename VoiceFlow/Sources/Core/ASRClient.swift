@@ -2,6 +2,7 @@ import Foundation
 
 final class ASRClient {
     var onTranscriptionResult: ((String) -> Void)?
+    var onOriginalTextReceived: ((String) -> Void)?
     var onConnectionStatusChanged: ((Bool) -> Void)?
 
     private var webSocketTask: URLSessionWebSocketTask?
@@ -32,7 +33,8 @@ final class ASRClient {
     }
 
     func sendStart() {
-        sendJSON(["type": "start"])
+        let enablePolish = UserDefaults.standard.isTextPolishEnabled
+        sendJSON(["type": "start", "enable_polish": enablePolish ? "true" : "false"])
     }
 
     func sendStop() {
@@ -90,9 +92,13 @@ final class ASRClient {
               let type = json["type"] as? String,
               let text = json["text"] as? String else { return }
 
-        NSLog("[ASRClient] Received: type=\(type), text=\(text)")
+        let originalText = json["original_text"] as? String
+        NSLog("[ASRClient] Received: type=\(type), text=\(text), original_text=\(originalText ?? "nil")")
         if type == "final" {
             onTranscriptionResult?(text)
+            if let originalText {
+                onOriginalTextReceived?(originalText)
+            }
         }
         // partial results can be handled here in the future
     }
