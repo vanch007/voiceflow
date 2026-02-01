@@ -116,6 +116,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - ASR Server Management
 
     private func startASRServer() {
+        // TODO: Pass selected model size (settingsManager.modelSize) to ASR server
+        // This will be implemented in a future task when server supports model selection
         let process = Process()
         process.executableURL = URL(fileURLWithPath: Self.pythonPath)
         process.arguments = [Self.serverScriptPath]
