@@ -69,6 +69,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        asrClient.onPartialResult = { [weak self] text in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                // 实时更新悬浮窗显示的文字
+                self.overlayPanel.updateRecordingText(text)
+            }
+        }
+
         asrClient.onConnectionStatusChanged = { [weak self] connected in
             DispatchQueue.main.async {
                 self?.statusBarController.updateConnectionStatus(connected: connected)
@@ -79,10 +87,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController.onQuit = {
             NSApp.terminate(nil)
         }
+        statusBarController.onModelChange = { [weak self] modelSize in
+            self?.changeModel(modelSize)
+        }
 
         hotkeyManager = HotkeyManager()
-        hotkeyManager.onDoubleTap = { [weak self] in
-            self?.toggleRecording()
+        hotkeyManager.onLongPress = { [weak self] in
+            self?.startRecording()
+        }
+        hotkeyManager.onLongPressEnd = { [weak self] in
+            self?.stopRecording()
         }
         hotkeyManager.start()
 
@@ -182,5 +196,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayPanel.showProcessing()
         statusBarController.updateRecordingStatus(recording: false)
         asrClient.sendStop()
+    }
+
+    // MARK: - Model Change
+
+    private func changeModel(_ modelSize: String) {
+        NSLog("[Model] 切换模型到: Qwen3-ASR-\(modelSize)")
+
+        // 更新配置文件
+        let configPath = Self.projectRoot + "/config.json"
+        let config = ["model_size": modelSize, "language": "Chinese"]
+
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: config, options: .prettyPrinted)
+            try jsonData.write(to: URL(fileURLWithPath: configPath))
+            NSLog("[Model] 配置文件已更新")
+
+            // 重启 ASR 服务器
+            NSLog("[Model] 重启 ASR 服务器...")
+            stopASRServer()
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.startASRServer()
+
+                // 等待服务器启动后重新连接
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                    self?.asrClient.connect()
+                    NSLog("[Model] 模型切换完成")
+                }
+            }
+
+        } catch {
+            NSLog("[Model] 配置文件更新失败: \(error)")
+        }
     }
 }

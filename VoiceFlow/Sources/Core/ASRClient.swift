@@ -2,6 +2,7 @@ import Foundation
 
 final class ASRClient {
     var onTranscriptionResult: ((String) -> Void)?
+    var onPartialResult: ((String) -> Void)?  // 新增：实时部分结果回调
     var onConnectionStatusChanged: ((Bool) -> Void)?
 
     private var webSocketTask: URLSessionWebSocketTask?
@@ -91,10 +92,14 @@ final class ASRClient {
               let text = json["text"] as? String else { return }
 
         NSLog("[ASRClient] Received: type=\(type), text=\(text)")
+
         if type == "final" {
+            // 最终结果
             onTranscriptionResult?(text)
+        } else if type == "partial" {
+            // 实时部分结果
+            onPartialResult?(text)
         }
-        // partial results can be handled here in the future
     }
 
     private func handleDisconnect() {

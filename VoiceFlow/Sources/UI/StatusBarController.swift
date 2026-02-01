@@ -2,10 +2,12 @@ import AppKit
 
 final class StatusBarController {
     var onQuit: (() -> Void)?
+    var onModelChange: ((String) -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
     private var isRecording = false
+    private var currentModel = "1.7B"  // 默认模型
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -37,7 +39,8 @@ final class StatusBarController {
     private func buildMenu() {
         let menu = NSMenu()
 
-        let statusTitle = isConnected ? "ASR 서버: 연결됨" : "ASR 서버: 끊어짐"
+        // ASR 服务器连接状态
+        let statusTitle = isConnected ? "ASR 服务器: 已连接" : "ASR 服务器: 已断开"
         let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
         statusItem.isEnabled = false
         let statusImage = NSImage(
@@ -56,11 +59,46 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "종료", action: #selector(quitAction), keyEquivalent: "q")
+        // 模型选择子菜单
+        let modelMenu = NSMenu()
+
+        let model17Item = NSMenuItem(title: "Qwen3-ASR-1.7B (推荐)", action: #selector(selectModel17B), keyEquivalent: "")
+        model17Item.target = self
+        model17Item.state = currentModel == "1.7B" ? .on : .off
+        modelMenu.addItem(model17Item)
+
+        let model06Item = NSMenuItem(title: "Qwen3-ASR-0.6B (快速)", action: #selector(selectModel06B), keyEquivalent: "")
+        model06Item.target = self
+        model06Item.state = currentModel == "0.6B" ? .on : .off
+        modelMenu.addItem(model06Item)
+
+        let modelMenuItem = NSMenuItem(title: "选择模型", action: nil, keyEquivalent: "")
+        modelMenuItem.submenu = modelMenu
+        menu.addItem(modelMenuItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // 退出
+        let quitItem = NSMenuItem(title: "退出", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
         self.statusItem.menu = menu
+    }
+
+    @objc private func selectModel17B() {
+        changeModel("1.7B")
+    }
+
+    @objc private func selectModel06B() {
+        changeModel("0.6B")
+    }
+
+    private func changeModel(_ modelSize: String) {
+        guard modelSize != currentModel else { return }
+        currentModel = modelSize
+        buildMenu()  // 重新构建菜单以更新选中状态
+        onModelChange?(modelSize)
     }
 
     @objc private func quitAction() {

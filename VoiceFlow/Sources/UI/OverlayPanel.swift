@@ -8,7 +8,7 @@ final class OverlayPanel {
     private var currentVolume: Double = 0.0
 
     enum State {
-        case recording
+        case recording(text: String)  // 录音中，显示实时文字
         case processing
         case done
         case hidden
@@ -20,14 +20,20 @@ final class OverlayPanel {
 
     func updateVolume(_ volume: Double) {
         currentVolume = volume
-        if currentState == .recording {
+        if case .recording = currentState {
             updateContent()
         }
     }
 
-    func showRecording() {
+    func showRecording(partialText: String = "") {
         startRecordingTimer()
-        show(state: .recording)
+        show(state: .recording(text: partialText))
+    }
+
+    func updateRecordingText(_ text: String) {
+        if case .recording = currentState {
+            show(state: .recording(text: text))
+        }
     }
 
     func showProcessing() {
@@ -109,14 +115,15 @@ final class OverlayPanel {
 
         let view: NSView
         switch currentState {
-        case .recording:
+        case .recording(let text):
             let minutes = Int(recordingDuration) / 60
             let seconds = Int(recordingDuration) % 60
             let durationText = String(format: "%02d:%02d", minutes, seconds)
+            let displayText = text.isEmpty ? "录音中..." : text
             view = NSHostingView(rootView: EnhancedOverlayContentView(
                 icon: "circle.fill",
                 iconColor: .red,
-                text: "녹음 중",
+                text: displayText,
                 duration: durationText,
                 volume: currentVolume
             ))
@@ -124,13 +131,13 @@ final class OverlayPanel {
             view = NSHostingView(rootView: OverlayContentView(
                 icon: "hourglass",
                 iconColor: .yellow,
-                text: "인식 중..."
+                text: "识别中..."
             ))
         case .done:
             view = NSHostingView(rootView: OverlayContentView(
                 icon: "checkmark.circle.fill",
                 iconColor: .green,
-                text: "완료"
+                text: "完成"
             ))
         case .hidden:
             return
