@@ -4,6 +4,7 @@ final class StatusBarController {
     var onQuit: (() -> Void)?
     var onModelChange: ((String) -> Void)?
     var onSettings: (() -> Void)?
+    var onShowHistory: (() -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
@@ -79,10 +80,17 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        let historyItem = NSMenuItem(title: "录音记录", action: #selector(showHistoryAction), keyEquivalent: "h")
+        historyItem.target = self
+        menu.addItem(historyItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let settingsItem = NSMenuItem(title: "设置", action: #selector(settingsAction), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: "退出", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
@@ -108,6 +116,10 @@ final class StatusBarController {
 
     @objc private func settingsAction() {
         onSettings?()
+    }
+
+    @objc private func showHistoryAction() {
+        onShowHistory?()
     }
 
     @objc private func quitAction() {

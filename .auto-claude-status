@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "004-",
-  "state": "building",
+  "spec": "008-",
+  "state": "complete",
   "subtasks": {
-    "completed": 1,
-    "total": 5,
-    "in_progress": 1,
+    "completed": 4,
+    "total": 4,
+    "in_progress": 0,
     "failed": 0
   },
   "phase": {
-    "current": "Enhanced Overlay UI",
+    "current": "Recording Flow Integration",
     "id": null,
-    "total": 3
+    "total": 1
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 4,
-    "started_at": "2026-02-02T00:46:34.951132"
+    "number": 5,
+    "started_at": "2026-02-02T03:37:45.534144"
   },
-  "last_update": "2026-02-02T00:56:24.423644"
+  "last_update": "2026-02-02T03:57:06.450517"
 }
