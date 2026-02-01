@@ -50,6 +50,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder.onAudioChunk = { [weak self] data in
             self?.asrClient.sendAudioChunk(data)
         }
+        audioRecorder.onVolumeLevel = { [weak self] volume in
+            DispatchQueue.main.async {
+                self?.overlayPanel.updateVolume(Double(volume))
+            }
+        }
 
         asrClient.onTranscriptionResult = { [weak self] text in
             guard let self else { return }
