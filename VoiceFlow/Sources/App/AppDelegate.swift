@@ -26,8 +26,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var recordingHistory: RecordingHistory!
     private var isRecording = false
     private var asrServerProcess: Process?
+    private var recordingStartTime: Date?
 
     private var startSoundID: SystemSoundID = 0
     private var stopSoundID: SystemSoundID = 0
@@ -46,6 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
         asrClient = ASRClient()
+        recordingHistory = RecordingHistory()
         audioRecorder = AudioRecorder()
         audioRecorder.onAudioChunk = { [weak self] data in
             self?.asrClient.sendAudioChunk(data)
@@ -58,6 +61,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if !text.isEmpty {
                     self.textInjector.inject(text: text)
                 }
+
+                // Add to recording history
+                if let startTime = self.recordingStartTime {
+                    let duration = Date().timeIntervalSince(startTime)
+                    self.recordingHistory.addEntry(text: text, duration: duration)
+                    self.recordingStartTime = nil
+                }
+
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     self.overlayPanel.hide()
                 }
@@ -161,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startRecording() {
         isRecording = true
+        recordingStartTime = Date()
         NSLog("[Recording] Starting recording, playing start sound")
         playSound(startSoundID, name: "startSound")
         overlayPanel.showRecording()
