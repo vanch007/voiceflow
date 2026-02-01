@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreMedia
 import CoreAudio
+import Accelerate
 
 final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     var onAudioChunk: ((Data) -> Void)?
@@ -181,20 +182,28 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
             return
         }
 
-        // Resample to 16kHz
+        // Resample to 16kHz using vDSP
         let ratio = targetSampleRate / srcRate
         let outputLength = Int(Double(floatSamples.count) * ratio)
         guard outputLength > 0 else { return }
 
         var output = [Float](repeating: 0, count: outputLength)
+        var indices = [Float](repeating: 0, count: outputLength)
+
+        // Generate indices for vDSP interpolation
         for i in 0..<outputLength {
-            let srcIndex = Double(i) / ratio
-            let srcInt = Int(srcIndex)
-            let frac = Float(srcIndex - Double(srcInt))
-            if srcInt + 1 < floatSamples.count {
-                output[i] = floatSamples[srcInt] * (1 - frac) + floatSamples[srcInt + 1] * frac
-            } else if srcInt < floatSamples.count {
-                output[i] = floatSamples[srcInt]
+            indices[i] = Float(Double(i) / ratio)
+        }
+
+        // Use vDSP for linear interpolation
+        floatSamples.withUnsafeBufferPointer { srcPtr in
+            indices.withUnsafeBufferPointer { idxPtr in
+                output.withUnsafeMutableBufferPointer { outPtr in
+                    vDSP_vgenp(srcPtr.baseAddress!, vDSP_Stride(1),
+                              idxPtr.baseAddress!, vDSP_Stride(1),
+                              outPtr.baseAddress!, vDSP_Stride(1),
+                              vDSP_Length(outputLength), vDSP_Length(floatSamples.count))
+                }
             }
         }
 
