@@ -38,7 +38,7 @@ final class StatusBarController {
     private func buildMenu() {
         let menu = NSMenu()
 
-        let statusTitle = isConnected ? "ASR 서버: 연결됨" : "ASR 서버: 끊어짐"
+        let statusTitle = isConnected ? "ASR 服务器: 已连接" : "ASR 服务器: 未连接"
         let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
         statusItem.isEnabled = false
         let statusImage = NSImage(
@@ -57,11 +57,11 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        let settingsItem = NSMenuItem(title: "설정", action: #selector(settingsAction), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: "设置", action: #selector(settingsAction), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        let quitItem = NSMenuItem(title: "종료", action: #selector(quitAction), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: "退出", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
