@@ -2,6 +2,7 @@ import AppKit
 
 final class StatusBarController {
     var onQuit: (() -> Void)?
+    var onShowHistory: (() -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
@@ -56,11 +57,21 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        let historyItem = NSMenuItem(title: "录音历史", action: #selector(showHistoryAction), keyEquivalent: "h")
+        historyItem.target = self
+        menu.addItem(historyItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(title: "종료", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
         self.statusItem.menu = menu
+    }
+
+    @objc private func showHistoryAction() {
+        onShowHistory?()
     }
 
     @objc private func quitAction() {
