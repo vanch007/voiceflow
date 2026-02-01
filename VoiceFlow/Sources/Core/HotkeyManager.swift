@@ -12,6 +12,17 @@ final class HotkeyManager {
     private var otherKeyWhileControl = false
     private var eventTap: CFMachPort?
     private let doubleTapInterval: TimeInterval = 0.3
+    private var isEnabled = true
+
+    func enable() {
+        isEnabled = true
+        NSLog("[HotkeyManager] Hotkey enabled")
+    }
+
+    func disable() {
+        isEnabled = false
+        NSLog("[HotkeyManager] Hotkey disabled")
+    }
 
     func start() {
         let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue) |
@@ -82,8 +93,10 @@ final class HotkeyManager {
 
             if elapsed <= doubleTapInterval {
                 lastControlTapTime = 0
-                DispatchQueue.main.async { [weak self] in
-                    self?.onDoubleTap?()
+                if isEnabled {
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onDoubleTap?()
+                    }
                 }
             } else {
                 lastControlTapTime = now

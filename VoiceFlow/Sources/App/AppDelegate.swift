@@ -1,5 +1,6 @@
 import AppKit
 import AudioToolbox
+import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Resolve paths relative to the app bundle's parent directory (project root).
@@ -33,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var startSoundID: SystemSoundID = 0
     private var stopSoundID: SystemSoundID = 0
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[AppDelegate] applicationDidFinishLaunching called!")
@@ -45,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load sounds via AudioServices (bypasses AVCaptureSession output blocking)
         loadSounds()
 
-        settingsManager = SettingsManager()
+        settingsManager = SettingsManager.shared
         settingsWindow = SettingsWindow(settingsManager: settingsManager)
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
@@ -87,6 +89,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.toggleRecording()
         }
         hotkeyManager.start()
+
+        // Observe hotkey enabled setting
+        settingsManager.$hotkeyEnabled
+            .sink { [weak self] enabled in
+                if enabled {
+                    self?.hotkeyManager.enable()
+                } else {
+                    self?.hotkeyManager.disable()
+                }
+            }
+            .store(in: &cancellables)
 
         audioRecorder.prepare()
 
