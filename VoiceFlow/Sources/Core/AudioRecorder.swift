@@ -4,6 +4,7 @@ import CoreAudio
 
 final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     var onAudioChunk: ((Data) -> Void)?
+    var onVolumeLevel: ((Float) -> Void)?
 
     private var captureSession: AVCaptureSession?
     private let sessionQueue = DispatchQueue(label: "com.voiceflow.capture")
@@ -201,5 +202,9 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
             Data(bytes: ptr.baseAddress!, count: ptr.count * MemoryLayout<Float>.size)
         }
         onAudioChunk?(data)
+
+        // Calculate volume level (RMS)
+        let rms = sqrt(output.map { $0 * $0 }.reduce(0, +) / Float(output.count))
+        onVolumeLevel?(rms)
     }
 }
