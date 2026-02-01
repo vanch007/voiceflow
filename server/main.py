@@ -10,6 +10,7 @@ import numpy as np
 import soundfile as sf
 import websockets
 from qwen_asr import Qwen3ASRModel
+from text_polisher import TextPolisher
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -18,10 +19,11 @@ HOST = "localhost"
 PORT = 9876
 
 model: Qwen3ASRModel = None
+polisher: TextPolisher = None
 
 
 def load_model():
-    global model
+    global model, polisher
     logger.info("Loading Qwen3-ASR-1.7B model...")
     model = Qwen3ASRModel.from_pretrained("Qwen/Qwen3-ASR-1.7B")
     try:
@@ -30,6 +32,10 @@ def load_model():
     except Exception as e:
         logger.warning(f"MPS not available, using CPU: {e}")
     logger.info("Model loaded successfully.")
+
+    logger.info("Initializing text polisher...")
+    polisher = TextPolisher()
+    logger.info("Text polisher initialized.")
 
 
 async def handle_client(websocket):
@@ -67,16 +73,24 @@ async def handle_client(websocket):
                     elapsed = time.perf_counter() - t0
 
                     if isinstance(result, str):
-                        text = result
+                        original_text = result
                     elif isinstance(result, list) and len(result) > 0:
-                        text = result[0].text if hasattr(result[0], 'text') else str(result[0])
+                        original_text = result[0].text if hasattr(result[0], 'text') else str(result[0])
                     elif hasattr(result, 'text'):
-                        text = result.text
+                        original_text = result.text
                     else:
-                        text = str(result)
+                        original_text = str(result)
 
-                    logger.info(f"Transcription ({elapsed:.2f}s): {text}")
-                    await websocket.send(json.dumps({"type": "final", "text": text}))
+                    # Polish the transcribed text
+                    polished_text = polisher.polish(original_text)
+
+                    logger.info(f"Transcription ({elapsed:.2f}s): {original_text}")
+                    logger.info(f"Polished text: {polished_text}")
+                    await websocket.send(json.dumps({
+                        "type": "final",
+                        "text": polished_text,
+                        "original_text": original_text
+                    }))
 
             elif isinstance(message, bytes) and recording:
                 audio_chunks.append(message)
