@@ -5,7 +5,7 @@ final class OverlayPanel {
     private var panel: NSPanel?
 
     enum State {
-        case recording
+        case recording(text: String)  // 录音中，显示实时文字
         case processing
         case done
         case hidden
@@ -15,8 +15,14 @@ final class OverlayPanel {
 
     init() {}
 
-    func showRecording() {
-        show(state: .recording)
+    func showRecording(partialText: String = "") {
+        show(state: .recording(text: partialText))
+    }
+
+    func updateRecordingText(_ text: String) {
+        if case .recording = currentState {
+            show(state: .recording(text: text))
+        }
     }
 
     func showProcessing() {
@@ -77,23 +83,33 @@ final class OverlayPanel {
 
         let view: NSView
         switch currentState {
-        case .recording:
-            view = NSHostingView(rootView: OverlayContentView(
-                icon: "circle.fill",
-                iconColor: .red,
-                text: "녹음 중..."
-            ))
+        case .recording(let text):
+            if text.isEmpty {
+                // 无文字时显示录音提示
+                view = NSHostingView(rootView: OverlayContentView(
+                    icon: "circle.fill",
+                    iconColor: .red,
+                    text: "录音中..."
+                ))
+            } else {
+                // 显示实时识别的文字
+                view = NSHostingView(rootView: OverlayContentView(
+                    icon: "circle.fill",
+                    iconColor: .red,
+                    text: text
+                ))
+            }
         case .processing:
             view = NSHostingView(rootView: OverlayContentView(
                 icon: "hourglass",
                 iconColor: .yellow,
-                text: "인식 중..."
+                text: "识别中..."
             ))
         case .done:
             view = NSHostingView(rootView: OverlayContentView(
                 icon: "checkmark.circle.fill",
                 iconColor: .green,
-                text: "완료"
+                text: "完成"
             ))
         case .hidden:
             return

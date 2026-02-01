@@ -5,19 +5,19 @@ import os
 private let logger = Logger(subsystem: "com.voiceflow.app", category: "HotkeyManager")
 
 final class HotkeyManager {
-    var onDoubleTap: (() -> Void)?
+    var onLongPress: (() -> Void)?
+    var onLongPressEnd: (() -> Void)?
 
-    private var lastControlTapTime: TimeInterval = 0
-    private var controlIsDown = false
-    private var otherKeyWhileControl = false
+    private var optionKeyIsDown = false
+    private var optionKeyPressTime: TimeInterval = 0
+    private var longPressTimer: Timer?
     private var eventTap: CFMachPort?
-    private let doubleTapInterval: TimeInterval = 0.3
+    private let longPressThreshold: TimeInterval = 0.3  // 长按阈值 300ms
 
     func start() {
-        let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue) |
-                                      (1 << CGEventType.keyDown.rawValue)
+        let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
 
-        NSLog("[HotkeyManager] Attempting to create event tap...")
+        NSLog("[HotkeyManager] 正在创建事件监听器 (Option 键长按)...")
 
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -32,7 +32,7 @@ final class HotkeyManager {
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            NSLog("[HotkeyManager] FAILED to create event tap! Check permissions.")
+            NSLog("[HotkeyManager] 创建事件监听失败！请检查辅助功能权限。")
             return
         }
 
@@ -40,58 +40,53 @@ final class HotkeyManager {
         let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
-        NSLog("[HotkeyManager] Event tap started successfully!")
+        NSLog("[HotkeyManager] 事件监听启动成功！长按 Option (⌥) 键触发录音。")
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) {
-        if type == .keyDown {
-            if controlIsDown {
-                otherKeyWhileControl = true
-            }
-            return
-        }
-
         guard type == .flagsChanged else { return }
 
         let flags = event.flags
-        let controlPressed = flags.contains(.maskControl)
+        let optionPressed = flags.contains(.maskAlternate)
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
 
-        NSLog("[HotkeyManager] flagsChanged: keyCode=\(keyCode), control=\(controlPressed)")
+        // Left Option: 58, Right Option: 61
+        guard keyCode == 58 || keyCode == 61 else { return }
 
-        // Accept both Left Control (59) and Right Control (62)
-        guard keyCode == 59 || keyCode == 62 else { return }
+        NSLog("[HotkeyManager] Option 键状态变化: pressed=\(optionPressed), keyCode=\(keyCode)")
 
-        if controlPressed && !controlIsDown {
-            // Control key pressed down
-            controlIsDown = true
-            otherKeyWhileControl = false
-        } else if !controlPressed && controlIsDown {
-            // Control key released
-            controlIsDown = false
+        if optionPressed && !optionKeyIsDown {
+            // Option 键按下
+            optionKeyIsDown = true
+            optionKeyPressTime = ProcessInfo.processInfo.systemUptime
 
-            if otherKeyWhileControl {
-                // Was used as modifier, ignore
-                otherKeyWhileControl = false
-                return
-            }
-
-            // Solo control tap
-            let now = ProcessInfo.processInfo.systemUptime
-            let elapsed = now - lastControlTapTime
-
-            if elapsed <= doubleTapInterval {
-                lastControlTapTime = 0
-                DispatchQueue.main.async { [weak self] in
-                    self?.onDoubleTap?()
+            // 启动定时器检测长按
+            longPressTimer = Timer.scheduledTimer(withTimeInterval: longPressThreshold, repeats: false) { [weak self] _ in
+                guard let self = self, self.optionKeyIsDown else { return }
+                NSLog("[HotkeyManager] Option 键长按触发")
+                DispatchQueue.main.async {
+                    self.onLongPress?()
                 }
-            } else {
-                lastControlTapTime = now
+            }
+        } else if !optionPressed && optionKeyIsDown {
+            // Option 键释放
+            optionKeyIsDown = false
+            longPressTimer?.invalidate()
+            longPressTimer = nil
+
+            let pressDuration = ProcessInfo.processInfo.systemUptime - optionKeyPressTime
+            if pressDuration >= longPressThreshold {
+                // 长按结束
+                NSLog("[HotkeyManager] Option 键长按结束 (持续 \(String(format: "%.2f", pressDuration))s)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onLongPressEnd?()
+                }
             }
         }
     }
 
     deinit {
+        longPressTimer?.invalidate()
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }

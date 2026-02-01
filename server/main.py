@@ -7,7 +7,6 @@ import logging
 import time
 
 import numpy as np
-import soundfile as sf
 import websockets
 from qwen_asr import Qwen3ASRModel
 
@@ -22,18 +21,18 @@ model: Qwen3ASRModel = None
 
 def load_model():
     global model
-    logger.info("Loading Qwen3-ASR-1.7B model...")
+    logger.info("正在加载 Qwen3-ASR-1.7B 模型...")
     model = Qwen3ASRModel.from_pretrained("Qwen/Qwen3-ASR-1.7B")
     try:
         model.model = model.model.to("mps")
-        logger.info("Model moved to MPS (GPU).")
+        logger.info("✅ 模型已移至 MPS (Apple GPU)")
     except Exception as e:
-        logger.warning(f"MPS not available, using CPU: {e}")
-    logger.info("Model loaded successfully.")
+        logger.warning(f"⚠️ MPS 不可用，使用 CPU: {e}")
+    logger.info("✅ 模型加载成功")
 
 
 async def handle_client(websocket):
-    logger.info("Client connected.")
+    logger.info("客户端已连接")
     audio_chunks: list[bytes] = []
     recording = False
 
@@ -44,12 +43,12 @@ async def handle_client(websocket):
                 msg_type = data.get("type")
 
                 if msg_type == "start":
-                    logger.info("Recording started.")
+                    logger.info("🎤 开始录音")
                     audio_chunks.clear()
                     recording = True
 
                 elif msg_type == "stop":
-                    logger.info("Recording stopped. Processing audio...")
+                    logger.info("⏹️ 停止录音，正在处理音频...")
                     recording = False
 
                     if not audio_chunks:
@@ -59,11 +58,11 @@ async def handle_client(websocket):
                     raw = b"".join(audio_chunks)
                     samples = np.frombuffer(raw, dtype=np.float32)
                     duration = len(samples) / 16000
-                    logger.info(f"Audio: {len(samples)} samples ({duration:.1f}s)")
+                    logger.info(f"📊 音频: {len(samples)} 采样点 ({duration:.1f}s)")
 
                     # Pass as (ndarray, sample_rate) tuple — no temp file needed
                     t0 = time.perf_counter()
-                    result = model.transcribe(audio=(samples, 16000), language="Korean")
+                    result = model.transcribe(audio=(samples, 16000), language="Chinese")
                     elapsed = time.perf_counter() - t0
 
                     if isinstance(result, str):
@@ -75,19 +74,21 @@ async def handle_client(websocket):
                     else:
                         text = str(result)
 
-                    logger.info(f"Transcription ({elapsed:.2f}s): {text}")
+                    logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {text}")
                     await websocket.send(json.dumps({"type": "final", "text": text}))
 
             elif isinstance(message, bytes) and recording:
                 audio_chunks.append(message)
 
     except websockets.exceptions.ConnectionClosed:
-        logger.info("Client disconnected.")
+        logger.info("客户端断开连接")
+    except Exception as e:
+        logger.error(f"❌ 错误: {e}", exc_info=True)
 
 
 async def main():
     load_model()
-    logger.info(f"Starting WebSocket server on ws://{HOST}:{PORT}")
+    logger.info(f"🚀 WebSocket 服务器启动于 ws://{HOST}:{PORT}")
     async with websockets.serve(handle_client, HOST, PORT):
         await asyncio.Future()
 

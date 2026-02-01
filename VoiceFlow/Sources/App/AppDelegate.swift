@@ -64,6 +64,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        asrClient.onPartialResult = { [weak self] text in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                // 实时更新悬浮窗显示的文字
+                self.overlayPanel.updateRecordingText(text)
+            }
+        }
+
         asrClient.onConnectionStatusChanged = { [weak self] connected in
             DispatchQueue.main.async {
                 self?.statusBarController.updateConnectionStatus(connected: connected)
@@ -76,8 +84,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         hotkeyManager = HotkeyManager()
-        hotkeyManager.onDoubleTap = { [weak self] in
-            self?.toggleRecording()
+        hotkeyManager.onLongPress = { [weak self] in
+            self?.startRecording()
+        }
+        hotkeyManager.onLongPressEnd = { [weak self] in
+            self?.stopRecording()
         }
         hotkeyManager.start()
 
