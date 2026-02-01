@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "004-",
+  "state": "building",
+  "subtasks": {
+    "completed": 1,
+    "total": 5,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "Enhanced Overlay UI",
+    "id": null,
+    "total": 3
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 4,
+    "started_at": "2026-02-02T00:46:34.951132"
+  },
+  "last_update": "2026-02-02T00:56:24.423644"
+}
