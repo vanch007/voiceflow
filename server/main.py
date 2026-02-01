@@ -67,6 +67,24 @@ def load_model():
         raise
 
 
+def warmup_model():
+    """Warm up the model with a short silent audio segment."""
+    global model
+    if model is None:
+        raise RuntimeError("Model not loaded. Call load_model() first.")
+
+    logger.info("Warming up model with silent audio...")
+    # Generate 1 second of silence at 16kHz
+    silent_audio = np.zeros(16000, dtype=np.float32)
+
+    try:
+        # Perform warmup inference
+        _ = model.transcribe(audio=(silent_audio, 16000), language="Korean")
+        logger.info("Model warmup completed.")
+    except Exception as e:
+        logger.warning(f"Warmup failed: {e}")
+
+
 async def handle_client(websocket):
     """处理客户端连接"""
     logger.info("客户端已连接")
@@ -128,6 +146,7 @@ async def handle_client(websocket):
 async def main():
     load_config()
     load_model()
+    warmup_model()
 
     model_size = config.get("model_size", "1.7B")
     logger.info(f"🚀 WebSocket 服务器启动于 ws://{HOST}:{PORT}")
