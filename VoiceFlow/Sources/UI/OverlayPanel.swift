@@ -3,6 +3,8 @@ import SwiftUI
 
 final class OverlayPanel {
     private var panel: NSPanel?
+    private var recordingTimer: Timer?
+    private var recordingDuration: TimeInterval = 0
 
     enum State {
         case recording
@@ -16,10 +18,12 @@ final class OverlayPanel {
     init() {}
 
     func showRecording() {
+        startRecordingTimer()
         show(state: .recording)
     }
 
     func showProcessing() {
+        stopRecordingTimer()
         show(state: .processing)
     }
 
@@ -28,6 +32,7 @@ final class OverlayPanel {
     }
 
     func hide() {
+        stopRecordingTimer()
         panel?.orderOut(nil)
         panel = nil
         currentState = .hidden
@@ -72,16 +77,36 @@ final class OverlayPanel {
         panel = p
     }
 
+    private func startRecordingTimer() {
+        recordingDuration = 0
+        recordingTimer?.invalidate()
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.updateRecordingDuration()
+        }
+    }
+
+    private func stopRecordingTimer() {
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        recordingDuration = 0
+    }
+
+    private func updateRecordingDuration() {
+        recordingDuration += 0.1
+        updateContent()
+    }
+
     private func updateContent() {
         guard let panel else { return }
 
         let view: NSView
         switch currentState {
         case .recording:
+            let durationText = String(format: "녹음 중... %.1fs", recordingDuration)
             view = NSHostingView(rootView: OverlayContentView(
                 icon: "circle.fill",
                 iconColor: .red,
-                text: "녹음 중..."
+                text: durationText
             ))
         case .processing:
             view = NSHostingView(rootView: OverlayContentView(
