@@ -13,6 +13,17 @@ final class HotkeyManager {
     private var longPressTimer: Timer?
     private var eventTap: CFMachPort?
     private let longPressThreshold: TimeInterval = 0.3  // 长按阈值 300ms
+    private var isEnabled = true
+
+    func enable() {
+        isEnabled = true
+        NSLog("[HotkeyManager] Hotkey enabled")
+    }
+
+    func disable() {
+        isEnabled = false
+        NSLog("[HotkeyManager] Hotkey disabled")
+    }
 
     func start() {
         let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
@@ -63,9 +74,11 @@ final class HotkeyManager {
             // 启动定时器检测长按
             longPressTimer = Timer.scheduledTimer(withTimeInterval: longPressThreshold, repeats: false) { [weak self] _ in
                 guard let self = self, self.optionKeyIsDown else { return }
-                NSLog("[HotkeyManager] Option 键长按触发")
-                DispatchQueue.main.async {
-                    self.onLongPress?()
+                if self.isEnabled {
+                    NSLog("[HotkeyManager] Option 键长按触发")
+                    DispatchQueue.main.async {
+                        self.onLongPress?()
+                    }
                 }
             }
         } else if !optionPressed && optionKeyIsDown {
@@ -75,7 +88,7 @@ final class HotkeyManager {
             longPressTimer = nil
 
             let pressDuration = ProcessInfo.processInfo.systemUptime - optionKeyPressTime
-            if pressDuration >= longPressThreshold {
+            if pressDuration >= longPressThreshold && isEnabled {
                 // 长按结束
                 NSLog("[HotkeyManager] Option 键长按结束 (持续 \(String(format: "%.2f", pressDuration))s)")
                 DispatchQueue.main.async { [weak self] in

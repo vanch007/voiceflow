@@ -1,5 +1,6 @@
 import AppKit
 import AudioToolbox
+import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Resolve paths relative to the app bundle's parent directory (project root).
@@ -26,11 +27,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var settingsManager: SettingsManager!
+    private var settingsWindow: SettingsWindow!
     private var isRecording = false
     private var asrServerProcess: Process?
 
     private var startSoundID: SystemSoundID = 0
     private var stopSoundID: SystemSoundID = 0
+    private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[AppDelegate] applicationDidFinishLaunching called!")
@@ -43,6 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load sounds via AudioServices (bypasses AVCaptureSession output blocking)
         loadSounds()
 
+        settingsManager = SettingsManager.shared
+        settingsWindow = SettingsWindow(settingsManager: settingsManager)
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
         asrClient = ASRClient()
@@ -90,6 +96,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController.onModelChange = { [weak self] modelSize in
             self?.changeModel(modelSize)
         }
+        statusBarController.onSettings = { [weak self] in
+            self?.settingsWindow.show()
+        }
 
         hotkeyManager = HotkeyManager()
         hotkeyManager.onLongPress = { [weak self] in
@@ -99,6 +108,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.stopRecording()
         }
         hotkeyManager.start()
+
+        // Observe hotkey enabled setting
+        settingsManager.$hotkeyEnabled
+            .sink { [weak self] enabled in
+                if enabled {
+                    self?.hotkeyManager.enable()
+                } else {
+                    self?.hotkeyManager.disable()
+                }
+            }
+            .store(in: &cancellables)
 
         audioRecorder.prepare()
 
@@ -115,6 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - ASR Server Management
 
     private func startASRServer() {
+        // TODO: Pass selected model size (settingsManager.modelSize) to ASR server
+        // This will be implemented in a future task when server supports model selection
         let process = Process()
         process.executableURL = URL(fileURLWithPath: Self.pythonPath)
         process.arguments = [Self.serverScriptPath]

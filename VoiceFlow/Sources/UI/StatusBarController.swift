@@ -3,6 +3,7 @@ import AppKit
 final class StatusBarController {
     var onQuit: (() -> Void)?
     var onModelChange: ((String) -> Void)?
+    var onSettings: (() -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
@@ -78,7 +79,11 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        // 退出
+        let settingsItem = NSMenuItem(title: "设置", action: #selector(settingsAction), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
+
         let quitItem = NSMenuItem(title: "退出", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -99,6 +104,10 @@ final class StatusBarController {
         currentModel = modelSize
         buildMenu()  // 重新构建菜单以更新选中状态
         onModelChange?(modelSize)
+    }
+
+    @objc private func settingsAction() {
+        onSettings?()
     }
 
     @objc private func quitAction() {
