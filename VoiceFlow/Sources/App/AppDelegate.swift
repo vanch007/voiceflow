@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var settingsManager: SettingsManager!
+    private var settingsWindow: SettingsWindow!
     private var isRecording = false
     private var asrServerProcess: Process?
 
@@ -43,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load sounds via AudioServices (bypasses AVCaptureSession output blocking)
         loadSounds()
 
+        settingsManager = SettingsManager()
+        settingsWindow = SettingsWindow(settingsManager: settingsManager)
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
         asrClient = ASRClient()
@@ -73,6 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController = StatusBarController()
         statusBarController.onQuit = {
             NSApp.terminate(nil)
+        }
+        statusBarController.onSettings = { [weak self] in
+            self?.settingsWindow.show()
         }
 
         hotkeyManager = HotkeyManager()
