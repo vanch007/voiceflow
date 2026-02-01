@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsManager: SettingsManager!
     private var recordingHistory: RecordingHistory!
     private var historyWindowController: HistoryWindowController!
+    private var settingsWindowController: SettingsWindowController!
+    private var replacementEngine: TextReplacementEngine!
     private var isRecording = false
     private var asrServerProcess: Process?
     private var recordingStartTime: Date?
@@ -57,6 +59,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindow = SettingsWindow(settingsManager: settingsManager)
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
+
+        // Initialize replacement engine and settings
+        let storage = ReplacementStorage()
+        settingsWindowController = SettingsWindowController(storage: storage)
+        replacementEngine = TextReplacementEngine(storage: storage)
+
         asrClient = ASRClient()
         recordingHistory = RecordingHistory()
         historyWindowController = HistoryWindowController(recordingHistory: recordingHistory)
@@ -75,7 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self.overlayPanel.showDone()
                 if !text.isEmpty {
-                    self.textInjector.inject(text: text)
+                    // Apply text replacements before injecting
+                    let processedText = self.replacementEngine.applyReplacements(to: text)
+                    self.textInjector.inject(text: processedText)
                 }
 
                 // Add to recording history
@@ -123,6 +133,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         statusBarController.onShowHistory = { [weak self] in
             self?.historyWindowController.showWindow()
+        }
+        statusBarController.onTextReplacement = { [weak self] in
+            self?.settingsWindowController.showWindow(nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
 
         hotkeyManager = HotkeyManager()

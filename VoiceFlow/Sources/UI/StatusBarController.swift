@@ -5,6 +5,7 @@ final class StatusBarController {
     var onModelChange: ((String) -> Void)?
     var onSettings: (() -> Void)?
     var onShowHistory: (() -> Void)?
+    var onTextReplacement: (() -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
@@ -90,6 +91,10 @@ final class StatusBarController {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        let textReplacementItem = NSMenuItem(title: "텍스트 교체...", action: #selector(textReplacementAction), keyEquivalent: "")
+        textReplacementItem.target = self
+        menu.addItem(textReplacementItem)
+
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(title: "退出", action: #selector(quitAction), keyEquivalent: "q")
@@ -116,6 +121,10 @@ final class StatusBarController {
 
     @objc private func settingsAction() {
         onSettings?()
+    }
+
+    @objc private func textReplacementAction() {
+        onTextReplacement?()
     }
 
     @objc private func showHistoryAction() {
