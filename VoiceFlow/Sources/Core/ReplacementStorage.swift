@@ -1,9 +1,10 @@
 import Foundation
+import Combine
 
 /// Manages persistence of replacement rules to disk using JSON storage
-final class ReplacementStorage {
+final class ReplacementStorage: ObservableObject {
     private let fileURL: URL
-    private var rules: [ReplacementRule] = []
+    @Published private(set) var rules: [ReplacementRule] = []
 
     init() {
         // Get Application Support directory

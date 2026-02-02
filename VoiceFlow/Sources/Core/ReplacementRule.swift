@@ -1,7 +1,7 @@
 import Foundation
 
 /// Represents a text replacement rule with trigger and replacement text
-struct ReplacementRule: Codable, Identifiable {
+struct ReplacementRule: Codable, Identifiable, Hashable {
     /// Unique identifier for the rule
     let id: UUID
 
@@ -20,5 +20,14 @@ struct ReplacementRule: Codable, Identifiable {
         self.trigger = trigger
         self.replacement = replacement
         self.isEnabled = isEnabled
+    }
+
+    // Hashable conformance (automatic synthesis)
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: ReplacementRule, rhs: ReplacementRule) -> Bool {
+        return lhs.id == rhs.id
     }
 }
