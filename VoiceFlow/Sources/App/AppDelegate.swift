@@ -117,6 +117,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Hide dock icon
         NSApp.setActivationPolicy(.accessory)
 
+        // Setup signal handlers to terminate Python subprocess on Ctrl+C
+        setupSignalHandlers()
+
         // Launch ASR server
         startASRServer()
 
@@ -294,6 +297,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         process.waitUntilExit()
         NSLog("[ASRServer] Stopped")
         asrServerProcess = nil
+    }
+
+    private func setupSignalHandlers() {
+        // Handle SIGINT (Ctrl+C) and SIGTERM to properly terminate Python subprocess
+        let signalCallback: @convention(c) (Int32) -> Void = { signal in
+            // Terminate Python process
+            if let process = (NSApp.delegate as? AppDelegate)?.asrServerProcess, process.isRunning {
+                process.terminate()
+            }
+            // Exit the app
+            exit(0)
+        }
+
+        signal(SIGINT, signalCallback)
+        signal(SIGTERM, signalCallback)
     }
 
     // MARK: - Sounds

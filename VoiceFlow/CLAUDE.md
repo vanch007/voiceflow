@@ -4,56 +4,70 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VoiceFlow is a macOS menu bar app for voice-to-text transcription. It captures audio via AVCaptureSession, sends it to a local WebSocket ASR server (ws://localhost:9876), and injects transcription results into the active application.
+VoiceFlow is a macOS menu bar app for voice-to-text transcription. It captures audio via AVCaptureSession, sends it to a local WebSocket ASR server (Qwen3-ASR on MLX), and injects transcription results into the active application.
 
 **Key Features:**
-- Double-tap Control key to start/stop recording
+- Option key long-press or Control double-tap to start/stop recording
 - Real-time audio capture with 16kHz resampling
+- MLX-accelerated Qwen3-ASR for Apple Silicon
 - WebSocket connection to local ASR server with auto-reconnect
-- Automatic output volume restoration after recording
+- Text polish feature with AI enhancement
 - Status bar UI with connection/recording indicators
 
 ## Build & Run
 
 ```bash
-# Build using Swift Package Manager
-swift build
+# Quick start (build + run with logs)
+./run.sh
 
-# Run in Xcode (recommended for development)
-open VoiceFlow.xcodeproj
+# Build only using xcodebuild
+cd VoiceFlow && xcodebuild -scheme VoiceFlow -configuration Debug build
 
-# Build for release
-swift build -c release
+# Open in Xcode for development
+open VoiceFlow/VoiceFlow.xcodeproj
+
+# Python environment setup (first time)
+scripts/setup.sh
 ```
 
 **Requirements:**
-- macOS 14.0+
-- Swift 5.9+
+- macOS 14.0+ (Sonoma)
+- Xcode 16+ with Command Line Tools
+- Python 3.11+
 - Accessibility permissions (for global hotkey monitoring)
 - Microphone permissions (for audio recording)
 
 ## Architecture
 
-### Core Components
+### Swift App (`VoiceFlow/Sources/`)
 
-**App Layer** (`Sources/App/`)
+**App Layer** (`App/`)
 - `VoiceFlowApp.swift`: SwiftUI app entry point
-- `AppDelegate.swift`: Coordinates all managers, handles app lifecycle
+- `AppDelegate.swift`: Coordinates all managers, spawns Python ASR server
 
-**Core Services** (`Sources/Core/`)
-- `HotkeyManager.swift`: Global Control key double-tap detection via CGEvent tap
+**Core Services** (`Core/`)
+- `HotkeyManager.swift`: Global hotkey detection (Option long-press, Control double-tap) via CGEvent tap
 - `AudioRecorder.swift`: AVCaptureSession-based audio capture with format conversion
 - `ASRClient.swift`: WebSocket client for ASR server communication
 - `TextInjector.swift`: CGEvent-based text injection into active apps
+- `SettingsManager.swift`: User preferences management
+- `ReplacementRule.swift` / `ReplacementStorage.swift`: Text replacement rules
 
-**UI Layer** (`Sources/UI/`)
+**UI Layer** (`UI/`)
 - `StatusBarController.swift`: Menu bar item and status management
-- `OverlayPanel.swift`: Visual recording indicator window
+- `OverlayPanel.swift`: Visual recording indicator (bottom of screen)
+- `SettingsWindow.swift`: Settings UI
+
+### Python ASR Server (`server/`)
+
+- `main.py`: WebSocket server (ws://localhost:9876), handles audio streaming and transcription
+- `mlx_asr.py`: MLX-based Qwen3-ASR wrapper for Apple Silicon GPU acceleration
+- `text_polisher.py`: AI text enhancement using LLM
 
 ### Data Flow
 
 ```
-User double-taps Control
+User long-presses Option key
   ↓
 HotkeyManager triggers recording
   ↓
@@ -61,7 +75,9 @@ AudioRecorder captures mic input → resamples to 16kHz Float32
   ↓
 ASRClient sends audio chunks via WebSocket
   ↓
-Server responds with transcription
+Python server transcribes with Qwen3-ASR (MLX)
+  ↓
+Optional: Text polish with LLM
   ↓
 TextInjector pastes text into active app
 ```
@@ -69,38 +85,43 @@ TextInjector pastes text into active app
 ### WebSocket Protocol
 
 **Client → Server:**
-- `{"type": "start"}` - Start transcription session
-- `{"type": "stop"}` - End transcription session
+- `{"type": "start", "model": "...", "language": "...", "polish": true/false}` - Start session
+- `{"type": "stop"}` - End session
 - Binary audio data (Float32, 16kHz, mono)
 
 **Server → Client:**
 - `{"type": "final", "text": "..."}` - Final transcription result
-- `{"type": "partial", "text": "..."}` - Partial result (not yet implemented)
+- `{"type": "partial", "text": "..."}` - Partial result during recording
 
-## Common Development Tasks
+## Debugging
 
-### Testing Audio Capture
-Check console logs for device detection and format info:
+### Audio Capture
 ```
 [AudioRecorder] Audio device: MacBook Pro Microphone
-[AudioRecorder] Capture session started (standby).
+[AudioRecorder] Recording started.
 ```
 
-### Debugging WebSocket Connection
-The ASRClient auto-reconnects every 3 seconds on disconnect. Check logs:
+### WebSocket Connection
+Auto-reconnects every 3 seconds on disconnect:
 ```
 [ASRClient] Connected to ws://localhost:9876
 [ASRClient] Attempting reconnect...
 ```
 
-### Hotkey Not Working
-Verify Accessibility permissions in System Settings → Privacy & Security → Accessibility. Check logs:
+### Hotkey Issues
+Verify Accessibility permissions in System Settings → Privacy & Security → Accessibility:
 ```
 [HotkeyManager] FAILED to create event tap! Check permissions.
 ```
 
-### Audio Format Issues
-AudioRecorder handles Float32, Int16, and Int32 formats with mono/stereo conversion. Ensure input device uses standard formats.
+**Important:** Toggle accessibility permission off→on after each rebuild (code signature changes).
+
+### ASR Server
+Check Python server logs for transcription errors:
+```
+[ASRServer] stderr: 2026-02-02 [INFO] 🎤 开始录音
+[ASRServer] stderr: 2026-02-02 [INFO] ✅ 转录完成
+```
 
 ## Code Guidelines
 
@@ -109,6 +130,7 @@ AudioRecorder handles Float32, Int16, and Int32 formats with mono/stereo convers
 - All audio processing happens on `sessionQueue` background thread
 - UI updates must dispatch to `DispatchQueue.main`
 - WebSocket reconnection is automatic - don't manually retry in UI code
+- When `language` is set to "auto", pass `None` to MLX model (don't pass the parameter)
 
 ## Permissions Required
 
@@ -117,9 +139,8 @@ AudioRecorder handles Float32, Int16, and Int32 formats with mono/stereo convers
 
 Both are requested automatically on first launch.
 
-## Known Limitations
+## Environment Variables
 
-- Hotkey is hardcoded to Control key double-tap (keyCode 59/62)
-- ASR server URL is hardcoded to `ws://localhost:9876`
-- Audio resampling uses simple linear interpolation (not production-quality)
-- Partial transcription results are received but not yet utilized
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `VOICEFLOW_PYTHON` | Python interpreter path | `<project_root>/.venv/bin/python3` |

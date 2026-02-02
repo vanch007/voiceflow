@@ -199,26 +199,12 @@ private struct EnhancedOverlayContentView: View {
                     .monospacedDigit()
             }
 
-            // 第二行：转录文字预览（替代音量条）
-            HStack {
-                Text(text.isEmpty || text == "录音中..." ? "等待语音输入..." : text)
-                    .foregroundColor(text.isEmpty || text == "录音中..." ? .white.opacity(0.5) : .white)
-                    .font(.system(size: 12))
-                    .lineLimit(2)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                // 低音量警告保留在右侧
-                if showLowVolumeWarning {
-                    HStack(spacing: 4) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.yellow)
-                            .font(.system(size: 10))
-                        Text("音量过低")
-                            .foregroundColor(.yellow)
-                            .font(.system(size: 10, weight: .medium))
-                    }
-                }
-            }
+            // 第二行：转录文字预览
+            Text(text.isEmpty || text == "录音中..." ? "等待语音输入..." : text)
+                .foregroundColor(text.isEmpty || text == "录音中..." ? .white.opacity(0.5) : .white)
+                .font(.system(size: 12))
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

@@ -24,6 +24,10 @@ current_model_id: str = None
 polisher: TextPolisher = None
 config = {}
 
+# 模型访问锁，防止并发转录导致 MLX 崩溃
+import threading
+model_lock = threading.Lock()
+
 
 # 语言代码到 mlx-audio 语言名称的映射
 LANGUAGE_MAP = {
@@ -118,6 +122,114 @@ def get_model(model_id: str = None) -> MLXQwen3ASR:
     return models[model_id]
 
 
+# ============== VAD 流式转录相关函数 ==============
+
+def calculate_rms(samples: np.ndarray) -> float:
+    """计算音频片段的 RMS 能量"""
+    if len(samples) == 0:
+        return 0.0
+    return float(np.sqrt(np.mean(samples ** 2)))
+
+
+def is_silence(samples: np.ndarray, threshold: float = 0.01) -> bool:
+    """判断音频片段是否为静音"""
+    return calculate_rms(samples) < threshold
+
+
+def extract_text(result) -> str:
+    """从模型结果中提取文本"""
+    if isinstance(result, str):
+        return result
+    elif isinstance(result, list) and len(result) > 0:
+        return result[0].text if hasattr(result[0], 'text') else str(result[0])
+    elif hasattr(result, 'text'):
+        return result.text
+    else:
+        return str(result)
+
+
+async def vad_streaming_transcribe(
+    websocket,
+    audio_chunks: list,
+    model,
+    language,
+    silence_threshold: float = 0.01,
+    silence_duration_ms: int = 500,
+    check_interval_ms: int = 100
+):
+    """
+    基于 VAD 的流式转录：检测到停顿时触发转录
+
+    Args:
+        websocket: WebSocket 连接
+        audio_chunks: 音频数据块列表
+        model: ASR 模型实例
+        language: 语言设置
+        silence_threshold: 静音阈值 (RMS)，降低更敏感
+        silence_duration_ms: 需要持续静音多久才触发 (毫秒)
+        check_interval_ms: 检查间隔 (毫秒)
+    """
+    silence_frames = 0
+    frames_needed = silence_duration_ms // check_interval_ms
+    last_transcribed_length = 0
+    last_text = ""
+
+    logger.info(f"🎙️ VAD 流式转录已启动 (threshold={silence_threshold}, duration={silence_duration_ms}ms)")
+
+    try:
+        while True:
+            await asyncio.sleep(check_interval_ms / 1000)
+
+            if not audio_chunks:
+                continue
+
+            # 获取当前所有音频
+            raw = b"".join(audio_chunks)
+            samples = np.frombuffer(raw, dtype=np.float32)
+
+            if len(samples) < 1600:  # 至少 100ms (16000Hz * 0.1s)
+                continue
+
+            # 检查最近 100ms 的音频能量
+            recent_samples = samples[-1600:]
+
+            if is_silence(recent_samples, silence_threshold):
+                silence_frames += 1
+            else:
+                silence_frames = 0
+
+            # 检测到停顿，且有新音频需要转录
+            if silence_frames >= frames_needed and len(samples) > last_transcribed_length:
+                try:
+                    # 使用锁保护模型访问
+                    def transcribe_with_lock():
+                        with model_lock:
+                            return model.transcribe((samples, 16000), language)
+
+                    result = await asyncio.to_thread(transcribe_with_lock)
+                    text = extract_text(result)
+
+                    # 只在文本变化时发送
+                    if text and text != last_text:
+                        last_text = text
+                        last_transcribed_length = len(samples)
+                        await websocket.send(json.dumps({
+                            "type": "partial",
+                            "text": text
+                        }))
+                        logger.info(f"📝 Partial (pause detected): {text}")
+
+                except Exception as e:
+                    logger.warning(f"⚠️ VAD 转录失败: {e}")
+
+                # 重置静音计数，等待下一次停顿
+                silence_frames = 0
+
+    except asyncio.CancelledError:
+        logger.info("🛑 VAD 流式转录任务已取消")
+        raise
+
+
 def warmup_model():
     """Warm up the model with a short silent audio segment."""
     global polisher
@@ -148,6 +260,7 @@ async def handle_client(websocket):
     enable_polish = False
     session_model_id = None
     session_language = None
+    transcription_task: asyncio.Task = None
 
     try:
         async for message in websocket:
@@ -170,9 +283,28 @@ async def handle_client(websocket):
                     audio_chunks.clear()
                     recording = True
 
+                    # 启动 VAD 流式转录任务
+                    transcription_task = asyncio.create_task(
+                        vad_streaming_transcribe(
+                            websocket,
+                            audio_chunks,
+                            get_model(session_model_id),
+                            session_language
+                        )
+                    )
+
                 elif msg_type == "stop":
                     logger.info("⏹️ 停止录音，正在处理音频...")
                     recording = False
+
+                    # 取消 VAD 转录任务
+                    if transcription_task:
+                        transcription_task.cancel()
+                        try:
+                            await transcription_task
+                        except asyncio.CancelledError:
+                            pass
+                        transcription_task = None
 
                     if not audio_chunks:
                         await websocket.send(json.dumps({"type": "final", "text": ""}))
@@ -188,7 +320,9 @@ async def handle_client(websocket):
                     language = session_language  # None 表示自动检测
 
                     t0 = time.perf_counter()
-                    result = model.transcribe(audio=(samples, 16000), language=language)
+                    # 使用锁保护模型访问，防止并发崩溃
+                    with model_lock:
+                        result = model.transcribe(audio=(samples, 16000), language=language)
                     elapsed = time.perf_counter() - t0
 
                     # 提取文本
