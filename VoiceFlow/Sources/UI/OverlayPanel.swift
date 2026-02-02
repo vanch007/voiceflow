@@ -64,13 +64,13 @@ final class OverlayPanel {
     }
 
     private func createPanel() {
-        let panelWidth: CGFloat = 280
-        let panelHeight: CGFloat = 100
+        let panelWidth: CGFloat = 320
+        let panelHeight: CGFloat = 80
 
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - panelWidth / 2
-        let y = screenFrame.maxY - panelHeight - 20
+        let y = screenFrame.minY + 20
 
         let frame = NSRect(x: x, y: y, width: panelWidth, height: panelHeight)
 
@@ -184,12 +184,12 @@ private struct EnhancedOverlayContentView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            // Status and duration row
+            // 第一行：录音状态 + 时长
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .foregroundColor(iconColor)
                     .font(.system(size: 14))
-                Text(text)
+                Text("录音中...")
                     .foregroundColor(.white)
                     .font(.system(size: 14, weight: .medium))
                 Spacer()
@@ -199,31 +199,21 @@ private struct EnhancedOverlayContentView: View {
                     .monospacedDigit()
             }
 
-            // Volume indicator
-            HStack(spacing: 8) {
-                Image(systemName: volumeIcon)
-                    .foregroundColor(.white)
+            // 第二行：转录文字预览（替代音量条）
+            HStack {
+                Text(text.isEmpty || text == "录音中..." ? "等待语音输入..." : text)
+                    .foregroundColor(text.isEmpty || text == "录音中..." ? .white.opacity(0.5) : .white)
                     .font(.system(size: 12))
-                    .frame(width: 16)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Volume bars
-                HStack(spacing: 2) {
-                    ForEach(0..<10, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 1)
-                            .fill(barColor(for: index))
-                            .frame(width: 3, height: barHeight(for: index))
-                    }
-                }
-
-                Spacer()
-
-                // Low volume warning
+                // 低音量警告保留在右侧
                 if showLowVolumeWarning {
                     HStack(spacing: 4) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.yellow)
                             .font(.system(size: 10))
-                        Text("음량 낮음")
+                        Text("音量过低")
                             .foregroundColor(.yellow)
                             .font(.system(size: 10, weight: .medium))
                     }
@@ -237,46 +227,6 @@ private struct EnhancedOverlayContentView: View {
                 .fill(Color.black.opacity(0.85))
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var volumeIcon: String {
-        if volume == 0 {
-            return "speaker.slash.fill"
-        } else if volume < 0.33 {
-            return "speaker.fill"
-        } else if volume < 0.66 {
-            return "speaker.wave.1.fill"
-        } else {
-            return "speaker.wave.3.fill"
-        }
-    }
-
-    private func barHeight(for index: Int) -> CGFloat {
-        let baseHeight: CGFloat = 6
-        let maxHeight: CGFloat = 14
-        let middleIndex = 5
-
-        let distance = abs(Double(index - middleIndex))
-        let heightMultiplier = 1.0 - (distance / 5.0) * 0.3
-
-        return baseHeight + (maxHeight - baseHeight) * heightMultiplier
-    }
-
-    private func barColor(for index: Int) -> Color {
-        let threshold = volume * 10.0
-        if Double(index) < threshold {
-            // Active bars
-            if volume > 0.7 {
-                return .green
-            } else if volume > 0.3 {
-                return .yellow
-            } else {
-                return .orange
-            }
-        } else {
-            // Inactive bars
-            return Color.white.opacity(0.2)
-        }
     }
 }
 
