@@ -3,6 +3,10 @@ import AudioToolbox
 import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Cache paths on first access to avoid recalculation issues during runtime
+    private static var _cachedPythonPath: String?
+    private static var _cachedServerScriptPath: String?
+
     /// Resolve paths relative to the app bundle's parent directory (project root).
     /// e.g. /path/to/voiceflow/VoiceFlow.app → /path/to/voiceflow
     private static var projectRoot: String {
@@ -11,18 +15,82 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private static var pythonPath: String {
+        // Return cached path if available
+        if let cached = _cachedPythonPath {
+            return cached
+        }
+
+        // Priority 1: Environment variable (set by run.sh or Xcode scheme)
         if let envPath = ProcessInfo.processInfo.environment["VOICEFLOW_PYTHON"] {
+            _cachedPythonPath = envPath
             return envPath
         }
-        return (projectRoot as NSString).appendingPathComponent(".venv/bin/python3")
+
+        // Priority 2: Search upwards from bundle path for .venv directory
+        var searchPath = projectRoot
+        for _ in 0..<6 {  // Search up to 6 levels (increased from 3)
+            let venvPath = (searchPath as NSString).appendingPathComponent(".venv/bin/python3")
+            if FileManager.default.fileExists(atPath: venvPath) {
+                _cachedPythonPath = venvPath
+                return venvPath
+            }
+            searchPath = (searchPath as NSString).deletingLastPathComponent
+        }
+
+        // Priority 3: Fallback to projectRoot calculation
+        let fallbackPath = (projectRoot as NSString).appendingPathComponent(".venv/bin/python3")
+        _cachedPythonPath = fallbackPath
+        return fallbackPath
     }
 
     private static var serverScriptPath: String {
-        return (projectRoot as NSString).appendingPathComponent("server/main.py")
+        // Return cached path if available
+        if let cached = _cachedServerScriptPath {
+            return cached
+        }
+
+        // Priority 1: Environment variable VOICEFLOW_PROJECT_ROOT
+        if let envRoot = ProcessInfo.processInfo.environment["VOICEFLOW_PROJECT_ROOT"] {
+            let scriptPath = (envRoot as NSString).appendingPathComponent("server/main.py")
+            if FileManager.default.fileExists(atPath: scriptPath) {
+                _cachedServerScriptPath = scriptPath
+                return scriptPath
+            }
+        }
+
+        // Priority 2: Check common locations relative to home directory
+        let homeDir = NSHomeDirectory()
+        let commonPaths = [
+            "\(homeDir)/voiceflow/server/main.py",
+            "\(homeDir)/VoiceFlow/server/main.py",
+            "\(homeDir)/Projects/voiceflow/server/main.py"
+        ]
+        for path in commonPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                _cachedServerScriptPath = path
+                return path
+            }
+        }
+
+        // Priority 3: Search upwards from bundle path for server/main.py
+        var searchPath = projectRoot
+        for _ in 0..<6 {
+            let scriptPath = (searchPath as NSString).appendingPathComponent("server/main.py")
+            if FileManager.default.fileExists(atPath: scriptPath) {
+                _cachedServerScriptPath = scriptPath
+                return scriptPath
+            }
+            searchPath = (searchPath as NSString).deletingLastPathComponent
+        }
+
+        // Fallback to projectRoot calculation
+        let fallbackPath = (projectRoot as NSString).appendingPathComponent("server/main.py")
+        _cachedServerScriptPath = fallbackPath
+        return fallbackPath
     }
 
     private var statusBarController: StatusBarController!
-    private var settingsWindow: SettingsWindow!
+    private var settingsWindowController: SettingsWindowController!
     private var hotkeyManager: HotkeyManager!
     private var audioRecorder: AudioRecorder!
     private var asrClient: ASRClient!
@@ -31,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsManager: SettingsManager!
     private var recordingHistory: RecordingHistory!
     private var historyWindowController: HistoryWindowController!
-    private var settingsWindowController: SettingsWindowController!
+    private var replacementStorage: ReplacementStorage!
     private var replacementEngine: TextReplacementEngine!
     private var isRecording = false
     private var asrServerProcess: Process?
@@ -55,15 +123,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load sounds via AudioServices (bypasses AVCaptureSession output blocking)
         loadSounds()
 
+        // Initialize settings manager and text replacement engine
         settingsManager = SettingsManager.shared
-        settingsWindow = SettingsWindow(settingsManager: settingsManager)
+        replacementStorage = ReplacementStorage()
+        replacementEngine = TextReplacementEngine(storage: replacementStorage)
+        settingsWindowController = SettingsWindowController(
+            settingsManager: settingsManager,
+            replacementStorage: replacementStorage
+        )
+
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
-
-        // Initialize replacement engine and settings
-        let storage = ReplacementStorage()
-        settingsWindowController = SettingsWindowController(storage: storage)
-        replacementEngine = TextReplacementEngine(storage: storage)
 
         asrClient = ASRClient()
         recordingHistory = RecordingHistory()
@@ -81,17 +151,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         asrClient.onTranscriptionResult = { [weak self] text in
             guard let self else { return }
             DispatchQueue.main.async {
+                // Apply text replacement rules
+                let processedText = self.replacementEngine.applyReplacements(to: text)
+
                 self.overlayPanel.showDone()
-                if !text.isEmpty {
-                    // Apply text replacements before injecting
-                    let processedText = self.replacementEngine.applyReplacements(to: text)
+                if !processedText.isEmpty {
                     self.textInjector.inject(text: processedText)
                 }
 
-                // Add to recording history
+                // Add to recording history with processed text
                 if let startTime = self.recordingStartTime {
                     let duration = Date().timeIntervalSince(startTime)
-                    self.recordingHistory.addEntry(text: text, duration: duration)
+                    self.recordingHistory.addEntry(text: processedText, duration: duration)
                     self.recordingStartTime = nil
                 }
 
@@ -125,18 +196,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController.onQuit = {
             NSApp.terminate(nil)
         }
-        statusBarController.onModelChange = { [weak self] modelSize in
-            self?.changeModel(modelSize)
-        }
         statusBarController.onSettings = { [weak self] in
-            self?.settingsWindow.show()
+            self?.settingsWindowController.show()
         }
         statusBarController.onShowHistory = { [weak self] in
             self?.historyWindowController.showWindow()
         }
         statusBarController.onTextReplacement = { [weak self] in
-            self?.settingsWindowController.showWindow(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            self?.settingsWindowController.show()
         }
 
         hotkeyManager = HotkeyManager()
@@ -176,16 +243,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startASRServer() {
         // TODO: Pass selected model size (settingsManager.modelSize) to ASR server
         // This will be implemented in a future task when server supports model selection
+
+        // Log paths for debugging
+        NSLog("[ASRServer] Project root: %@", Self.projectRoot)
+        NSLog("[ASRServer] Python path: %@", Self.pythonPath)
+        NSLog("[ASRServer] Server script: %@", Self.serverScriptPath)
+
+        // Verify python executable exists
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: Self.pythonPath) else {
+            NSLog("[ASRServer] ERROR: Python executable not found at: %@", Self.pythonPath)
+            NSLog("[ASRServer] Please ensure virtual environment is activated or VOICEFLOW_PYTHON is set")
+            return
+        }
+
         let process = Process()
         process.executableURL = URL(fileURLWithPath: Self.pythonPath)
         process.arguments = [Self.serverScriptPath]
+
+        // Capture stderr to see error messages
+        let errorPipe = Pipe()
+        process.standardError = errorPipe
         process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+
+        // Read errors asynchronously
+        errorPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if !data.isEmpty, let output = String(data: data, encoding: .utf8) {
+                NSLog("[ASRServer] stderr: %@", output.trimmingCharacters(in: .whitespacesAndNewlines))
+            }
+        }
 
         do {
             try process.run()
             asrServerProcess = process
             NSLog("[ASRServer] Started (PID: %d)", process.processIdentifier)
+
+            // Monitor process termination
+            process.terminationHandler = { proc in
+                NSLog("[ASRServer] Process terminated with code: %d", proc.terminationStatus)
+            }
         } catch {
             NSLog("[ASRServer] Failed to start: %@", error.localizedDescription)
         }
@@ -258,38 +355,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayPanel.showProcessing()
         statusBarController.updateRecordingStatus(recording: false)
         asrClient.sendStop()
-    }
-
-    // MARK: - Model Change
-
-    private func changeModel(_ modelSize: String) {
-        NSLog("[Model] 切换模型到: Qwen3-ASR-\(modelSize)")
-
-        // 更新配置文件
-        let configPath = Self.projectRoot + "/config.json"
-        let config = ["model_size": modelSize, "language": "Chinese"]
-
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: config, options: .prettyPrinted)
-            try jsonData.write(to: URL(fileURLWithPath: configPath))
-            NSLog("[Model] 配置文件已更新")
-
-            // 重启 ASR 服务器
-            NSLog("[Model] 重启 ASR 服务器...")
-            stopASRServer()
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                self?.startASRServer()
-
-                // 等待服务器启动后重新连接
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-                    self?.asrClient.connect()
-                    NSLog("[Model] 模型切换完成")
-                }
-            }
-
-        } catch {
-            NSLog("[Model] 配置文件更新失败: \(error)")
-        }
     }
 }

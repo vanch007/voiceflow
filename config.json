@@ -1,4 +1,4 @@
 {
-  "model_size": "1.7B",
+  "model_id": "mlx-community/Qwen3-ASR-0.6B-8bit",
   "language": "Chinese"
 }

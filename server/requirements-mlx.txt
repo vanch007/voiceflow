@@ -1,0 +1,6 @@
+# MLX ASR dependencies for Apple Silicon
+mlx>=0.24.0
+mlx-audio>=0.1.0
+numpy
+websockets
+openai  # for text polisher

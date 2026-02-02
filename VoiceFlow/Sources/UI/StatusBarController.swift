@@ -2,7 +2,6 @@ import AppKit
 
 final class StatusBarController {
     var onQuit: (() -> Void)?
-    var onModelChange: ((String) -> Void)?
     var onSettings: (() -> Void)?
     var onShowHistory: (() -> Void)?
     var onTextReplacement: (() -> Void)?
@@ -10,7 +9,6 @@ final class StatusBarController {
     private let statusItem: NSStatusItem
     private var isConnected = false
     private var isRecording = false
-    private var currentModel = "1.7B"  // 默认模型
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -62,22 +60,10 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        // 模型选择子菜单
-        let modelMenu = NSMenu()
-
-        let model17Item = NSMenuItem(title: "Qwen3-ASR-1.7B (推荐)", action: #selector(selectModel17B), keyEquivalent: "")
-        model17Item.target = self
-        model17Item.state = currentModel == "1.7B" ? .on : .off
-        modelMenu.addItem(model17Item)
-
-        let model06Item = NSMenuItem(title: "Qwen3-ASR-0.6B (快速)", action: #selector(selectModel06B), keyEquivalent: "")
-        model06Item.target = self
-        model06Item.state = currentModel == "0.6B" ? .on : .off
-        modelMenu.addItem(model06Item)
-
-        let modelMenuItem = NSMenuItem(title: "选择模型", action: nil, keyEquivalent: "")
-        modelMenuItem.submenu = modelMenu
-        menu.addItem(modelMenuItem)
+        // 模型信息（MLX版本只支持一个模型）
+        let modelInfoItem = NSMenuItem(title: "模型: Qwen3-ASR-0.6B (MLX)", action: nil, keyEquivalent: "")
+        modelInfoItem.isEnabled = false
+        menu.addItem(modelInfoItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -102,21 +88,6 @@ final class StatusBarController {
         menu.addItem(quitItem)
 
         self.statusItem.menu = menu
-    }
-
-    @objc private func selectModel17B() {
-        changeModel("1.7B")
-    }
-
-    @objc private func selectModel06B() {
-        changeModel("0.6B")
-    }
-
-    private func changeModel(_ modelSize: String) {
-        guard modelSize != currentModel else { return }
-        currentModel = modelSize
-        buildMenu()  // 重新构建菜单以更新选中状态
-        onModelChange?(modelSize)
     }
 
     @objc private func settingsAction() {

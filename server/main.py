@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VoiceFlow ASR WebSocket Server using Qwen3-ASR with MPS acceleration."""
+"""VoiceFlow ASR WebSocket Server using MLX Qwen3-ASR with Apple Silicon acceleration."""
 
 import asyncio
 import json
@@ -9,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import websockets
-from qwen_asr import Qwen3ASRModel
+from mlx_asr import MLXQwen3ASR
 from text_polisher import TextPolisher
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 HOST = "localhost"
 PORT = 9876
 
-model: Qwen3ASRModel = None
+model: MLXQwen3ASR = None
 polisher: TextPolisher = None
 config = {}
 
@@ -33,37 +33,26 @@ def load_config():
             config = json.load(f)
             logger.info(f"✅ 配置加载成功: {config}")
     except FileNotFoundError:
-        # 默认配置
-        config = {"model_size": "1.7B", "language": "Chinese"}
+        config = {"model_id": "mlx-community/Qwen3-ASR-0.6B-8bit", "language": "Chinese"}
         logger.warning(f"⚠️ 配置文件不存在，使用默认配置: {config}")
     except Exception as e:
-        config = {"model_size": "1.7B", "language": "Chinese"}
+        config = {"model_id": "mlx-community/Qwen3-ASR-0.6B-8bit", "language": "Chinese"}
         logger.error(f"❌ 配置加载失败: {e}，使用默认配置")
 
     return config
 
 
 def load_model():
-    """加载 Qwen3-ASR 模型"""
-    global model, polisher
+    """加载 MLX Qwen3-ASR 模型"""
+    global model
 
-    model_size = config.get("model_size", "1.7B")
-    model_name = f"Qwen/Qwen3-ASR-{model_size}"
-
-    logger.info(f"正在加载 {model_name} 模型...")
+    model_id = config.get("model_id", "mlx-community/Qwen3-ASR-0.6B-8bit")
+    logger.info(f"正在加载MLX模型: {model_id}")
 
     try:
-        model = Qwen3ASRModel.from_pretrained(model_name)
-
-        # 尝试使用 MPS（Apple GPU）
-        try:
-            model.model = model.model.to("mps")
-            logger.info("✅ 模型已移至 MPS (Apple GPU)")
-        except Exception as e:
-            logger.warning(f"⚠️ MPS 不可用，使用 CPU: {e}")
-
-        logger.info(f"✅ 模型加载成功: {model_name}")
-
+        model = MLXQwen3ASR(model_id=model_id)
+        logger.info(f"✅ MLX模型加载成功: {model_id}")
+        logger.info("🚀 使用Apple Silicon GPU加速")
     except Exception as e:
         logger.error(f"❌ 模型加载失败: {e}")
         raise
@@ -76,20 +65,18 @@ def warmup_model():
         raise RuntimeError("Model not loaded. Call load_model() first.")
 
     logger.info("Warming up model with silent audio...")
-    # Generate 1 second of silence at 16kHz
     silent_audio = np.zeros(16000, dtype=np.float32)
 
     try:
-        # Perform warmup inference
         language = config.get("language", "Chinese")
         _ = model.transcribe(audio=(silent_audio, 16000), language=language)
-        logger.info("Model warmup completed.")
+        logger.info("✅ Model warmup completed.")
     except Exception as e:
-        logger.warning(f"Warmup failed: {e}")
+        logger.warning(f"⚠️ Warmup failed: {e}")
 
     logger.info("Initializing text polisher...")
     polisher = TextPolisher()
-    logger.info("Text polisher initialized.")
+    logger.info("✅ Text polisher initialized.")
 
 
 async def handle_client(websocket):
@@ -124,7 +111,6 @@ async def handle_client(websocket):
                     duration = len(samples) / 16000
                     logger.info(f"📊 音频: {len(samples)} 采样点 ({duration:.1f}s)")
 
-                    # 使用配置的语言进行识别
                     language = config.get("language", "Chinese")
                     t0 = time.perf_counter()
                     result = model.transcribe(audio=(samples, 16000), language=language)
@@ -169,9 +155,10 @@ async def main():
     load_model()
     warmup_model()
 
-    model_size = config.get("model_size", "1.7B")
+    model_id = config.get("model_id", "mlx-community/Qwen3-ASR-0.6B-8bit")
     logger.info(f"🚀 WebSocket 服务器启动于 ws://{HOST}:{PORT}")
-    logger.info(f"📊 当前模型: Qwen3-ASR-{model_size}")
+    logger.info(f"📊 当前模型: {model_id}")
+    logger.info("✅ MLX原生Apple Silicon加速已启用")
 
     async with websockets.serve(handle_client, HOST, PORT):
         await asyncio.Future()
