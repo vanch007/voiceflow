@@ -40,7 +40,7 @@ class MLXQwen3ASR:
     def transcribe(
         self,
         audio: Union[Tuple[np.ndarray, int], str, np.ndarray],
-        language: str = "Chinese"
+        language: str = None
     ) -> str:
         """同步转录音频。
 
@@ -63,7 +63,11 @@ class MLXQwen3ASR:
             else:
                 audio_input = audio
 
-            result = self.model.generate(audio=audio_input, language=language)
+            # 处理 language 为 None 的情况（自动检测时不传 language 参数）
+            if language is None:
+                result = self.model.generate(audio=audio_input)
+            else:
+                result = self.model.generate(audio=audio_input, language=language)
             # 处理不同返回类型
             if isinstance(result, str):
                 return result
