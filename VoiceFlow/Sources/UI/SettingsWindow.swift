@@ -24,7 +24,7 @@ final class SettingsWindow {
 
     private func createWindow() {
         let windowWidth: CGFloat = 500
-        let windowHeight: CGFloat = 500
+        let windowHeight: CGFloat = 580
 
         let contentView = NSHostingView(
             rootView: SettingsContentView(settingsManager: settingsManager)
@@ -52,8 +52,8 @@ private struct SettingsContentView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("启用双击 Control 录音", isOn: $settingsManager.hotkeyEnabled)
-                Text("快速双击左侧或右侧 Control 键即可开始录音")
+                Toggle("启用长按 Option 录音", isOn: $settingsManager.hotkeyEnabled)
+                Text("长按左侧或右侧 Option (⌥) 键开始录音，松开停止")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } header: {
@@ -86,6 +86,21 @@ private struct SettingsContentView: View {
             }
 
             Section {
+                Picker("识别语言", selection: $settingsManager.asrLanguage) {
+                    ForEach(ASRLanguage.allCases, id: \.self) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
+                }
+                .pickerStyle(.menu)
+            } header: {
+                Text("语言设置")
+            } footer: {
+                Text("选择「自动检测」可让模型自动识别语言，或指定特定语言以提高准确率。")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section {
                 Toggle("启用 AI 文本润色", isOn: $settingsManager.textPolishEnabled)
                 Text("自动去除语气词（嗯、那个、然后等）并改善语法")
                     .font(.caption)
@@ -113,6 +128,6 @@ private struct SettingsContentView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 500, height: 500)
+        .frame(width: 500, height: 580)
     }
 }

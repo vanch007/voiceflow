@@ -18,9 +18,47 @@ logger = logging.getLogger(__name__)
 HOST = "localhost"
 PORT = 9876
 
-model: MLXQwen3ASR = None
+# 模型缓存：model_id -> MLXQwen3ASR 实例
+models: dict[str, MLXQwen3ASR] = {}
+current_model_id: str = None
 polisher: TextPolisher = None
 config = {}
+
+
+# 语言代码到 mlx-audio 语言名称的映射
+LANGUAGE_MAP = {
+    "auto": None,  # None 表示自动检测
+    "zh": "Chinese",
+    "en": "English",
+    "yue": "Cantonese",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+    "pt": "Portuguese",
+    "it": "Italian",
+    "ru": "Russian",
+    "nl": "Dutch",
+    "sv": "Swedish",
+    "da": "Danish",
+    "fi": "Finnish",
+    "pl": "Polish",
+    "cs": "Czech",
+    "el": "Greek",
+    "hu": "Hungarian",
+    "mk": "Macedonian",
+    "ro": "Romanian",
+    "ar": "Arabic",
+    "id": "Indonesian",
+    "th": "Thai",
+    "vi": "Vietnamese",
+    "tr": "Turkish",
+    "hi": "Hindi",
+    "ms": "Malay",
+    "fil": "Filipino",
+    "fa": "Persian",
+}
 
 
 def load_config():
@@ -42,25 +80,48 @@ def load_config():
     return config
 
 
-def load_model():
-    """加载 MLX Qwen3-ASR 模型"""
-    global model
+def load_model(model_id: str = None):
+    """加载 MLX Qwen3-ASR 模型（支持动态切换）"""
+    global models, current_model_id
 
-    model_id = config.get("model_id", "mlx-community/Qwen3-ASR-0.6B-8bit")
+    if model_id is None:
+        model_id = config.get("model_id", "mlx-community/Qwen3-ASR-0.6B-8bit")
+
+    # 如果已经加载过该模型，直接返回
+    if model_id in models:
+        current_model_id = model_id
+        logger.info(f"✅ 使用已缓存模型: {model_id}")
+        return models[model_id]
+
     logger.info(f"正在加载MLX模型: {model_id}")
 
     try:
         model = MLXQwen3ASR(model_id=model_id)
+        models[model_id] = model
+        current_model_id = model_id
         logger.info(f"✅ MLX模型加载成功: {model_id}")
         logger.info("🚀 使用Apple Silicon GPU加速")
+        return model
     except Exception as e:
         logger.error(f"❌ 模型加载失败: {e}")
         raise
 
 
+def get_model(model_id: str = None) -> MLXQwen3ASR:
+    """获取模型实例，如果未加载则自动加载"""
+    if model_id is None:
+        model_id = current_model_id or config.get("model_id", "mlx-community/Qwen3-ASR-0.6B-8bit")
+
+    if model_id not in models:
+        return load_model(model_id)
+
+    return models[model_id]
+
+
 def warmup_model():
     """Warm up the model with a short silent audio segment."""
-    global model, polisher
+    global polisher
+    model = get_model()
     if model is None:
         raise RuntimeError("Model not loaded. Call load_model() first.")
 
@@ -85,6 +146,8 @@ async def handle_client(websocket):
     audio_chunks: list[bytes] = []
     recording = False
     enable_polish = False
+    session_model_id = None
+    session_language = None
 
     try:
         async for message in websocket:
@@ -94,7 +157,16 @@ async def handle_client(websocket):
 
                 if msg_type == "start":
                     enable_polish = data.get("enable_polish") == "true"
-                    logger.info(f"🎤 开始录音. Polish enabled: {enable_polish}")
+                    session_model_id = data.get("model_id")
+                    lang_code = data.get("language", "auto")
+                    session_language = LANGUAGE_MAP.get(lang_code, None)
+
+                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, Model: {session_model_id}, Language: {lang_code} -> {session_language}")
+
+                    # 确保模型已加载
+                    if session_model_id:
+                        get_model(session_model_id)
+
                     audio_chunks.clear()
                     recording = True
 
@@ -111,7 +183,10 @@ async def handle_client(websocket):
                     duration = len(samples) / 16000
                     logger.info(f"📊 音频: {len(samples)} 采样点 ({duration:.1f}s)")
 
-                    language = config.get("language", "Chinese")
+                    # 使用会话指定的模型和语言
+                    model = get_model(session_model_id)
+                    language = session_language  # None 表示自动检测
+
                     t0 = time.perf_counter()
                     result = model.transcribe(audio=(samples, 16000), language=language)
                     elapsed = time.perf_counter() - t0

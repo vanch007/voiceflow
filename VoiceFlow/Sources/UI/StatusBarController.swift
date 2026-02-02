@@ -77,7 +77,7 @@ final class StatusBarController {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        let textReplacementItem = NSMenuItem(title: "텍스트 교체...", action: #selector(textReplacementAction), keyEquivalent: "")
+        let textReplacementItem = NSMenuItem(title: "文本替换...", action: #selector(textReplacementAction), keyEquivalent: "")
         textReplacementItem.target = self
         menu.addItem(textReplacementItem)
 

@@ -1,8 +1,4 @@
 import AppKit
-import Carbon
-import os
-
-private let logger = Logger(subsystem: "com.voiceflow.app", category: "HotkeyManager")
 
 final class HotkeyManager {
     var onLongPress: (() -> Void)?
@@ -11,7 +7,7 @@ final class HotkeyManager {
     private var optionKeyIsDown = false
     private var optionKeyPressTime: TimeInterval = 0
     private var longPressTimer: Timer?
-    private var eventTap: CFMachPort?
+    private var monitor: Any?
     private let longPressThreshold: TimeInterval = 0.3  // 长按阈值 300ms
     private var isEnabled = true
 
@@ -26,43 +22,29 @@ final class HotkeyManager {
     }
 
     func start() {
-        let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
-
         NSLog("[HotkeyManager] 正在创建事件监听器 (Option 键长按)...")
 
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .listenOnly,
-            eventsOfInterest: eventMask,
-            callback: { _, type, event, refcon -> Unmanaged<CGEvent>? in
-                guard let refcon else { return Unmanaged.passRetained(event) }
-                let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
-                manager.handleEvent(type: type, event: event)
-                return Unmanaged.passRetained(event)
-            },
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
-            NSLog("[HotkeyManager] 创建事件监听失败！请检查辅助功能权限。")
-            return
+        // 使用 NSEvent 全局监听 flagsChanged 事件
+        monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            self?.handleEvent(event: event)
         }
 
-        eventTap = tap
-        let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        NSLog("[HotkeyManager] 事件监听启动成功！长按 Option (⌥) 键触发录音。")
+        if monitor != nil {
+            NSLog("[HotkeyManager] 事件监听启动成功！长按 Option (⌥) 键触发录音。")
+        } else {
+            NSLog("[HotkeyManager] 创建事件监听失败！请检查辅助功能权限。")
+        }
     }
 
-    private func handleEvent(type: CGEventType, event: CGEvent) {
-        guard type == .flagsChanged else { return }
-
-        let flags = event.flags
-        let optionPressed = flags.contains(.maskAlternate)
-        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+    private func handleEvent(event: NSEvent) {
+        let flags = event.modifierFlags
+        let optionPressed = flags.contains(.option)
+        let keyCode = event.keyCode
 
         // Left Option: 58, Right Option: 61
         guard keyCode == 58 || keyCode == 61 else { return }
+
+        guard isEnabled else { return }
 
         NSLog("[HotkeyManager] Option 键状态变化: pressed=\(optionPressed), keyCode=\(keyCode)")
 
@@ -100,8 +82,8 @@ final class HotkeyManager {
 
     deinit {
         longPressTimer?.invalidate()
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
+        if let monitor = monitor {
+            NSEvent.removeMonitor(monitor)
         }
     }
 }

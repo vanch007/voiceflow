@@ -12,6 +12,13 @@ final class ASRClient {
     private var reconnectTimer: Timer?
     private let reconnectInterval: TimeInterval = 3.0
 
+    // 引用 SettingsManager 获取配置
+    private let settingsManager: SettingsManager
+
+    init(settingsManager: SettingsManager = .shared) {
+        self.settingsManager = settingsManager
+    }
+
     func connect() {
         disconnect()
         let session = URLSession(configuration: .default)
@@ -34,8 +41,15 @@ final class ASRClient {
     }
 
     func sendStart() {
-        let enablePolish = UserDefaults.standard.isTextPolishEnabled
-        sendJSON(["type": "start", "enable_polish": enablePolish ? "true" : "false"])
+        let enablePolish = settingsManager.textPolishEnabled
+        let modelId = settingsManager.modelSize.modelId
+        let language = settingsManager.asrLanguage.rawValue
+        sendJSON([
+            "type": "start",
+            "enable_polish": enablePolish ? "true" : "false",
+            "model_id": modelId,
+            "language": language
+        ])
     }
 
     func sendStop() {
