@@ -15,6 +15,9 @@ echo "🔨 Building VoiceFlow..."
 xcodebuild -project "$PROJECT_DIR/VoiceFlow/VoiceFlow.xcodeproj" \
   -scheme VoiceFlow \
   -configuration Debug \
+  CODE_SIGN_IDENTITY="-" \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
   build \
   -quiet
 
@@ -22,6 +25,9 @@ xcodebuild -project "$PROJECT_DIR/VoiceFlow/VoiceFlow.xcodeproj" \
 DERIVED_DATA=$(xcodebuild -project "$PROJECT_DIR/VoiceFlow/VoiceFlow.xcodeproj" \
   -scheme VoiceFlow \
   -configuration Debug \
+  CODE_SIGN_IDENTITY="-" \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
   -showBuildSettings 2>/dev/null \
   | grep -m1 "BUILT_PRODUCTS_DIR" \
   | awk '{print $3}')
