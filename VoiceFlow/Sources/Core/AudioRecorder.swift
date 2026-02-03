@@ -181,6 +181,20 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         return devices
     }
 
+    private func getDeviceName(deviceID: AudioDeviceID) -> String? {
+        var nameAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceNameCFString,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>>.size)
+        var nameRef: Unmanaged<CFString>?
+        let status = AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &nameRef)
+        guard status == noErr, let nameRef else { return nil }
+
+        return nameRef.takeUnretainedValue() as String
+    }
+
     // MARK: - Output Volume (CoreAudio)
 
     private func getDefaultInputDeviceID() -> AudioDeviceID? {
