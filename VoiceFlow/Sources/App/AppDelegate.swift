@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var settingsWindow: SettingsWindow!
     private var isRecording = false
     private var asrServerProcess: Process?
 
@@ -44,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         loadSounds()
 
         overlayPanel = OverlayPanel()
+        settingsWindow = SettingsWindow()
         textInjector = TextInjector()
         asrClient = ASRClient()
         audioRecorder = AudioRecorder()
@@ -73,6 +75,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController = StatusBarController()
         statusBarController.onQuit = {
             NSApp.terminate(nil)
+        }
+        statusBarController.onSettings = { [weak self] in
+            self?.settingsWindow.show()
         }
         statusBarController.onDeviceSelected = { [weak self] deviceID in
             self?.audioRecorder.selectDevice(id: deviceID)
