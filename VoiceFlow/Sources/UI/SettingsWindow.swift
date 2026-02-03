@@ -150,10 +150,9 @@ private struct VoiceRecognitionSettingsTab: View {
 
             Section(header: Text("언어").font(.headline)) {
                 Picker("음성 인식 언어", selection: $settings.voiceRecognitionLanguage) {
-                    Text("한국어").tag("ko-KR")
-                    Text("English (US)").tag("en-US")
-                    Text("中文 (简体)").tag("zh-CN")
-                    Text("日本語").tag("ja-JP")
+                    Text("한국어").tag("ko")
+                    Text("English").tag("en")
+                    Text("中文").tag("zh")
                 }
                 .pickerStyle(.radioGroup)
                 .disabled(!settings.voiceRecognitionEnabled)
