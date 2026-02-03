@@ -172,5 +172,11 @@ final class HotkeyManager {
         currentConfig = config
         NSLog("[HotkeyManager] Config saved: \(config.displayString)")
     }
+
+    func resetToDefault() {
+        UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+        currentConfig = HotkeyConfig.default
+        NSLog("[HotkeyManager] Config reset to default: \(currentConfig.displayString)")
+    }
 }
 
