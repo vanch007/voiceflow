@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var statusBarController: StatusBarController!
     private var hotkeyManager: HotkeyManager!
+    private var hotkeySettingsWindow: HotkeySettingsWindow!
     private var audioRecorder: AudioRecorder!
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
@@ -86,6 +87,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.toggleRecording()
         }
         hotkeyManager.start()
+
+        hotkeySettingsWindow = HotkeySettingsWindow()
+        hotkeySettingsWindow.onSave = { [weak self] config in
+            self?.hotkeyManager.saveConfig(config)
+        }
+        hotkeySettingsWindow.onReset = { [weak self] in
+            self?.hotkeyManager.resetToDefault()
+        }
+        statusBarController.onSettings = { [weak self] in
+            self?.hotkeySettingsWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
 
         // Restore saved device selection
         if let savedDeviceID = UserDefaults.standard.string(forKey: "selectedAudioDevice") {
