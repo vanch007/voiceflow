@@ -7,11 +7,17 @@ private let logger = Logger(subsystem: "com.voiceflow.app", category: "HotkeyMan
 final class HotkeyManager {
     var onDoubleTap: (() -> Void)?
 
+    private var currentConfig: HotkeyConfig
     private var lastControlTapTime: TimeInterval = 0
     private var controlIsDown = false
     private var otherKeyWhileControl = false
     private var eventTap: CFMachPort?
-    private let doubleTapInterval: TimeInterval = 0.3
+    private let userDefaultsKey = "voiceflow.hotkeyConfig"
+
+    init() {
+        // Load config from UserDefaults or use default
+        currentConfig = HotkeyManager.loadConfig()
+    }
 
     func start() {
         let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue) |
@@ -80,7 +86,7 @@ final class HotkeyManager {
             let now = ProcessInfo.processInfo.systemUptime
             let elapsed = now - lastControlTapTime
 
-            if elapsed <= doubleTapInterval {
+            if elapsed <= currentConfig.interval {
                 lastControlTapTime = 0
                 DispatchQueue.main.async { [weak self] in
                     self?.onDoubleTap?()
@@ -96,4 +102,25 @@ final class HotkeyManager {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
     }
+
+    // MARK: - Configuration Persistence
+
+    private static func loadConfig() -> HotkeyConfig {
+        guard let savedData = UserDefaults.standard.data(forKey: "voiceflow.hotkeyConfig"),
+              let config = try? JSONDecoder().decode(HotkeyConfig.self, from: savedData) else {
+            return HotkeyConfig.default
+        }
+        return config
+    }
+
+    func saveConfig(_ config: HotkeyConfig) {
+        guard let encoded = try? JSONEncoder().encode(config) else {
+            NSLog("[HotkeyManager] Failed to encode config")
+            return
+        }
+        UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
+        currentConfig = config
+        NSLog("[HotkeyManager] Config saved: \(config.displayString)")
+    }
 }
+

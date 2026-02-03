@@ -202,13 +202,13 @@ final class HotkeySettingsWindow: NSWindow {
         // Cmd+Q (Quit)
         if modifiers.contains(.command) && !modifiers.contains(.shift) &&
            !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 12 {
-            return "此快捷键与系统"退出应用"冲突"
+            return "此快捷键与系统\"退出应用\"冲突"
         }
 
         // Cmd+Tab (Application Switcher)
         if modifiers.contains(.command) && !modifiers.contains(.shift) &&
            !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 48 {
-            return "此快捷键与系统"应用切换器"冲突"
+            return "此快捷键与系统\"应用切换器\"冲突"
         }
 
         // Cmd+Space (Spotlight)
@@ -220,25 +220,25 @@ final class HotkeySettingsWindow: NSWindow {
         // Cmd+W (Close Window)
         if modifiers.contains(.command) && !modifiers.contains(.shift) &&
            !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 13 {
-            return "此快捷键与系统"关闭窗口"冲突"
+            return "此快捷键与系统\"关闭窗口\"冲突"
         }
 
         // Cmd+M (Minimize)
         if modifiers.contains(.command) && !modifiers.contains(.shift) &&
            !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 46 {
-            return "此快捷键与系统"最小化窗口"冲突"
+            return "此快捷键与系统\"最小化窗口\"冲突"
         }
 
         // Cmd+H (Hide)
         if modifiers.contains(.command) && !modifiers.contains(.shift) &&
            !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 4 {
-            return "此快捷键与系统"隐藏应用"冲突"
+            return "此快捷键与系统\"隐藏应用\"冲突"
         }
 
         // Cmd+Option+Esc (Force Quit)
         if modifiers.contains(.command) && modifiers.contains(.option) &&
            !modifiers.contains(.shift) && !modifiers.contains(.control) && keyCode == 53 {
-            return "此快捷键与系统"强制退出"冲突"
+            return "此快捷键与系统\"强制退出\"冲突"
         }
 
         return nil
