@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// Manages application settings with UserDefaults persistence
 final class SettingsManager {
@@ -68,7 +69,7 @@ final class SettingsManager {
             UserDefaults.standard.string(forKey: Keys.activationShortcut) ?? Defaults.activationShortcut
         }
         set {
-            guard validateShortcut(newValue) else { return }
+            guard validateShortcut(newValue, currentKey: Keys.activationShortcut) else { return }
             UserDefaults.standard.set(newValue, forKey: Keys.activationShortcut)
             notifySettingsChanged(category: "shortcuts", key: "activation", value: newValue)
         }
@@ -138,16 +139,126 @@ final class SettingsManager {
 
     private func validateLanguage(_ language: String) -> Bool {
         let supportedLanguages = ["ko", "en", "zh"]
-        return supportedLanguages.contains(language)
+
+        guard supportedLanguages.contains(language) else {
+            showValidationError(
+                title: localizedString(key: "validation.error.title"),
+                message: localizedString(key: "validation.error.unsupportedLanguage", language)
+            )
+            return false
+        }
+
+        return true
     }
 
-    private func validateShortcut(_ shortcut: String) -> Bool {
-        // Basic validation - non-empty and doesn't conflict with reserved shortcuts
-        guard !shortcut.isEmpty else { return false }
+    private func validateShortcut(_ shortcut: String, currentKey: String) -> Bool {
+        // Empty shortcut validation
+        guard !shortcut.isEmpty else {
+            showValidationError(
+                title: localizedString(key: "validation.error.title"),
+                message: localizedString(key: "validation.error.emptyShortcut")
+            )
+            return false
+        }
 
         // Reserved system shortcuts that cannot be used
-        let reservedShortcuts = ["cmd-q", "cmd-w", "cmd-h", "cmd-m"]
-        return !reservedShortcuts.contains(shortcut.lowercased())
+        let reservedShortcuts = ["cmd-q", "cmd-w", "cmd-h", "cmd-m", "cmd-n", "cmd-t", "cmd-option-esc"]
+        if reservedShortcuts.contains(shortcut.lowercased()) {
+            showValidationError(
+                title: localizedString(key: "validation.error.title"),
+                message: localizedString(key: "validation.error.reservedShortcut", shortcut)
+            )
+            return false
+        }
+
+        // Check for duplicate shortcuts across all shortcut settings
+        if isDuplicateShortcut(shortcut, excludingKey: currentKey) {
+            showValidationError(
+                title: localizedString(key: "validation.error.title"),
+                message: localizedString(key: "validation.error.duplicateShortcut", shortcut)
+            )
+            return false
+        }
+
+        return true
+    }
+
+    /// Check if a shortcut is already used by another setting
+    private func isDuplicateShortcut(_ shortcut: String, excludingKey: String) -> Bool {
+        let allShortcutKeys = [
+            Keys.activationShortcut
+            // Add more shortcut keys here as they are added to the app
+        ]
+
+        for key in allShortcutKeys where key != excludingKey {
+            if let existingShortcut = UserDefaults.standard.string(forKey: key),
+               existingShortcut.lowercased() == shortcut.lowercased() {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /// Show validation error dialog to user
+    private func showValidationError(title: String, message: String) {
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = message
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: self.localizedString(key: "validation.error.ok"))
+            alert.runModal()
+        }
+    }
+
+    /// Get localized string based on current language setting
+    private func localizedString(key: String, _ args: CVarArg...) -> String {
+        let currentLanguage = language
+
+        let translations: [String: [String: String]] = [
+            "validation.error.title": [
+                "ko": "설정 오류",
+                "en": "Settings Error",
+                "zh": "设置错误"
+            ],
+            "validation.error.unsupportedLanguage": [
+                "ko": "지원하지 않는 언어입니다: %@",
+                "en": "Unsupported language: %@",
+                "zh": "不支持的语言: %@"
+            ],
+            "validation.error.emptyShortcut": [
+                "ko": "단축키는 비어있을 수 없습니다.",
+                "en": "Shortcut cannot be empty.",
+                "zh": "快捷键不能为空。"
+            ],
+            "validation.error.reservedShortcut": [
+                "ko": "'%@'는 시스템 예약 단축키입니다.",
+                "en": "'%@' is a reserved system shortcut.",
+                "zh": "'%@'是系统保留快捷键。"
+            ],
+            "validation.error.duplicateShortcut": [
+                "ko": "'%@'는 이미 다른 기능에 할당되어 있습니다.",
+                "en": "'%@' is already assigned to another function.",
+                "zh": "'%@'已分配给其他功能。"
+            ],
+            "validation.error.ok": [
+                "ko": "확인",
+                "en": "OK",
+                "zh": "确定"
+            ]
+        ]
+
+        guard let languageDict = translations[key],
+              let template = languageDict[currentLanguage] ?? languageDict["en"] else {
+            return key
+        }
+
+        if args.isEmpty {
+            return template
+        } else {
+            return String(format: template, arguments: args)
+        }
     }
 
     // MARK: - Notifications
