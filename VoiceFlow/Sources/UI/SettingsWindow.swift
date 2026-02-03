@@ -62,7 +62,7 @@ private struct SettingsContentView: View {
                 }
                 .tag(1)
 
-            Text("음성 인식")
+            VoiceRecognitionSettingsTab()
                 .tabItem {
                     Label("음성 인식", systemImage: "mic")
                 }
@@ -133,6 +133,51 @@ private struct ShortcutsSettingsTab: View {
                 Text("• 단축키를 재설정하려면 필드를 클릭하세요")
                     .font(.caption)
                     .foregroundColor(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct VoiceRecognitionSettingsTab: View {
+    @ObservedObject private var settings = SettingsObserver.shared
+
+    var body: some View {
+        Form {
+            Section(header: Text("음성 인식").font(.headline)) {
+                Toggle("음성 인식 사용", isOn: $settings.voiceRecognitionEnabled)
+            }
+
+            Section(header: Text("언어").font(.headline)) {
+                Picker("음성 인식 언어", selection: $settings.voiceRecognitionLanguage) {
+                    Text("한국어").tag("ko-KR")
+                    Text("English (US)").tag("en-US")
+                    Text("中文 (简体)").tag("zh-CN")
+                    Text("日本語").tag("ja-JP")
+                }
+                .pickerStyle(.radioGroup)
+                .disabled(!settings.voiceRecognitionEnabled)
+            }
+
+            Section(header: Text("민감도").font(.headline)) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("민감도:")
+                            .font(.subheadline)
+                        Spacer()
+                        Text(String(format: "%.0f%%", settings.voiceRecognitionSensitivity * 100))
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Slider(value: $settings.voiceRecognitionSensitivity, in: 0.0...1.0, step: 0.1)
+                        .disabled(!settings.voiceRecognitionEnabled)
+
+                    Text("높은 민감도는 더 작은 소리도 감지하지만 잘못된 인식이 증가할 수 있습니다")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
             }
         }
         .formStyle(.grouped)
@@ -274,11 +319,32 @@ private class SettingsObserver: ObservableObject {
         }
     }
 
+    @Published var voiceRecognitionEnabled: Bool {
+        didSet {
+            SettingsManager.shared.voiceRecognitionEnabled = voiceRecognitionEnabled
+        }
+    }
+
+    @Published var voiceRecognitionLanguage: String {
+        didSet {
+            SettingsManager.shared.voiceRecognitionLanguage = voiceRecognitionLanguage
+        }
+    }
+
+    @Published var voiceRecognitionSensitivity: Double {
+        didSet {
+            SettingsManager.shared.voiceRecognitionSensitivity = voiceRecognitionSensitivity
+        }
+    }
+
     private init() {
         // Initialize with current values from SettingsManager
         self.language = SettingsManager.shared.language
         self.soundEffectsEnabled = SettingsManager.shared.soundEffectsEnabled
         self.activationShortcut = SettingsManager.shared.activationShortcut
+        self.voiceRecognitionEnabled = SettingsManager.shared.voiceRecognitionEnabled
+        self.voiceRecognitionLanguage = SettingsManager.shared.voiceRecognitionLanguage
+        self.voiceRecognitionSensitivity = SettingsManager.shared.voiceRecognitionSensitivity
 
         // Listen for external changes to SettingsManager
         NotificationCenter.default.addObserver(
@@ -314,6 +380,23 @@ private class SettingsObserver: ObservableObject {
                 let newValue = SettingsManager.shared.activationShortcut
                 if newValue != activationShortcut {
                     activationShortcut = newValue
+                }
+            }
+        } else if category == "voiceRecognition" {
+            if key == "enabled" {
+                let newValue = SettingsManager.shared.voiceRecognitionEnabled
+                if newValue != voiceRecognitionEnabled {
+                    voiceRecognitionEnabled = newValue
+                }
+            } else if key == "language" {
+                let newValue = SettingsManager.shared.voiceRecognitionLanguage
+                if newValue != voiceRecognitionLanguage {
+                    voiceRecognitionLanguage = newValue
+                }
+            } else if key == "sensitivity" {
+                let newValue = SettingsManager.shared.voiceRecognitionSensitivity
+                if newValue != voiceRecognitionSensitivity {
+                    voiceRecognitionSensitivity = newValue
                 }
             }
         }
