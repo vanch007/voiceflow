@@ -43,6 +43,14 @@ open VoiceFlow.app
 - 녹음 종료 시 자동으로 음성인식 → 현재 포커스된 앱에 텍스트 입력
 - 메뉴바 아이콘으로 연결 상태 확인
 
+### 마이크 선택
+
+메뉴바 아이콘 클릭 → **마이크** 서브메뉴에서 원하는 입력 장치를 선택할 수 있습니다.
+
+- **시스템 기본값**: macOS 시스템 설정의 기본 입력 장치 사용
+- 연결된 오디오 입력 장치 목록에서 직접 선택 가능
+- 선택한 장치는 앱 재시작 후에도 유지됨 (UserDefaults 저장)
+
 ## 환경 변수
 
 | 변수 | 설명 | 기본값 |
@@ -60,11 +68,11 @@ voiceflow/
 │   │   │   └── AppDelegate.swift     # 메인 로직 + ASR 서버 관리
 │   │   ├── Core/
 │   │   │   ├── HotkeyManager.swift   # Ctrl 더블탭 감지
-│   │   │   ├── AudioRecorder.swift   # 마이크 녹음
+│   │   │   ├── AudioRecorder.swift   # 마이크 녹음 + 장치 선택
 │   │   │   ├── ASRClient.swift       # WebSocket ASR 클라이언트
 │   │   │   └── TextInjector.swift    # 텍스트 주입
 │   │   └── UI/
-│   │       ├── StatusBarController.swift
+│   │       ├── StatusBarController.swift  # 메뉴바 UI + 마이크 선택
 │   │       └── OverlayPanel.swift
 │   └── VoiceFlow.xcodeproj
 ├── server/
@@ -82,6 +90,13 @@ voiceflow/
 2. Ctrl 더블탭 → 마이크 녹음 시작, 오디오 청크를 WebSocket으로 스트리밍
 3. 다시 Ctrl 더블탭 → 녹음 종료, 서버에서 Qwen3-ASR로 음성인식
 4. 인식 결과를 현재 포커스된 앱에 CGEvent로 텍스트 주입
+
+## 오디오 처리
+
+- AVCaptureSession으로 마이크 입력 캡처 (interleaved / non-interleaved 모두 지원)
+- 48kHz → 16kHz 리샘플링 (선형 보간)
+- 스테레오 → 모노 변환 (채널 0 추출)
+- Float32 PCM으로 WebSocket 전송
 
 ## 효과음
 
