@@ -39,6 +39,22 @@ final class ASRClient {
         sendJSON(["type": "stop"])
     }
 
+    func sendDictionaryUpdate(_ words: [String]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: ["type": "update_dictionary", "words": words]),
+              let str = String(data: data, encoding: .utf8) else {
+            print("[ASRClient] Failed to serialize dictionary update")
+            return
+        }
+        let message = URLSessionWebSocketTask.Message.string(str)
+        webSocketTask?.send(message) { error in
+            if let error {
+                print("[ASRClient] Send dictionary update error: \(error)")
+            } else {
+                print("[ASRClient] Dictionary updated with \(words.count) words")
+            }
+        }
+    }
+
     func sendAudioChunk(_ data: Data) {
         let message = URLSessionWebSocketTask.Message.data(data)
         webSocketTask?.send(message) { error in
