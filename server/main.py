@@ -36,6 +36,7 @@ async def handle_client(websocket):
     logger.info("Client connected.")
     audio_chunks: list[bytes] = []
     recording = False
+    custom_dictionary: list[str] = []
 
     try:
         async for message in websocket:
@@ -47,6 +48,12 @@ async def handle_client(websocket):
                     logger.info("Recording started.")
                     audio_chunks.clear()
                     recording = True
+
+                elif msg_type == "dictionary":
+                    words = data.get("words", [])
+                    custom_dictionary = words
+                    logger.info(f"Custom dictionary updated: {len(custom_dictionary)} words")
+                    await websocket.send(json.dumps({"type": "dictionary_updated", "count": len(custom_dictionary)}))
 
                 elif msg_type == "stop":
                     logger.info("Recording stopped. Processing audio...")
