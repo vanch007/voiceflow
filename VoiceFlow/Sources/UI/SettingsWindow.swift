@@ -321,19 +321,19 @@ private class SettingsObserver: ObservableObject {
 
     @Published var voiceRecognitionEnabled: Bool {
         didSet {
-            SettingsManager.shared.voiceRecognitionEnabled = voiceRecognitionEnabled
+            SettingsManager.shared.voiceEnabled = voiceRecognitionEnabled
         }
     }
 
     @Published var voiceRecognitionLanguage: String {
         didSet {
-            SettingsManager.shared.voiceRecognitionLanguage = voiceRecognitionLanguage
+            SettingsManager.shared.voiceLanguage = voiceRecognitionLanguage
         }
     }
 
     @Published var voiceRecognitionSensitivity: Double {
         didSet {
-            SettingsManager.shared.voiceRecognitionSensitivity = voiceRecognitionSensitivity
+            SettingsManager.shared.voiceSensitivity = voiceRecognitionSensitivity
         }
     }
 
@@ -342,9 +342,9 @@ private class SettingsObserver: ObservableObject {
         self.language = SettingsManager.shared.language
         self.soundEffectsEnabled = SettingsManager.shared.soundEffectsEnabled
         self.activationShortcut = SettingsManager.shared.activationShortcut
-        self.voiceRecognitionEnabled = SettingsManager.shared.voiceRecognitionEnabled
-        self.voiceRecognitionLanguage = SettingsManager.shared.voiceRecognitionLanguage
-        self.voiceRecognitionSensitivity = SettingsManager.shared.voiceRecognitionSensitivity
+        self.voiceRecognitionEnabled = SettingsManager.shared.voiceEnabled
+        self.voiceRecognitionLanguage = SettingsManager.shared.voiceLanguage
+        self.voiceRecognitionSensitivity = SettingsManager.shared.voiceSensitivity
 
         // Listen for external changes to SettingsManager
         NotificationCenter.default.addObserver(
@@ -382,19 +382,19 @@ private class SettingsObserver: ObservableObject {
                     activationShortcut = newValue
                 }
             }
-        } else if category == "voiceRecognition" {
+        } else if category == "voice" {
             if key == "enabled" {
-                let newValue = SettingsManager.shared.voiceRecognitionEnabled
+                let newValue = SettingsManager.shared.voiceEnabled
                 if newValue != voiceRecognitionEnabled {
                     voiceRecognitionEnabled = newValue
                 }
             } else if key == "language" {
-                let newValue = SettingsManager.shared.voiceRecognitionLanguage
+                let newValue = SettingsManager.shared.voiceLanguage
                 if newValue != voiceRecognitionLanguage {
                     voiceRecognitionLanguage = newValue
                 }
             } else if key == "sensitivity" {
-                let newValue = SettingsManager.shared.voiceRecognitionSensitivity
+                let newValue = SettingsManager.shared.voiceSensitivity
                 if newValue != voiceRecognitionSensitivity {
                     voiceRecognitionSensitivity = newValue
                 }

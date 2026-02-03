@@ -14,6 +14,71 @@ final class StatusBarController {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         updateIcon()
         buildMenu()
+
+        // Observe language changes for real-time menu updates
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleLanguageChange(_:)),
+            name: SettingsManager.settingsDidChangeNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Localization Helper
+
+    private func localized(_ key: String) -> String {
+        let language = SettingsManager.shared.language
+        let strings: [String: [String: String]] = [
+            "asr_connected": [
+                "ko": "ASR 서버: 연결됨",
+                "en": "ASR Server: Connected",
+                "zh": "ASR 服务器：已连接"
+            ],
+            "asr_disconnected": [
+                "ko": "ASR 서버: 끊어짐",
+                "en": "ASR Server: Disconnected",
+                "zh": "ASR 服务器：已断开"
+            ],
+            "system_default": [
+                "ko": "시스템 기본값",
+                "en": "System Default",
+                "zh": "系统默认"
+            ],
+            "microphone": [
+                "ko": "마이크",
+                "en": "Microphone",
+                "zh": "麦克风"
+            ],
+            "settings": [
+                "ko": "설정...",
+                "en": "Settings...",
+                "zh": "设置..."
+            ],
+            "quit": [
+                "ko": "종료",
+                "en": "Quit",
+                "zh": "退出"
+            ]
+        ]
+
+        return strings[key]?[language] ?? strings[key]?["ko"] ?? key
+    }
+
+    @objc private func handleLanguageChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let category = userInfo["category"] as? String,
+              let key = userInfo["key"] as? String else {
+            return
+        }
+
+        // Rebuild menu when language changes
+        if category == "general" && key == "language" {
+            buildMenu()
+        }
     }
 
     func updateConnectionStatus(connected: Bool) {
@@ -46,7 +111,7 @@ final class StatusBarController {
         let menu = NSMenu()
 
         // ASR server status
-        let statusTitle = isConnected ? "ASR 서버: 연결됨" : "ASR 서버: 끊어짐"
+        let statusTitle = isConnected ? localized("asr_connected") : localized("asr_disconnected")
         let connItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
         connItem.isEnabled = false
         let statusImage = NSImage(
@@ -70,7 +135,7 @@ final class StatusBarController {
         let devices = AudioRecorder.availableDevices()
 
         // "System Default" option
-        let defaultItem = NSMenuItem(title: "시스템 기본값", action: #selector(selectDefaultDevice), keyEquivalent: "")
+        let defaultItem = NSMenuItem(title: localized("system_default"), action: #selector(selectDefaultDevice), keyEquivalent: "")
         defaultItem.target = self
         // Check if no device is explicitly selected (using default)
         if UserDefaults.standard.string(forKey: "selectedAudioDevice") == nil {
@@ -89,21 +154,22 @@ final class StatusBarController {
             micSubmenu.addItem(item)
         }
 
-        let micItem = NSMenuItem(title: "마이크", action: nil, keyEquivalent: "")
+        let micBaseTitle = localized("microphone")
+        let micItem = NSMenuItem(title: micBaseTitle, action: nil, keyEquivalent: "")
         micItem.image = NSImage(systemSymbolName: "mic.badge.plus", accessibilityDescription: nil)
         if let name = activeDeviceName {
-            micItem.title = "마이크: \(name)"
+            micItem.title = "\(micBaseTitle): \(name)"
         }
         micItem.submenu = micSubmenu
         menu.addItem(micItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let settingsItem = NSMenuItem(title: "설정...", action: #selector(settingsAction), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: localized("settings"), action: #selector(settingsAction), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        let quitItem = NSMenuItem(title: "종료", action: #selector(quitAction), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: localized("quit"), action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 
