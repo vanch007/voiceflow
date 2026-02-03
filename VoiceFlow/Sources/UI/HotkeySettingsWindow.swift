@@ -12,6 +12,7 @@ final class HotkeySettingsWindow: NSWindow {
     private let restoreDefaultButton: NSButton
     private let cancelButton: NSButton
     private let saveButton: NSButton
+    private let warningLabel: NSTextField
     private var isCapturing = false
     private var eventMonitor: Any?
     private var presetConfigs: [Int: HotkeyConfig] = [:]
@@ -32,6 +33,7 @@ final class HotkeySettingsWindow: NSWindow {
         restoreDefaultButton = NSButton(title: "恢复默认", target: nil, action: nil)
         cancelButton = NSButton(title: "取消", target: nil, action: nil)
         saveButton = NSButton(title: "保存", target: nil, action: nil)
+        warningLabel = NSTextField(labelWithString: "")
 
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
@@ -74,6 +76,18 @@ final class HotkeySettingsWindow: NSWindow {
         captureButton.bezelStyle = .rounded
         captureButton.translatesAutoresizingMaskIntoConstraints = false
         contentView.addSubview(captureButton)
+
+        // Warning label
+        warningLabel.isEditable = false
+        warningLabel.isBordered = false
+        warningLabel.drawsBackground = false
+        warningLabel.textColor = .systemOrange
+        warningLabel.font = NSFont.systemFont(ofSize: 11)
+        warningLabel.alignment = .center
+        warningLabel.lineBreakMode = .byWordWrapping
+        warningLabel.maximumNumberOfLines = 2
+        warningLabel.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(warningLabel)
 
         // Presets section
         let presetsLabel = NSTextField(labelWithString: "预设快捷键:")
@@ -123,7 +137,11 @@ final class HotkeySettingsWindow: NSWindow {
             captureButton.topAnchor.constraint(equalTo: hotkeyDisplayField.bottomAnchor, constant: 12),
             captureButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
 
-            presetsLabel.topAnchor.constraint(equalTo: captureButton.bottomAnchor, constant: 24),
+            warningLabel.topAnchor.constraint(equalTo: captureButton.bottomAnchor, constant: 8),
+            warningLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            warningLabel.widthAnchor.constraint(equalToConstant: 320),
+
+            presetsLabel.topAnchor.constraint(equalTo: warningLabel.bottomAnchor, constant: 16),
             presetsLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 40),
 
             presetStackView.topAnchor.constraint(equalTo: presetsLabel.bottomAnchor, constant: 8),
@@ -158,6 +176,72 @@ final class HotkeySettingsWindow: NSWindow {
 
     private func updateHotkeyDisplay() {
         hotkeyDisplayField.stringValue = currentConfig.displayString
+        validateHotkeyConfig()
+    }
+
+    private func validateHotkeyConfig() {
+        let conflict = detectSystemShortcutConflict(config: currentConfig)
+
+        if let conflictDescription = conflict {
+            warningLabel.stringValue = "⚠️ \(conflictDescription)"
+            warningLabel.isHidden = false
+        } else {
+            warningLabel.stringValue = ""
+            warningLabel.isHidden = true
+        }
+    }
+
+    private func detectSystemShortcutConflict(config: HotkeyConfig) -> String? {
+        guard config.triggerType == .combination else {
+            return nil
+        }
+
+        let modifiers = config.modifiers
+        let keyCode = config.keyCode
+
+        // Cmd+Q (Quit)
+        if modifiers.contains(.command) && !modifiers.contains(.shift) &&
+           !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 12 {
+            return "此快捷键与系统"退出应用"冲突"
+        }
+
+        // Cmd+Tab (Application Switcher)
+        if modifiers.contains(.command) && !modifiers.contains(.shift) &&
+           !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 48 {
+            return "此快捷键与系统"应用切换器"冲突"
+        }
+
+        // Cmd+Space (Spotlight)
+        if modifiers.contains(.command) && !modifiers.contains(.shift) &&
+           !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 49 {
+            return "此快捷键可能与Spotlight冲突"
+        }
+
+        // Cmd+W (Close Window)
+        if modifiers.contains(.command) && !modifiers.contains(.shift) &&
+           !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 13 {
+            return "此快捷键与系统"关闭窗口"冲突"
+        }
+
+        // Cmd+M (Minimize)
+        if modifiers.contains(.command) && !modifiers.contains(.shift) &&
+           !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 46 {
+            return "此快捷键与系统"最小化窗口"冲突"
+        }
+
+        // Cmd+H (Hide)
+        if modifiers.contains(.command) && !modifiers.contains(.shift) &&
+           !modifiers.contains(.option) && !modifiers.contains(.control) && keyCode == 4 {
+            return "此快捷键与系统"隐藏应用"冲突"
+        }
+
+        // Cmd+Option+Esc (Force Quit)
+        if modifiers.contains(.command) && modifiers.contains(.option) &&
+           !modifiers.contains(.shift) && !modifiers.contains(.control) && keyCode == 53 {
+            return "此快捷键与系统"强制退出"冲突"
+        }
+
+        return nil
     }
 
     @objc private func startCapture() {
