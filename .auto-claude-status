@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "016-",
+  "state": "building",
+  "subtasks": {
+    "completed": 2,
+    "total": 12,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "Settings Window UI",
+    "id": null,
+    "total": 3
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 1,
+    "started_at": "2026-02-03T22:59:23.509091"
+  },
+  "last_update": "2026-02-03T22:59:23.574291"
+}
