@@ -3,12 +3,15 @@ import Carbon
 
 final class TextInjector {
     func inject(text: String) {
+        // Process text through enabled plugins
+        let processedText = PluginManager.shared.processText(text)
+
         // Clipboard-based injection for Korean text compatibility
         let pasteboard = NSPasteboard.general
         let previousContents = pasteboard.string(forType: .string)
 
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
+        pasteboard.setString(processedText, forType: .string)
 
         simulatePaste()
 
@@ -20,7 +23,7 @@ final class TextInjector {
             }
         }
 
-        NSLog("[TextInjector] Injected text: \(text.prefix(50))")
+        NSLog("[TextInjector] Injected text: \(processedText.prefix(50))")
     }
 
     private func simulatePaste() {
