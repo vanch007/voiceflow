@@ -55,24 +55,56 @@ final class OverlayPanel {
     private func show(state: State) {
         currentState = state
 
+        let text = textForState(state)
+        let width = calculateWidth(for: text)
+
         if panel == nil {
-            createPanel()
+            createPanel(width: width)
+        } else {
+            updatePanelFrame(width: width)
         }
 
         updateContent()
         panel?.orderFront(nil)
     }
 
-    private func createPanel() {
-        let panelWidth: CGFloat = 320
-        let panelHeight: CGFloat = 80
+    private func textForState(_ state: State) -> String {
+        switch state {
+        case .recording: return "녹음 중..."
+        case .processing: return "인식 중..."
+        case .done: return "완료"
+        case .hidden: return ""
+        }
+    }
+
+    private func calculateWidth(for text: String) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: 14, weight: .medium)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font]
+        let textSize = (text as NSString).size(withAttributes: attributes)
+
+        // Width = text width + icon size + spacing + horizontal padding
+        // Icon: ~14pt, spacing: 8pt, padding: 16pt * 2 = 32pt
+        let iconWidth: CGFloat = 14
+        let spacing: CGFloat = 8
+        let horizontalPadding: CGFloat = 32
+        let calculatedWidth = textSize.width + iconWidth + spacing + horizontalPadding
+
+        // Minimum and maximum constraints
+        let minWidth: CGFloat = 100
+        let maxWidth: CGFloat = 400
+
+        return max(minWidth, min(maxWidth, calculatedWidth))
+    }
+
+    private func createPanel(width: CGFloat) {
+        let panelHeight: CGFloat = 44
 
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
-        let x = screenFrame.midX - panelWidth / 2
-        let y = screenFrame.minY + 20
+        let x = screenFrame.midX - width / 2
+        let y = screenFrame.maxY - panelHeight - 20
 
-        let frame = NSRect(x: x, y: y, width: panelWidth, height: panelHeight)
+        let frame = NSRect(x: x, y: y, width: width, height: panelHeight)
 
         let p = NSPanel(
             contentRect: frame,
@@ -109,6 +141,23 @@ final class OverlayPanel {
         recordingDuration += 0.1
         updateContent()
     }
+
+    private func updatePanelFrame(width: CGFloat) {
+        guard let panel, let screen = NSScreen.main else { return }
+
+        let panelHeight: CGFloat = 44
+        let screenFrame = screen.visibleFrame
+        let x = screenFrame.midX - width / 2
+        let y = screenFrame.maxY - panelHeight - 20
+
+        // Animate the frame change for smooth transitions
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(NSRect(x: x, y: y, width: width, height: panelHeight), display: true)
+        }
+    }
+
 
     private func updateContent() {
         guard let panel else { return }
