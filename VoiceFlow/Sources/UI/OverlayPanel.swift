@@ -112,7 +112,12 @@ final class OverlayPanel {
         let x = screenFrame.midX - width / 2
         let y = screenFrame.maxY - panelHeight - 20
 
-        panel.setFrame(NSRect(x: x, y: y, width: width, height: panelHeight), display: true)
+        // Animate the frame change for smooth transitions
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(NSRect(x: x, y: y, width: width, height: panelHeight), display: true)
+        }
     }
 
     private func updateContent() {
