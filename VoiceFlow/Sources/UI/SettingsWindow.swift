@@ -56,7 +56,7 @@ private struct SettingsContentView: View {
                 }
                 .tag(0)
 
-            Text("바로 가기 키")
+            ShortcutsSettingsTab()
                 .tabItem {
                     Label("바로 가기 키", systemImage: "keyboard")
                 }
@@ -95,6 +95,163 @@ private struct GeneralSettingsTab: View {
     }
 }
 
+private struct ShortcutsSettingsTab: View {
+    @ObservedObject private var settings = SettingsObserver.shared
+    @State private var isCapturingShortcut = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Form {
+            Section(header: Text("활성화 단축키").font(.headline)) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("활성화 단축키:")
+                        .font(.subheadline)
+
+                    ShortcutCaptureField(
+                        shortcut: $settings.activationShortcut,
+                        isCapturing: $isCapturingShortcut,
+                        errorMessage: $errorMessage
+                    )
+
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+
+                    Text("단축키 필드를 클릭하고 원하는 키 조합을 누르세요")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section(header: Text("정보").font(.headline)) {
+                Text("• 시스템 예약 단축키(Cmd+Q, Cmd+W 등)는 사용할 수 없습니다")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("• 단축키를 재설정하려면 필드를 클릭하세요")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+private struct ShortcutCaptureField: NSViewRepresentable {
+    @Binding var shortcut: String
+    @Binding var isCapturing: Bool
+    @Binding var errorMessage: String?
+
+    func makeNSView(context: Context) -> NSTextField {
+        let textField = CaptureTextField()
+        textField.isEditable = false
+        textField.isBordered = true
+        textField.bezelStyle = .roundedBezel
+        textField.placeholderString = "단축키를 입력하세요"
+        textField.font = .systemFont(ofSize: 13)
+        textField.delegate = context.coordinator
+        textField.stringValue = formatShortcut(shortcut)
+        return textField
+    }
+
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        if !isCapturing {
+            nsView.stringValue = formatShortcut(shortcut)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    private func formatShortcut(_ shortcut: String) -> String {
+        // Convert "ctrl-double-tap" to "Ctrl Double-Tap"
+        let components = shortcut.split(separator: "-")
+        return components.map { $0.capitalized }.joined(separator: " ")
+    }
+
+    class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: ShortcutCaptureField
+
+        init(_ parent: ShortcutCaptureField) {
+            self.parent = parent
+        }
+
+        func controlTextDidBeginEditing(_ obj: Notification) {
+            guard let textField = obj.object as? NSTextField else { return }
+            parent.isCapturing = true
+            parent.errorMessage = nil
+            textField.stringValue = "키 조합을 누르세요..."
+        }
+
+        func controlTextDidEndEditing(_ obj: Notification) {
+            parent.isCapturing = false
+        }
+    }
+}
+
+// Custom NSTextField that captures keyboard events
+private class CaptureTextField: NSTextField {
+    private var capturedModifiers: NSEvent.ModifierFlags = []
+    private var capturedKey: String?
+
+    override func keyDown(with event: NSEvent) {
+        capturedModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        capturedKey = event.charactersIgnoringModifiers
+
+        var components: [String] = []
+
+        if capturedModifiers.contains(.control) {
+            components.append("ctrl")
+        }
+        if capturedModifiers.contains(.option) {
+            components.append("opt")
+        }
+        if capturedModifiers.contains(.shift) {
+            components.append("shift")
+        }
+        if capturedModifiers.contains(.command) {
+            components.append("cmd")
+        }
+
+        if let key = capturedKey, !key.isEmpty {
+            components.append(key.lowercased())
+        }
+
+        if !components.isEmpty {
+            let shortcutString = components.joined(separator: "-")
+            stringValue = components.map { $0.capitalized }.joined(separator: " ")
+
+            // Update the binding through the coordinator
+            if let coordinator = delegate as? ShortcutCaptureField.Coordinator {
+                // Validate shortcut
+                let reservedShortcuts = ["cmd-q", "cmd-w", "cmd-h", "cmd-m"]
+                if reservedShortcuts.contains(shortcutString.lowercased()) {
+                    coordinator.parent.errorMessage = "이 단축키는 시스템에서 예약되어 있습니다"
+                } else {
+                    coordinator.parent.shortcut = shortcutString
+                    coordinator.parent.errorMessage = nil
+                }
+            }
+
+            // End editing after capturing
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                self.window?.makeFirstResponder(nil)
+            }
+        }
+    }
+
+    override var acceptsFirstResponder: Bool {
+        return true
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        return true
+    }
+}
+
 // ObservableObject wrapper for SettingsManager to enable SwiftUI bindings
 private class SettingsObserver: ObservableObject {
     static let shared = SettingsObserver()
@@ -111,10 +268,17 @@ private class SettingsObserver: ObservableObject {
         }
     }
 
+    @Published var activationShortcut: String {
+        didSet {
+            SettingsManager.shared.activationShortcut = activationShortcut
+        }
+    }
+
     private init() {
         // Initialize with current values from SettingsManager
         self.language = SettingsManager.shared.language
         self.soundEffectsEnabled = SettingsManager.shared.soundEffectsEnabled
+        self.activationShortcut = SettingsManager.shared.activationShortcut
 
         // Listen for external changes to SettingsManager
         NotificationCenter.default.addObserver(
@@ -143,6 +307,13 @@ private class SettingsObserver: ObservableObject {
                 let newValue = SettingsManager.shared.soundEffectsEnabled
                 if newValue != soundEffectsEnabled {
                     soundEffectsEnabled = newValue
+                }
+            }
+        } else if category == "shortcuts" {
+            if key == "activation" {
+                let newValue = SettingsManager.shared.activationShortcut
+                if newValue != activationShortcut {
+                    activationShortcut = newValue
                 }
             }
         }
