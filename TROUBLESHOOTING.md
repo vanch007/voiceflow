@@ -157,6 +157,51 @@ open VoiceFlow.app
 
 ---
 
+## 6. 음성인식 결과가 "아." 만 나옴
+
+### 증상
+- 녹음은 되고 서버도 응답하지만 항상 "아." 또는 무의미한 텍스트만 반환
+- 서버 로그에 오디오 샘플 수와 길이는 정상
+
+### 원인: Non-interleaved 오디오 포맷 미처리
+macOS AVCaptureSession이 오디오를 **deinterleaved** (비인터리브) 포맷으로 전달하는 경우가 있음.
+
+- Interleaved: `[L, R, L, R, L, R...]`
+- Non-interleaved: `[L, L, L..., R, R, R...]`
+
+Non-interleaved에서는 `mBytesPerFrame`이 **채널당** 바이트 수이므로,
+`length / mBytesPerFrame`이 실제 프레임 수의 N배가 됨.
+이를 interleaved로 잘못 읽으면 샘플이 뒤섞여 오디오가 완전히 깨짐.
+
+### 해결
+`AudioRecorder.swift`에서 `kAudioFormatFlagIsNonInterleaved` 플래그를 체크하고,
+non-interleaved일 때는 채널 0의 연속된 샘플만 추출하도록 수정.
+
+```swift
+let isNonInterleaved = (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+let frameCount = isNonInterleaved
+    ? length / bytesPerFrame / channels
+    : length / bytesPerFrame
+```
+
+---
+
+## 7. 잘못된 마이크로 녹음됨
+
+### 증상
+- 음성인식이 되긴 하지만 정확도가 낮음
+- 의도한 마이크가 아닌 다른 장치(예: 웹캠 내장 마이크)로 녹음됨
+
+### 원인
+`AVCaptureDevice.default(for: .audio)`는 macOS 시스템 기본 입력 장치를 사용.
+외부 마이크(예: Elgato Wave)가 기본 장치가 아니면 웹캠 등 다른 마이크가 선택됨.
+
+### 해결
+메뉴바 아이콘 클릭 → **마이크** 서브메뉴에서 원하는 장치 선택.
+선택한 장치는 `UserDefaults`에 저장되어 앱 재시작 후에도 유지됨.
+
+---
+
 ## 디버깅 팁
 
 ### 로그 확인

@@ -208,6 +208,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController.onTextReplacement = { [weak self] in
             self?.settingsWindowController.show()
         }
+        statusBarController.onDeviceSelected = { [weak self] deviceID in
+            self?.audioRecorder.selectDevice(id: deviceID)
+        }
+        audioRecorder.onDeviceChanged = { [weak self] name in
+            self?.statusBarController.updateActiveDevice(name: name)
+        }
 
         hotkeyManager = HotkeyManager()
         hotkeyManager.onLongPress = { [weak self] in
@@ -229,7 +235,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        audioRecorder.prepare()
+        // Restore saved device selection
+        if let savedDeviceID = UserDefaults.standard.string(forKey: "selectedAudioDevice") {
+            audioRecorder.selectDevice(id: savedDeviceID)
+        } else {
+            audioRecorder.prepare()
+        }
 
         // Wait briefly for ASR server to start, then connect
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in

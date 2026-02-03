@@ -5,10 +5,12 @@ final class StatusBarController {
     var onSettings: (() -> Void)?
     var onShowHistory: (() -> Void)?
     var onTextReplacement: (() -> Void)?
+    var onDeviceSelected: ((String?) -> Void)?  // nil = system default
 
     private let statusItem: NSStatusItem
     private var isConnected = false
     private var isRecording = false
+    private var activeDeviceName: String?
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -24,6 +26,11 @@ final class StatusBarController {
     func updateRecordingStatus(recording: Bool) {
         isRecording = recording
         updateIcon()
+    }
+
+    func updateActiveDevice(name: String) {
+        activeDeviceName = name
+        buildMenu()
     }
 
     private func updateIcon() {
@@ -42,8 +49,8 @@ final class StatusBarController {
 
         // ASR 服务器连接状态
         let statusTitle = isConnected ? "ASR 服务器: 已连接" : "ASR 服务器: 已断开"
-        let statusItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
-        statusItem.isEnabled = false
+        let connItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
+        connItem.isEnabled = false
         let statusImage = NSImage(
             systemSymbolName: isConnected ? "circle.fill" : "circle",
             accessibilityDescription: nil
@@ -51,12 +58,46 @@ final class StatusBarController {
         statusImage?.isTemplate = false
         if isConnected {
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemGreen])
-            statusItem.image = statusImage?.withSymbolConfiguration(config)
+            connItem.image = statusImage?.withSymbolConfiguration(config)
         } else {
             let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
-            statusItem.image = statusImage?.withSymbolConfiguration(config)
+            connItem.image = statusImage?.withSymbolConfiguration(config)
         }
-        menu.addItem(statusItem)
+        menu.addItem(connItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Microphone selection submenu
+        let micSubmenu = NSMenu()
+        let devices = AudioRecorder.availableDevices()
+
+        // "System Default" option
+        let defaultItem = NSMenuItem(title: "系统默认", action: #selector(selectDefaultDevice), keyEquivalent: "")
+        defaultItem.target = self
+        // Check if no device is explicitly selected (using default)
+        if UserDefaults.standard.string(forKey: "selectedAudioDevice") == nil {
+            defaultItem.state = .on
+        }
+        micSubmenu.addItem(defaultItem)
+        micSubmenu.addItem(NSMenuItem.separator())
+
+        for device in devices {
+            let item = NSMenuItem(title: device.name, action: #selector(selectDevice(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = device.id
+            if device.id == UserDefaults.standard.string(forKey: "selectedAudioDevice") {
+                item.state = .on
+            }
+            micSubmenu.addItem(item)
+        }
+
+        let micItem = NSMenuItem(title: "麦克风", action: nil, keyEquivalent: "")
+        micItem.image = NSImage(systemSymbolName: "mic.badge.plus", accessibilityDescription: nil)
+        if let name = activeDeviceName {
+            micItem.title = "麦克风: \(name)"
+        }
+        micItem.submenu = micSubmenu
+        menu.addItem(micItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -100,6 +141,19 @@ final class StatusBarController {
 
     @objc private func showHistoryAction() {
         onShowHistory?()
+    }
+
+    @objc private func selectDefaultDevice() {
+        UserDefaults.standard.removeObject(forKey: "selectedAudioDevice")
+        onDeviceSelected?(nil)
+        buildMenu()
+    }
+
+    @objc private func selectDevice(_ sender: NSMenuItem) {
+        guard let deviceID = sender.representedObject as? String else { return }
+        UserDefaults.standard.set(deviceID, forKey: "selectedAudioDevice")
+        onDeviceSelected?(deviceID)
+        buildMenu()
     }
 
     @objc private func quitAction() {

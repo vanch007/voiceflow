@@ -5,13 +5,40 @@ import CoreAudio
 final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     var onAudioChunk: ((Data) -> Void)?
     var onVolumeLevel: ((Float) -> Void)?
+    var onDeviceChanged: ((String) -> Void)?
 
     private var captureSession: AVCaptureSession?
     private let sessionQueue = DispatchQueue(label: "com.voiceflow.capture")
     private let targetSampleRate: Double = 16000
     private var isRecording = false
     private var currentDeviceID: String?
+    private var selectedDeviceID: String?  // User-selected device (nil = system default)
     private var savedOutputVolume: Float32?
+
+    /// Returns list of available audio input devices as (uniqueID, localizedName)
+    static func availableDevices() -> [(id: String, name: String)] {
+        let discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.microphone, .external],
+            mediaType: .audio,
+            position: .unspecified
+        )
+        return discoverySession.devices.map { ($0.uniqueID, $0.localizedName) }
+    }
+
+    /// Select a specific audio device by uniqueID. Pass nil to use system default.
+    func selectDevice(id: String?) {
+        let changed = selectedDeviceID != id
+        selectedDeviceID = id
+        if changed {
+            let name = id.flatMap { devID in
+                Self.availableDevices().first(where: { $0.id == devID })?.name
+            } ?? "System Default"
+            NSLog("[AudioRecorder] Device selected: \(name)")
+            setupSession()
+        }
+    }
+
+    var activeDeviceID: String? { currentDeviceID }
 
     /// Call once at app startup
     func prepare() {
@@ -21,10 +48,11 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
     func startRecording() {
         // Save current output volume before ducking kicks in
         savedOutputVolume = getOutputVolume()
-        // Check if default device changed
-        if let newDevice = AVCaptureDevice.default(for: .audio),
+        // Check if default device changed (only when using system default)
+        if selectedDeviceID == nil,
+           let newDevice = AVCaptureDevice.default(for: .audio),
            newDevice.uniqueID != currentDeviceID {
-            NSLog("[AudioRecorder] Device changed, reconnecting...")
+            NSLog("[AudioRecorder] Default device changed, reconnecting...")
             setupSession()
         }
         isRecording = true
@@ -55,13 +83,24 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
 
             let session = AVCaptureSession()
 
-            guard let device = AVCaptureDevice.default(for: .audio) else {
+            // Use selected device, or fall back to system default
+            let device: AVCaptureDevice?
+            if let selectedID = self.selectedDeviceID {
+                device = AVCaptureDevice(uniqueID: selectedID)
+            } else {
+                device = AVCaptureDevice.default(for: .audio)
+            }
+
+            guard let device else {
                 NSLog("[AudioRecorder] No audio device found!")
                 return
             }
 
             NSLog("[AudioRecorder] Audio device: \(device.localizedName)")
             self.currentDeviceID = device.uniqueID
+            DispatchQueue.main.async {
+                self.onDeviceChanged?(device.localizedName)
+            }
 
             do {
                 let input = try AVCaptureDeviceInput(device: device)
@@ -146,23 +185,36 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         let srcRate = asbd.mSampleRate
         let channels = Int(asbd.mChannelsPerFrame)
         let bytesPerFrame = Int(asbd.mBytesPerFrame)
-        let frameCount = length / bytesPerFrame
+        let isNonInterleaved = (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+
+        // For non-interleaved audio, mBytesPerFrame is per-channel,
+        // so length / mBytesPerFrame gives totalFrames * channels.
+        // We need to divide by channels to get the actual frame count.
+        let frameCount: Int
+        if isNonInterleaved {
+            frameCount = length / bytesPerFrame / channels
+        } else {
+            frameCount = length / bytesPerFrame
+        }
         guard frameCount > 0 else { return }
 
         let floatSamples: [Float]
         if asbd.mFormatFlags & kAudioFormatFlagIsFloat != 0 {
             floatSamples = rawData.withUnsafeBytes { ptr in
                 let floatPtr = ptr.bindMemory(to: Float.self)
-                if channels == 1 {
+                if isNonInterleaved || channels == 1 {
+                    // Non-interleaved: [ch0_0, ch0_1, ..., ch0_N, ch1_0, ...]
+                    // Just take the first frameCount samples (channel 0)
                     return Array(floatPtr.prefix(frameCount))
                 } else {
+                    // Interleaved: [L, R, L, R, ...]
                     return stride(from: 0, to: frameCount * channels, by: channels).map { floatPtr[$0] }
                 }
             }
         } else if asbd.mBitsPerChannel == 16 {
             floatSamples = rawData.withUnsafeBytes { ptr in
                 let int16Ptr = ptr.bindMemory(to: Int16.self)
-                if channels == 1 {
+                if isNonInterleaved || channels == 1 {
                     return int16Ptr.prefix(frameCount).map { Float($0) / 32768.0 }
                 } else {
                     return stride(from: 0, to: frameCount * channels, by: channels).map { Float(int16Ptr[$0]) / 32768.0 }
@@ -171,7 +223,7 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         } else if asbd.mBitsPerChannel == 32 {
             floatSamples = rawData.withUnsafeBytes { ptr in
                 let int32Ptr = ptr.bindMemory(to: Int32.self)
-                if channels == 1 {
+                if isNonInterleaved || channels == 1 {
                     return int32Ptr.prefix(frameCount).map { Float($0) / Float(Int32.max) }
                 } else {
                     return stride(from: 0, to: frameCount * channels, by: channels).map { Float(int32Ptr[$0]) / Float(Int32.max) }
