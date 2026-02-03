@@ -1,0 +1,13 @@
+{
+  "id": "com.voiceflow.examples.punctuation",
+  "name": "Punctuation Plugin",
+  "version": "1.0.0",
+  "author": "VoiceFlow Team",
+  "description": "Adds basic punctuation to transcribed text using simple heuristics",
+  "entrypoint": "punctuation_plugin.PunctuationPlugin",
+  "permissions": [
+    "text.read",
+    "text.write"
+  ],
+  "platform": "python"
+}
