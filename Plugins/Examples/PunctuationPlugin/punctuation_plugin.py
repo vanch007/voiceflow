@@ -1,20 +1,13 @@
 #!/usr/bin/env python3
-"""
-PunctuationPlugin - Example plugin that adds punctuation to transcribed text.
-
-This plugin demonstrates how to create a VoiceFlow plugin that processes
-transcription text by adding basic punctuation using simple heuristics.
-"""
+"""PunctuationPlugin - Example VoiceFlow plugin that adds punctuation to transcribed text."""
 
 import logging
 import re
-from typing import Optional
-
 import sys
 from pathlib import Path
 
 # Add server directory to Python path for imports
-server_path = Path(__file__).parent.parent.parent.parent / "server"
+server_path = Path(__file__).resolve().parent.parent.parent.parent / "server"
 sys.path.insert(0, str(server_path))
 
 from plugin_api import VoiceFlowPlugin, PluginManifest, PluginError
@@ -24,11 +17,13 @@ logger = logging.getLogger(__name__)
 
 class PunctuationPlugin(VoiceFlowPlugin):
     """
-    Adds basic punctuation to transcribed text.
+    Example plugin that intelligently adds punctuation to transcribed text.
 
-    This plugin applies simple heuristics to add periods, question marks,
-    and commas to text that lacks punctuation. Useful for improving
-    readability of raw ASR output.
+    This plugin demonstrates:
+    - Implementing the VoiceFlowPlugin protocol
+    - Using async lifecycle hooks
+    - Text transformation with pattern matching
+    - Error handling
     """
 
     def __init__(self, manifest: PluginManifest):
@@ -39,120 +34,71 @@ class PunctuationPlugin(VoiceFlowPlugin):
     async def on_load(self) -> None:
         """
         Called when the plugin is loaded.
-
-        Initializes the plugin and prepares it for processing.
+        Initialize any resources needed by the plugin.
         """
-        logger.info(f"Loading {self.manifest.name} v{self.manifest.version}")
+        logger.info(f"[{self.plugin_id}] Loading PunctuationPlugin v{self.manifest.version}")
         self._enabled = True
-        logger.info("PunctuationPlugin loaded successfully")
+        logger.info(f"[{self.plugin_id}] PunctuationPlugin loaded successfully")
 
     async def on_transcription(self, text: str) -> str:
         """
-        Process transcription text by adding punctuation.
+        Process transcribed text by adding appropriate punctuation.
 
-        Applies the following heuristics:
-        - Capitalize first letter of sentences
-        - Add periods at the end if missing
-        - Add question marks for sentences starting with question words
-        - Add commas after common transitional phrases
+        Rules:
+        - Add period to end if no punctuation exists
+        - Capitalize first letter
+        - Handle question patterns (what, where, when, who, why, how)
+        - Preserve existing punctuation
 
         Args:
             text: The transcribed text from the ASR system
 
         Returns:
-            The text with added punctuation
+            The text with appropriate punctuation added
 
         Raises:
             PluginError: If text processing fails
         """
         if not self._enabled:
-            raise PluginError("Plugin is not enabled")
-
-        if not text or not text.strip():
             return text
 
         try:
-            processed_text = self._add_punctuation(text.strip())
-            logger.debug(f"Processed text: '{text}' -> '{processed_text}'")
-            return processed_text
+            # Strip whitespace
+            processed = text.strip()
+
+            if not processed:
+                return text
+
+            # Capitalize first letter
+            processed = processed[0].upper() + processed[1:] if len(processed) > 1 else processed.upper()
+
+            # Check if text already ends with punctuation
+            if processed[-1] in {'.', '!', '?', ',', ';', ':'}:
+                return processed
+
+            # Detect question patterns
+            question_words = {'what', 'where', 'when', 'who', 'why', 'how', 'which', 'whose', 'whom'}
+            first_word = processed.split()[0].lower() if processed.split() else ''
+
+            # Add question mark for questions, period otherwise
+            if first_word in question_words:
+                processed += '?'
+            else:
+                processed += '.'
+
+            logger.debug(f"[{self.plugin_id}] Transformed: '{text}' -> '{processed}'")
+            return processed
+
         except Exception as e:
-            logger.error(f"Failed to process text: {e}")
-            raise PluginError(f"Text processing failed: {e}")
+            error_msg = f"Failed to process text: {str(e)}"
+            logger.error(f"[{self.plugin_id}] {error_msg}")
+            raise PluginError(error_msg) from e
 
     async def on_unload(self) -> None:
         """
         Called when the plugin is unloaded.
-
-        Performs cleanup and releases resources.
+        Clean up any resources used by the plugin.
         """
-        logger.info(f"Unloading {self.manifest.name}")
+        logger.info(f"[{self.plugin_id}] Unloading PunctuationPlugin")
         self._enabled = False
-        logger.info("PunctuationPlugin unloaded successfully")
-
-    def _add_punctuation(self, text: str) -> str:
-        """
-        Apply punctuation heuristics to text.
-
-        Args:
-            text: Input text without punctuation
-
-        Returns:
-            Text with added punctuation
-        """
-        # Capitalize first letter
-        if text:
-            text = text[0].upper() + text[1:]
-
-        # Question words for detecting questions
-        question_words = [
-            "what",
-            "when",
-            "where",
-            "who",
-            "whom",
-            "whose",
-            "why",
-            "which",
-            "how",
-            "can",
-            "could",
-            "would",
-            "should",
-            "is",
-            "are",
-            "do",
-            "does",
-            "did",
-        ]
-
-        # Check if it's a question
-        first_word = text.split()[0].lower() if text.split() else ""
-        is_question = first_word in question_words
-
-        # Add comma after transitional phrases
-        transitional_phrases = [
-            "however",
-            "therefore",
-            "moreover",
-            "furthermore",
-            "meanwhile",
-            "consequently",
-            "nevertheless",
-            "thus",
-            "hence",
-            "indeed",
-            "besides",
-            "otherwise",
-        ]
-
-        for phrase in transitional_phrases:
-            # Add comma after phrase at start of sentence
-            pattern = rf"\b{phrase}\b(?!,)"
-            replacement = f"{phrase},"
-            text = re.sub(pattern, replacement, text, count=1, flags=re.IGNORECASE)
-
-        # Add ending punctuation if missing
-        if not text[-1] in ".!?":
-            text = text + ("?" if is_question else ".")
-
-        return text
+        logger.info(f"[{self.plugin_id}] PunctuationPlugin unloaded successfully")
