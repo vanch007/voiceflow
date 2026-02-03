@@ -44,6 +44,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load sounds via AudioServices (bypasses AVCaptureSession output blocking)
         loadSounds()
 
+        // Observe settings changes for real-time application
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSettingsChanged(_:)),
+            name: SettingsManager.settingsDidChangeNotification,
+            object: nil
+        )
+
         overlayPanel = OverlayPanel()
         settingsWindow = SettingsWindow()
         textInjector = TextInjector()
@@ -106,7 +114,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        NotificationCenter.default.removeObserver(self)
         stopASRServer()
+    }
+
+    // MARK: - Settings Observer
+
+    @objc private func handleSettingsChanged(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let category = userInfo["category"] as? String,
+              let key = userInfo["key"] as? String else {
+            return
+        }
+
+        if category == "general" && key == "soundEffectsEnabled" {
+            if let enabled = userInfo["value"] as? Bool {
+                NSLog("[Settings] Sound effects %@", enabled ? "enabled" : "disabled")
+            }
+        }
     }
 
     // MARK: - ASR Server Management
@@ -157,6 +182,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func playSound(_ soundID: SystemSoundID, name: String) {
+        // Check if sound effects are enabled
+        guard SettingsManager.shared.soundEffectsEnabled else {
+            NSLog("[Audio] %@ skipped (sound effects disabled)", name)
+            return
+        }
+
         guard soundID != 0 else {
             NSLog("[Audio] WARNING: %@ not loaded, cannot play", name)
             return
