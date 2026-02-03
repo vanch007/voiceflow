@@ -1,5 +1,23 @@
 # VoiceFlow Plugin System
 
+⚠️ **CRITICAL SECURITY WARNING**
+
+**VoiceFlow plugins run with FULL APPLICATION PRIVILEGES and have UNRESTRICTED access to your system.**
+
+- ❌ **NO SANDBOXING**: Plugins can access any file, execute any code, make any network request
+- ❌ **NO PERMISSION ENFORCEMENT**: Manifest permissions are informational only, NOT enforced
+- ⚠️ **TRUST-BASED MODEL**: Only install plugins from sources you completely trust
+
+**Before installing ANY plugin:**
+1. ✅ Review the source code if available
+2. ✅ Verify the author is trustworthy
+3. ✅ Check what permissions are requested
+4. ✅ Understand that plugins can do ANYTHING your user account can do
+
+See `.auto-claude/specs/019-/SECURITY_VERIFICATION.md` for complete security analysis.
+
+---
+
 This directory contains the plugin system documentation and schema for VoiceFlow.
 
 ## Overview
@@ -166,12 +184,19 @@ python -c "import json, jsonschema; \
 
 ## Security Considerations
 
-- Plugins run with limited permissions based on their manifest declarations
-- Network access requires explicit permission
-- File system access is sandboxed to plugin directories
-- Plugins cannot access system resources without permission
-- Malicious or misbehaving plugins can be disabled via the UI
-- Always review plugin source code and permissions before installation
+⚠️ **IMPORTANT: The following security boundaries are ASPIRATIONAL and NOT currently implemented:**
+
+**Current Reality (as of security verification):**
+- ❌ Plugins DO NOT run with limited permissions - they have FULL access
+- ❌ Network access does NOT require explicit permission - it's unrestricted
+- ❌ File system access is NOT sandboxed - plugins can access ANY file
+- ❌ Plugins CAN access ALL system resources without restriction
+- ✅ Malicious or misbehaving plugins CAN be disabled via the UI
+- ✅ ALWAYS review plugin source code and permissions before installation
+
+**Security Model:** Trust-based, no sandboxing or isolation
+
+**See full security analysis:** `.auto-claude/specs/019-/SECURITY_VERIFICATION.md`
 
 ## Support
 
