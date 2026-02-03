@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var pluginManager: PluginManager!
     private var isRecording = false
     private var asrServerProcess: Process?
 
@@ -43,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load sounds via AudioServices (bypasses AVCaptureSession output blocking)
         loadSounds()
 
+        // Initialize plugin system
+        pluginManager = PluginManager.shared
+        pluginManager.discoverPlugins()
+
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
         asrClient = ASRClient()
@@ -56,7 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self.overlayPanel.showDone()
                 if !text.isEmpty {
-                    self.textInjector.inject(text: text)
+                    // Process text through plugins before injecting
+                    let processedText = self.pluginManager.processText(text)
+                    self.textInjector.inject(text: processedText)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     self.overlayPanel.hide()
@@ -101,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        pluginManager.unloadAll()
         stopASRServer()
     }
 

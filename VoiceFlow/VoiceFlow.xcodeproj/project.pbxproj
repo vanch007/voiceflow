@@ -15,6 +15,9 @@
 		A1000006 /* TextInjector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000006 /* TextInjector.swift */; };
 		A1000007 /* OverlayPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000007 /* OverlayPanel.swift */; };
 		A1000008 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000008 /* StatusBarController.swift */; };
+		A1000009 /* PluginAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000011 /* PluginAPI.swift */; };
+		A1000010 /* PluginLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000012 /* PluginLoader.swift */; };
+		A1000011 /* PluginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000013 /* PluginManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +31,9 @@
 		B1000008 /* StatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
 		B1000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B1000010 /* VoiceFlow.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VoiceFlow.entitlements; sourceTree = "<group>"; };
+		B1000011 /* PluginAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginAPI.swift; sourceTree = "<group>"; };
+		B1000012 /* PluginLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginLoader.swift; sourceTree = "<group>"; };
+		B1000013 /* PluginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginManager.swift; sourceTree = "<group>"; };
 		C1000001 /* VoiceFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -78,6 +84,9 @@
 				B1000004 /* AudioRecorder.swift */,
 				B1000005 /* ASRClient.swift */,
 				B1000006 /* TextInjector.swift */,
+				B1000011 /* PluginAPI.swift */,
+				B1000012 /* PluginLoader.swift */,
+				B1000013 /* PluginManager.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -172,6 +181,9 @@
 				A1000006 /* TextInjector.swift in Sources */,
 				A1000007 /* OverlayPanel.swift in Sources */,
 				A1000008 /* StatusBarController.swift in Sources */,
+				A1000009 /* PluginAPI.swift in Sources */,
+				A1000010 /* PluginLoader.swift in Sources */,
+				A1000011 /* PluginManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

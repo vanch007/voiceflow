@@ -1,0 +1,39 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "Glob(./**)",
+      "Grep(./**)",
+      "Read(/Users/vanch/voiceflow/.auto-claude/worktrees/tasks/019-/**)",
+      "Write(/Users/vanch/voiceflow/.auto-claude/worktrees/tasks/019-/**)",
+      "Edit(/Users/vanch/voiceflow/.auto-claude/worktrees/tasks/019-/**)",
+      "Glob(/Users/vanch/voiceflow/.auto-claude/worktrees/tasks/019-/**)",
+      "Grep(/Users/vanch/voiceflow/.auto-claude/worktrees/tasks/019-/**)",
+      "Read(/Users/vanch/voiceflow/.auto-claude/worktrees/tasks/019-/.auto-claude/specs/019-/**)",
+      "Write(/Users/vanch/voiceflow/.auto-claude/worktrees/tasks/019-/.auto-claude/specs/019-/**)",
+      "Edit(/Users/vanch/voiceflow/.auto-claude/worktrees/tasks/019-/.auto-claude/specs/019-/**)",
+      "Read(/Users/vanch/voiceflow/.auto-claude/**)",
+      "Write(/Users/vanch/voiceflow/.auto-claude/**)",
+      "Edit(/Users/vanch/voiceflow/.auto-claude/**)",
+      "Glob(/Users/vanch/voiceflow/.auto-claude/**)",
+      "Grep(/Users/vanch/voiceflow/.auto-claude/**)",
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__context7__resolve-library-id(*)",
+      "mcp__context7__get-library-docs(*)",
+      "mcp__graphiti-memory__search_nodes(*)",
+      "mcp__graphiti-memory__search_facts(*)",
+      "mcp__graphiti-memory__add_episode(*)",
+      "mcp__graphiti-memory__get_episodes(*)",
+      "mcp__graphiti-memory__get_entity_edge(*)"
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "019-",
+  "state": "building",
+  "subtasks": {
+    "completed": 6,
+    "total": 17,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "Plugin Loader and Manager",
+    "id": null,
+    "total": 4
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 4,
+    "started_at": "2026-02-03T22:59:26.976392"
+  },
+  "last_update": "2026-02-03T23:09:20.121008"
+}
