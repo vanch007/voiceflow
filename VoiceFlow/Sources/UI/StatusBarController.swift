@@ -2,6 +2,7 @@ import AppKit
 
 final class StatusBarController {
     var onQuit: (() -> Void)?
+    var onSettings: (() -> Void)?
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
 
     private let statusItem: NSStatusItem
@@ -98,6 +99,10 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        let settingsItem = NSMenuItem(title: "설정...", action: #selector(settingsAction), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
+
         let quitItem = NSMenuItem(title: "종료", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -116,6 +121,10 @@ final class StatusBarController {
         UserDefaults.standard.set(deviceID, forKey: "selectedAudioDevice")
         onDeviceSelected?(deviceID)
         buildMenu()
+    }
+
+    @objc private func settingsAction() {
+        onSettings?()
     }
 
     @objc private func quitAction() {
