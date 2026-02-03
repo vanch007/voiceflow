@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeyManager: HotkeyManager!
     private var audioRecorder: AudioRecorder!
     private var asrClient: ASRClient!
+    private var dictionaryManager: DictionaryManager!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
     private var isRecording = false
@@ -46,9 +47,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
         asrClient = ASRClient()
+        dictionaryManager = DictionaryManager()
         audioRecorder = AudioRecorder()
         audioRecorder.onAudioChunk = { [weak self] data in
             self?.asrClient.sendAudioChunk(data)
+        }
+
+        // Wire DictionaryManager to ASRClient for real-time updates
+        dictionaryManager.onDictionaryChanged = { [weak self] words in
+            self?.asrClient.sendDictionaryUpdate(words)
         }
 
         asrClient.onTranscriptionResult = { [weak self] text in
@@ -96,7 +103,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Wait briefly for ASR server to start, then connect
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
-            self?.asrClient.connect()
+            guard let self else { return }
+            self.asrClient.connect()
+            // Send initial dictionary to server after connection
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                let words = self.dictionaryManager.getWords()
+                if !words.isEmpty {
+                    self.asrClient.sendDictionaryUpdate(words)
+                    NSLog("[AppDelegate] Sent initial dictionary with \(words.count) words to ASR server")
+                }
+            }
         }
     }
 
