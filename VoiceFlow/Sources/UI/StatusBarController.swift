@@ -3,6 +3,7 @@ import AppKit
 final class StatusBarController {
     var onQuit: (() -> Void)?
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
+    var onDictionaryOpen: (() -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
@@ -98,6 +99,14 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Custom Dictionary menu item
+        let dictItem = NSMenuItem(title: "사용자 사전", action: #selector(openDictionary), keyEquivalent: "")
+        dictItem.target = self
+        dictItem.image = NSImage(systemSymbolName: "book.closed", accessibilityDescription: nil)
+        menu.addItem(dictItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(title: "종료", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -116,6 +125,10 @@ final class StatusBarController {
         UserDefaults.standard.set(deviceID, forKey: "selectedAudioDevice")
         onDeviceSelected?(deviceID)
         buildMenu()
+    }
+
+    @objc private func openDictionary() {
+        onDictionaryOpen?()
     }
 
     @objc private func quitAction() {
