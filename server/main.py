@@ -18,6 +18,27 @@ HOST = "localhost"
 PORT = 9876
 
 model: Qwen3ASRModel = None
+plugins: list = []
+
+
+def register_plugin(plugin_func):
+    """Register a plugin function to process transcription results.
+
+    Plugin function should accept text (str) and return modified text (str).
+    """
+    plugins.append(plugin_func)
+    logger.info(f"Registered plugin: {plugin_func.__name__}")
+
+
+def run_plugins(text: str) -> str:
+    """Run all registered plugins on the transcribed text."""
+    result = text
+    for plugin in plugins:
+        try:
+            result = plugin(result)
+        except Exception as e:
+            logger.error(f"Plugin {plugin.__name__} failed: {e}")
+    return result
 
 
 def load_model():
@@ -76,6 +97,10 @@ async def handle_client(websocket):
                         text = str(result)
 
                     logger.info(f"Transcription ({elapsed:.2f}s): {text}")
+
+                    # Run plugin hooks on transcribed text
+                    text = run_plugins(text)
+
                     await websocket.send(json.dumps({"type": "final", "text": text}))
 
             elif isinstance(message, bytes) and recording:
