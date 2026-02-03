@@ -40,7 +40,16 @@ final class SettingsManager {
 
     var language: String {
         get {
-            UserDefaults.standard.string(forKey: Keys.language) ?? Defaults.language
+            guard let value = UserDefaults.standard.string(forKey: Keys.language) else {
+                return Defaults.language
+            }
+            // Validate the stored value - if corrupted, fall back to default
+            let supportedLanguages = ["ko", "en", "zh"]
+            if !supportedLanguages.contains(value) {
+                logCorruptedSetting(key: Keys.language, value: value, defaultValue: Defaults.language)
+                return Defaults.language
+            }
+            return value
         }
         set {
             guard validateLanguage(newValue) else { return }
@@ -51,7 +60,12 @@ final class SettingsManager {
 
     var soundEffectsEnabled: Bool {
         get {
-            if UserDefaults.standard.object(forKey: Keys.soundEffectsEnabled) == nil {
+            guard let object = UserDefaults.standard.object(forKey: Keys.soundEffectsEnabled) else {
+                return Defaults.soundEffectsEnabled
+            }
+            // Validate type - if not a Bool, fall back to default
+            guard object is Bool else {
+                logCorruptedSetting(key: Keys.soundEffectsEnabled, value: object, defaultValue: Defaults.soundEffectsEnabled)
                 return Defaults.soundEffectsEnabled
             }
             return UserDefaults.standard.bool(forKey: Keys.soundEffectsEnabled)
@@ -66,7 +80,15 @@ final class SettingsManager {
 
     var activationShortcut: String {
         get {
-            UserDefaults.standard.string(forKey: Keys.activationShortcut) ?? Defaults.activationShortcut
+            guard let value = UserDefaults.standard.string(forKey: Keys.activationShortcut) else {
+                return Defaults.activationShortcut
+            }
+            // Validate the stored value - if empty or invalid, fall back to default
+            if value.isEmpty {
+                logCorruptedSetting(key: Keys.activationShortcut, value: value, defaultValue: Defaults.activationShortcut)
+                return Defaults.activationShortcut
+            }
+            return value
         }
         set {
             guard validateShortcut(newValue, currentKey: Keys.activationShortcut) else { return }
@@ -79,7 +101,12 @@ final class SettingsManager {
 
     var voiceEnabled: Bool {
         get {
-            if UserDefaults.standard.object(forKey: Keys.voiceEnabled) == nil {
+            guard let object = UserDefaults.standard.object(forKey: Keys.voiceEnabled) else {
+                return Defaults.voiceEnabled
+            }
+            // Validate type - if not a Bool, fall back to default
+            guard object is Bool else {
+                logCorruptedSetting(key: Keys.voiceEnabled, value: object, defaultValue: Defaults.voiceEnabled)
                 return Defaults.voiceEnabled
             }
             return UserDefaults.standard.bool(forKey: Keys.voiceEnabled)
@@ -92,7 +119,16 @@ final class SettingsManager {
 
     var voiceLanguage: String {
         get {
-            UserDefaults.standard.string(forKey: Keys.voiceLanguage) ?? Defaults.voiceLanguage
+            guard let value = UserDefaults.standard.string(forKey: Keys.voiceLanguage) else {
+                return Defaults.voiceLanguage
+            }
+            // Validate the stored value - if corrupted, fall back to default
+            let supportedLanguages = ["ko", "en", "zh"]
+            if !supportedLanguages.contains(value) {
+                logCorruptedSetting(key: Keys.voiceLanguage, value: value, defaultValue: Defaults.voiceLanguage)
+                return Defaults.voiceLanguage
+            }
+            return value
         }
         set {
             guard validateLanguage(newValue) else { return }
@@ -103,10 +139,21 @@ final class SettingsManager {
 
     var voiceSensitivity: Double {
         get {
-            if UserDefaults.standard.object(forKey: Keys.voiceSensitivity) == nil {
+            guard let object = UserDefaults.standard.object(forKey: Keys.voiceSensitivity) else {
                 return Defaults.voiceSensitivity
             }
-            return UserDefaults.standard.double(forKey: Keys.voiceSensitivity)
+            // Validate type - if not a number, fall back to default
+            guard object is NSNumber else {
+                logCorruptedSetting(key: Keys.voiceSensitivity, value: object, defaultValue: Defaults.voiceSensitivity)
+                return Defaults.voiceSensitivity
+            }
+            let value = UserDefaults.standard.double(forKey: Keys.voiceSensitivity)
+            // Validate range - if out of bounds, fall back to default
+            if value < 0.0 || value > 1.0 {
+                logCorruptedSetting(key: Keys.voiceSensitivity, value: value, defaultValue: Defaults.voiceSensitivity)
+                return Defaults.voiceSensitivity
+            }
+            return value
         }
         set {
             let validated = max(0.0, min(1.0, newValue))
@@ -259,6 +306,13 @@ final class SettingsManager {
         } else {
             return String(format: template, arguments: args)
         }
+    }
+
+    // MARK: - Corruption Handling
+
+    /// Log corrupted setting and return default value
+    private func logCorruptedSetting(key: String, value: Any, defaultValue: Any) {
+        NSLog("⚠️ SettingsManager: Corrupted setting detected for key '\(key)'. Found: '\(value)', using default: '\(defaultValue)'")
     }
 
     // MARK: - Notifications
