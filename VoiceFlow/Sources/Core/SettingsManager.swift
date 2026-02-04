@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import ServiceManagement
+import AppKit
 import os
 
 private let logger = Logger(subsystem: "com.voiceflow.app", category: "SettingsManager")
@@ -97,6 +98,10 @@ enum ASRLanguage: String, Codable, CaseIterable {
 final class SettingsManager: ObservableObject {
     static let shared = SettingsManager()
 
+    // MARK: - Notification Names
+
+    static let settingsDidChangeNotification = Notification.Name("SettingsDidChange")
+
     @Published var hotkeyEnabled: Bool {
         didSet {
             UserDefaults.standard.set(hotkeyEnabled, forKey: Keys.hotkeyEnabled)
@@ -137,11 +142,122 @@ final class SettingsManager: ObservableObject {
         }
     }
 
+    // MARK: - General Settings (from 016- branch)
+
+    var language: String {
+        get {
+            guard let value = UserDefaults.standard.string(forKey: Keys.language) else {
+                return Defaults.language
+            }
+            let supportedLanguages = ["ko", "en", "zh"]
+            if !supportedLanguages.contains(value) {
+                logCorruptedSetting(key: Keys.language, value: value, defaultValue: Defaults.language)
+                return Defaults.language
+            }
+            return value
+        }
+        set {
+            guard validateLanguage(newValue) else { return }
+            UserDefaults.standard.set(newValue, forKey: Keys.language)
+            notifySettingsChanged(category: "general", key: "language", value: newValue)
+        }
+    }
+
+    var soundEffectsEnabled: Bool {
+        get {
+            guard let object = UserDefaults.standard.object(forKey: Keys.soundEffectsEnabled) else {
+                return Defaults.soundEffectsEnabled
+            }
+            guard object is Bool else {
+                logCorruptedSetting(key: Keys.soundEffectsEnabled, value: object, defaultValue: Defaults.soundEffectsEnabled)
+                return Defaults.soundEffectsEnabled
+            }
+            return UserDefaults.standard.bool(forKey: Keys.soundEffectsEnabled)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Keys.soundEffectsEnabled)
+            notifySettingsChanged(category: "general", key: "soundEffectsEnabled", value: newValue)
+        }
+    }
+
+    var voiceEnabled: Bool {
+        get {
+            guard let object = UserDefaults.standard.object(forKey: Keys.voiceEnabled) else {
+                return Defaults.voiceEnabled
+            }
+            guard object is Bool else {
+                logCorruptedSetting(key: Keys.voiceEnabled, value: object, defaultValue: Defaults.voiceEnabled)
+                return Defaults.voiceEnabled
+            }
+            return UserDefaults.standard.bool(forKey: Keys.voiceEnabled)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Keys.voiceEnabled)
+            notifySettingsChanged(category: "voice", key: "enabled", value: newValue)
+        }
+    }
+
+    var voiceLanguage: String {
+        get {
+            guard let value = UserDefaults.standard.string(forKey: Keys.voiceLanguage) else {
+                return Defaults.voiceLanguage
+            }
+            let supportedLanguages = ["ko", "en", "zh"]
+            if !supportedLanguages.contains(value) {
+                logCorruptedSetting(key: Keys.voiceLanguage, value: value, defaultValue: Defaults.voiceLanguage)
+                return Defaults.voiceLanguage
+            }
+            return value
+        }
+        set {
+            guard validateLanguage(newValue) else { return }
+            UserDefaults.standard.set(newValue, forKey: Keys.voiceLanguage)
+            notifySettingsChanged(category: "voice", key: "language", value: newValue)
+        }
+    }
+
+    var voiceSensitivity: Double {
+        get {
+            guard let object = UserDefaults.standard.object(forKey: Keys.voiceSensitivity) else {
+                return Defaults.voiceSensitivity
+            }
+            guard object is NSNumber else {
+                logCorruptedSetting(key: Keys.voiceSensitivity, value: object, defaultValue: Defaults.voiceSensitivity)
+                return Defaults.voiceSensitivity
+            }
+            let value = UserDefaults.standard.double(forKey: Keys.voiceSensitivity)
+            if value < 0.0 || value > 1.0 {
+                logCorruptedSetting(key: Keys.voiceSensitivity, value: value, defaultValue: Defaults.voiceSensitivity)
+                return Defaults.voiceSensitivity
+            }
+            return value
+        }
+        set {
+            let validated = max(0.0, min(1.0, newValue))
+            UserDefaults.standard.set(validated, forKey: Keys.voiceSensitivity)
+            notifySettingsChanged(category: "voice", key: "sensitivity", value: validated)
+        }
+    }
+
     private enum Keys {
         static let hotkeyEnabled = "hotkeyEnabled"
         static let modelSize = "modelSize"
         static let autoLaunchEnabled = "autoLaunchEnabled"
         static let asrLanguage = "asrLanguage"
+        // General settings keys
+        static let language = "settings.general.language"
+        static let soundEffectsEnabled = "settings.general.soundEffectsEnabled"
+        static let voiceEnabled = "settings.voice.enabled"
+        static let voiceLanguage = "settings.voice.language"
+        static let voiceSensitivity = "settings.voice.sensitivity"
+    }
+
+    private enum Defaults {
+        static let language = "ko"
+        static let soundEffectsEnabled = true
+        static let voiceEnabled = true
+        static let voiceLanguage = "ko"
+        static let voiceSensitivity = 0.5
     }
 
     private init() {
@@ -170,10 +286,24 @@ final class SettingsManager: ObservableObject {
             self.asrLanguage = .auto
         }
 
+        // Register defaults for general settings
+        registerDefaults()
+
         NSLog("[SettingsManager] Initialized with hotkeyEnabled=\(hotkeyEnabled), modelSize=\(modelSize.rawValue), autoLaunchEnabled=\(autoLaunchEnabled), textPolishEnabled=\(textPolishEnabled), asrLanguage=\(asrLanguage.rawValue)")
 
         // Apply auto-launch setting on initialization
         applyAutoLaunchSetting()
+    }
+
+    private func registerDefaults() {
+        let defaults: [String: Any] = [
+            Keys.language: Defaults.language,
+            Keys.soundEffectsEnabled: Defaults.soundEffectsEnabled,
+            Keys.voiceEnabled: Defaults.voiceEnabled,
+            Keys.voiceLanguage: Defaults.voiceLanguage,
+            Keys.voiceSensitivity: Defaults.voiceSensitivity
+        ]
+        UserDefaults.standard.register(defaults: defaults)
     }
 
     // MARK: - Auto-Launch
@@ -204,5 +334,94 @@ final class SettingsManager: ObservableObject {
         } else {
             NSLog("[SettingsManager] Auto-launch requires macOS 13.0 or later")
         }
+    }
+
+    // MARK: - Validation
+
+    private func validateLanguage(_ language: String) -> Bool {
+        let supportedLanguages = ["ko", "en", "zh"]
+        guard supportedLanguages.contains(language) else {
+            showValidationError(
+                title: localizedString(key: "validation.error.title"),
+                message: localizedString(key: "validation.error.unsupportedLanguage", language)
+            )
+            return false
+        }
+        return true
+    }
+
+    private func showValidationError(title: String, message: String) {
+        DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = title
+            alert.informativeText = message
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: self.localizedString(key: "validation.error.ok"))
+            alert.runModal()
+        }
+    }
+
+    private func localizedString(key: String, _ args: CVarArg...) -> String {
+        let currentLanguage = language
+
+        let translations: [String: [String: String]] = [
+            "validation.error.title": [
+                "ko": "설정 오류",
+                "en": "Settings Error",
+                "zh": "设置错误"
+            ],
+            "validation.error.unsupportedLanguage": [
+                "ko": "지원하지 않는 언어입니다: %@",
+                "en": "Unsupported language: %@",
+                "zh": "不支持的语言: %@"
+            ],
+            "validation.error.ok": [
+                "ko": "확인",
+                "en": "OK",
+                "zh": "确定"
+            ]
+        ]
+
+        guard let languageDict = translations[key],
+              let template = languageDict[currentLanguage] ?? languageDict["en"] else {
+            return key
+        }
+
+        if args.isEmpty {
+            return template
+        } else {
+            return String(format: template, arguments: args)
+        }
+    }
+
+    // MARK: - Corruption Handling
+
+    private func logCorruptedSetting(key: String, value: Any, defaultValue: Any) {
+        NSLog("⚠️ SettingsManager: Corrupted setting detected for key '\(key)'. Found: '\(value)', using default: '\(defaultValue)'")
+    }
+
+    // MARK: - Notifications
+
+    private func notifySettingsChanged(category: String, key: String, value: Any) {
+        let userInfo: [String: Any] = [
+            "category": category,
+            "key": key,
+            "value": value
+        ]
+        NotificationCenter.default.post(
+            name: SettingsManager.settingsDidChangeNotification,
+            object: self,
+            userInfo: userInfo
+        )
+    }
+
+    // MARK: - Reset
+
+    func resetToDefaults() {
+        language = Defaults.language
+        soundEffectsEnabled = Defaults.soundEffectsEnabled
+        voiceEnabled = Defaults.voiceEnabled
+        voiceLanguage = Defaults.voiceLanguage
+        voiceSensitivity = Defaults.voiceSensitivity
     }
 }

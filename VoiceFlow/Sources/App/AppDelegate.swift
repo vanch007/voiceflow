@@ -141,6 +141,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pluginManager = PluginManager.shared
         pluginManager.discoverPlugins()
 
+        // Observe settings changes for real-time application
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSettingsChanged(_:)),
+            name: SettingsManager.settingsDidChangeNotification,
+            object: nil
+        )
+
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
 
@@ -274,7 +282,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         pluginManager.unloadAll()
+        NotificationCenter.default.removeObserver(self)
         stopASRServer()
+    }
+
+    // MARK: - Settings Observer
+
+    @objc private func handleSettingsChanged(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let category = userInfo["category"] as? String,
+              let key = userInfo["key"] as? String else {
+            return
+        }
+
+        if category == "general" && key == "soundEffectsEnabled" {
+            if let enabled = userInfo["value"] as? Bool {
+                NSLog("[Settings] Sound effects %@", enabled ? "enabled" : "disabled")
+            }
+        }
     }
 
     // MARK: - ASR Server Management
@@ -372,6 +397,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func playSound(_ soundID: SystemSoundID, name: String) {
+        // Check if sound effects are enabled
+        guard SettingsManager.shared.soundEffectsEnabled else {
+            NSLog("[Audio] %@ skipped (sound effects disabled)", name)
+            return
+        }
+
         guard soundID != 0 else {
             NSLog("[Audio] WARNING: %@ not loaded, cannot play", name)
             return
@@ -391,6 +422,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startRecording() {
+        // Check if voice recognition is enabled
+        guard SettingsManager.shared.voiceEnabled else {
+            NSLog("[Recording] Voice recognition is disabled")
+            showVoiceDisabledAlert()
+            return
+        }
+
         isRecording = true
         recordingStartTime = Date()
         NSLog("[Recording] Starting recording, playing start sound")
@@ -399,6 +437,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController.updateRecordingStatus(recording: true)
         asrClient.sendStart()
         audioRecorder.startRecording()
+    }
+
+    private func showVoiceDisabledAlert() {
+        let alert = NSAlert()
+        alert.messageText = localizedString("Voice Recognition Disabled", language: SettingsManager.shared.language)
+        alert.informativeText = localizedString("Please enable voice recognition in Settings to use this feature.", language: SettingsManager.shared.language)
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: localizedString("OK", language: SettingsManager.shared.language))
+        alert.runModal()
+    }
+
+    private func localizedString(_ key: String, language: String) -> String {
+        switch language {
+        case "ko":
+            switch key {
+            case "Voice Recognition Disabled": return "음성 인식 비활성화됨"
+            case "Please enable voice recognition in Settings to use this feature.": return "이 기능을 사용하려면 설정에서 음성 인식을 활성화하세요."
+            case "OK": return "확인"
+            default: return key
+            }
+        case "zh":
+            switch key {
+            case "Voice Recognition Disabled": return "语音识别已禁用"
+            case "Please enable voice recognition in Settings to use this feature.": return "请在设置中启用语音识别以使用此功能。"
+            case "OK": return "确定"
+            default: return key
+            }
+        default: // "en"
+            return key
+        }
     }
 
     private func stopRecording() {

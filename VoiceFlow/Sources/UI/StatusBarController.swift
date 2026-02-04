@@ -17,6 +17,101 @@ final class StatusBarController {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         updateIcon()
         buildMenu()
+
+        // Observe language changes for real-time menu updates
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleLanguageChange(_:)),
+            name: SettingsManager.settingsDidChangeNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - Localization Helper
+
+    private func localized(_ key: String) -> String {
+        let language = SettingsManager.shared.language
+        let strings: [String: [String: String]] = [
+            "asr_connected": [
+                "ko": "ASR 서버: 연결됨",
+                "en": "ASR Server: Connected",
+                "zh": "ASR 服务器：已连接"
+            ],
+            "asr_disconnected": [
+                "ko": "ASR 서버: 끊어짐",
+                "en": "ASR Server: Disconnected",
+                "zh": "ASR 服务器：已断开"
+            ],
+            "system_default": [
+                "ko": "시스템 기본값",
+                "en": "System Default",
+                "zh": "系统默认"
+            ],
+            "microphone": [
+                "ko": "마이크",
+                "en": "Microphone",
+                "zh": "麦克风"
+            ],
+            "settings": [
+                "ko": "설정...",
+                "en": "Settings...",
+                "zh": "设置..."
+            ],
+            "quit": [
+                "ko": "종료",
+                "en": "Quit",
+                "zh": "退出"
+            ],
+            "plugins": [
+                "ko": "플러그인",
+                "en": "Plugins",
+                "zh": "插件"
+            ],
+            "no_plugins": [
+                "ko": "플러그인 없음",
+                "en": "No Plugins",
+                "zh": "无插件"
+            ],
+            "dictionary": [
+                "ko": "사용자 사전",
+                "en": "Custom Dictionary",
+                "zh": "自定义词典"
+            ],
+            "model_info": [
+                "ko": "모델: Qwen3-ASR-0.6B (MLX)",
+                "en": "Model: Qwen3-ASR-0.6B (MLX)",
+                "zh": "模型: Qwen3-ASR-0.6B (MLX)"
+            ],
+            "recording_history": [
+                "ko": "녹음 기록",
+                "en": "Recording History",
+                "zh": "录音记录"
+            ],
+            "text_replacement": [
+                "ko": "텍스트 대체...",
+                "en": "Text Replacement...",
+                "zh": "文本替换..."
+            ]
+        ]
+
+        return strings[key]?[language] ?? strings[key]?["zh"] ?? key
+    }
+
+    @objc private func handleLanguageChange(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let category = userInfo["category"] as? String,
+              let key = userInfo["key"] as? String else {
+            return
+        }
+
+        // Rebuild menu when language changes
+        if category == "general" && key == "language" {
+            buildMenu()
+        }
     }
 
     func updateConnectionStatus(connected: Bool) {
@@ -48,8 +143,8 @@ final class StatusBarController {
     private func buildMenu() {
         let menu = NSMenu()
 
-        // ASR 服务器连接状态
-        let statusTitle = isConnected ? "ASR 服务器: 已连接" : "ASR 服务器: 已断开"
+        // ASR server status
+        let statusTitle = isConnected ? localized("asr_connected") : localized("asr_disconnected")
         let connItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
         connItem.isEnabled = false
         let statusImage = NSImage(
@@ -73,7 +168,7 @@ final class StatusBarController {
         let devices = AudioRecorder.availableDevices()
 
         // "System Default" option
-        let defaultItem = NSMenuItem(title: "系统默认", action: #selector(selectDefaultDevice), keyEquivalent: "")
+        let defaultItem = NSMenuItem(title: localized("system_default"), action: #selector(selectDefaultDevice), keyEquivalent: "")
         defaultItem.target = self
         // Check if no device is explicitly selected (using default)
         if UserDefaults.standard.string(forKey: "selectedAudioDevice") == nil {
@@ -92,10 +187,11 @@ final class StatusBarController {
             micSubmenu.addItem(item)
         }
 
-        let micItem = NSMenuItem(title: "麦克风", action: nil, keyEquivalent: "")
+        let micBaseTitle = localized("microphone")
+        let micItem = NSMenuItem(title: micBaseTitle, action: nil, keyEquivalent: "")
         micItem.image = NSImage(systemSymbolName: "mic.badge.plus", accessibilityDescription: nil)
         if let name = activeDeviceName {
-            micItem.title = "麦克风: \(name)"
+            micItem.title = "\(micBaseTitle): \(name)"
         }
         micItem.submenu = micSubmenu
         menu.addItem(micItem)
@@ -107,7 +203,7 @@ final class StatusBarController {
         let plugins = PluginManager.shared.getAllPlugins()
 
         if plugins.isEmpty {
-            let emptyItem = NSMenuItem(title: "无插件", action: nil, keyEquivalent: "")
+            let emptyItem = NSMenuItem(title: localized("no_plugins"), action: nil, keyEquivalent: "")
             emptyItem.isEnabled = false
             pluginsSubmenu.addItem(emptyItem)
         } else {
@@ -122,7 +218,7 @@ final class StatusBarController {
             }
         }
 
-        let pluginsItem = NSMenuItem(title: "插件", action: nil, keyEquivalent: "")
+        let pluginsItem = NSMenuItem(title: localized("plugins"), action: nil, keyEquivalent: "")
         pluginsItem.image = NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: nil)
         pluginsItem.submenu = pluginsSubmenu
         menu.addItem(pluginsItem)
@@ -130,7 +226,7 @@ final class StatusBarController {
         menu.addItem(NSMenuItem.separator())
 
         // Custom Dictionary menu item
-        let dictItem = NSMenuItem(title: "自定义词典", action: #selector(openDictionary), keyEquivalent: "")
+        let dictItem = NSMenuItem(title: localized("dictionary"), action: #selector(openDictionary), keyEquivalent: "")
         dictItem.target = self
         dictItem.image = NSImage(systemSymbolName: "book.closed", accessibilityDescription: nil)
         menu.addItem(dictItem)
@@ -138,29 +234,29 @@ final class StatusBarController {
         menu.addItem(NSMenuItem.separator())
 
         // 模型信息（MLX版本只支持一个模型）
-        let modelInfoItem = NSMenuItem(title: "模型: Qwen3-ASR-0.6B (MLX)", action: nil, keyEquivalent: "")
+        let modelInfoItem = NSMenuItem(title: localized("model_info"), action: nil, keyEquivalent: "")
         modelInfoItem.isEnabled = false
         menu.addItem(modelInfoItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let historyItem = NSMenuItem(title: "录音记录", action: #selector(showHistoryAction), keyEquivalent: "h")
+        let historyItem = NSMenuItem(title: localized("recording_history"), action: #selector(showHistoryAction), keyEquivalent: "h")
         historyItem.target = self
         menu.addItem(historyItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let settingsItem = NSMenuItem(title: "设置", action: #selector(settingsAction), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: localized("settings"), action: #selector(settingsAction), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
 
-        let textReplacementItem = NSMenuItem(title: "文本替换...", action: #selector(textReplacementAction), keyEquivalent: "")
+        let textReplacementItem = NSMenuItem(title: localized("text_replacement"), action: #selector(textReplacementAction), keyEquivalent: "")
         textReplacementItem.target = self
         menu.addItem(textReplacementItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let quitItem = NSMenuItem(title: "退出", action: #selector(quitAction), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: localized("quit"), action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
 

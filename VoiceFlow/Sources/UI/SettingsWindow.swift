@@ -5,7 +5,7 @@ final class SettingsWindow {
     private var window: NSWindow?
     private let settingsManager: SettingsManager
 
-    init(settingsManager: SettingsManager) {
+    init(settingsManager: SettingsManager = .shared) {
         self.settingsManager = settingsManager
     }
 

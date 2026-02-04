@@ -11,12 +11,21 @@ final class ASRClient {
     private var isConnected = false
     private var reconnectTimer: Timer?
     private let reconnectInterval: TimeInterval = 3.0
+    private var currentLanguage: String = SettingsManager.shared.voiceLanguage
 
     // 引用 SettingsManager 获取配置
     private let settingsManager: SettingsManager
 
     init(settingsManager: SettingsManager = .shared) {
         self.settingsManager = settingsManager
+
+        // Observe voice settings changes
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSettingsChanged(_:)),
+            name: SettingsManager.settingsDidChangeNotification,
+            object: nil
+        )
     }
 
     func connect() {
@@ -160,7 +169,26 @@ final class ASRClient {
         reconnectTimer = nil
     }
 
+    // MARK: - Settings Observer
+
+    @objc private func handleSettingsChanged(_ notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let category = userInfo["category"] as? String,
+              let key = userInfo["key"] as? String else {
+            return
+        }
+
+        // Update language when voice language setting changes
+        if category == "voice" && key == "language" {
+            if let language = userInfo["value"] as? String {
+                currentLanguage = language
+                NSLog("[ASRClient] Voice language changed to: \(language)")
+            }
+        }
+    }
+
     deinit {
+        NotificationCenter.default.removeObserver(self)
         stopReconnectTimer()
         disconnect()
     }
