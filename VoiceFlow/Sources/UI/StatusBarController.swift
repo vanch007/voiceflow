@@ -101,6 +101,33 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Plugins submenu
+        let pluginsSubmenu = NSMenu()
+        let plugins = PluginManager.shared.getAllPlugins()
+
+        if plugins.isEmpty {
+            let emptyItem = NSMenuItem(title: "无插件", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            pluginsSubmenu.addItem(emptyItem)
+        } else {
+            for plugin in plugins {
+                let item = NSMenuItem(title: plugin.manifest.name, action: #selector(togglePlugin(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = plugin.manifest.id
+                if plugin.isEnabled {
+                    item.state = .on
+                }
+                pluginsSubmenu.addItem(item)
+            }
+        }
+
+        let pluginsItem = NSMenuItem(title: "插件", action: nil, keyEquivalent: "")
+        pluginsItem.image = NSImage(systemSymbolName: "puzzlepiece.extension", accessibilityDescription: nil)
+        pluginsItem.submenu = pluginsSubmenu
+        menu.addItem(pluginsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         // 模型信息（MLX版本只支持一个模型）
         let modelInfoItem = NSMenuItem(title: "模型: Qwen3-ASR-0.6B (MLX)", action: nil, keyEquivalent: "")
         modelInfoItem.isEnabled = false
@@ -153,6 +180,20 @@ final class StatusBarController {
         guard let deviceID = sender.representedObject as? String else { return }
         UserDefaults.standard.set(deviceID, forKey: "selectedAudioDevice")
         onDeviceSelected?(deviceID)
+        buildMenu()
+    }
+
+    @objc private func togglePlugin(_ sender: NSMenuItem) {
+        guard let pluginID = sender.representedObject as? String else { return }
+
+        if let plugin = PluginManager.shared.getPlugin(pluginID) {
+            if plugin.isEnabled {
+                PluginManager.shared.disablePlugin(pluginID)
+            } else {
+                PluginManager.shared.enablePlugin(pluginID)
+            }
+        }
+
         buildMenu()
     }
 

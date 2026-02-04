@@ -24,6 +24,9 @@
 		A1000008 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000008 /* StatusBarController.swift */; };
 		A1000011 /* RecordingHistory.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000011 /* RecordingHistory.swift */; };
 		A1000012 /* HistoryWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000012 /* HistoryWindowController.swift */; };
+		A1000013 /* PluginAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000013 /* PluginAPI.swift */; };
+		A1000014 /* PluginLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000014 /* PluginLoader.swift */; };
+		A1000015 /* PluginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000015 /* PluginManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +49,9 @@
 		B1000010 /* VoiceFlow.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VoiceFlow.entitlements; sourceTree = "<group>"; };
 		B1000011 /* RecordingHistory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingHistory.swift; sourceTree = "<group>"; };
 		B1000012 /* HistoryWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryWindowController.swift; sourceTree = "<group>"; };
+		B1000013 /* PluginAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginAPI.swift; sourceTree = "<group>"; };
+		B1000014 /* PluginLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginLoader.swift; sourceTree = "<group>"; };
+		B1000015 /* PluginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginManager.swift; sourceTree = "<group>"; };
 		C1000001 /* VoiceFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -102,6 +108,9 @@
 				B1000005 /* ASRClient.swift */,
 				B1000006 /* TextInjector.swift */,
 				B1000011 /* RecordingHistory.swift */,
+				B1000013 /* PluginAPI.swift */,
+				B1000014 /* PluginLoader.swift */,
+				B1000015 /* PluginManager.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -208,6 +217,9 @@
 				508E63992F30759E0016E8CD /* SettingsWindowController.swift in Sources */,
 				508E639A2F30759E0016E8CD /* SettingsWindow.swift in Sources */,
 				A1000012 /* HistoryWindowController.swift in Sources */,
+				A1000013 /* PluginAPI.swift in Sources */,
+				A1000014 /* PluginLoader.swift in Sources */,
+				A1000015 /* PluginManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

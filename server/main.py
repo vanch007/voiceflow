@@ -28,6 +28,29 @@ config = {}
 import threading
 model_lock = threading.Lock()
 
+# Plugin system
+plugins: list = []
+
+
+def register_plugin(plugin_func):
+    """Register a plugin function to process transcription results.
+
+    Plugin function should accept text (str) and return modified text (str).
+    """
+    plugins.append(plugin_func)
+    logger.info(f"Registered plugin: {plugin_func.__name__}")
+
+
+def run_plugins(text: str) -> str:
+    """Run all registered plugins on the transcribed text."""
+    result = text
+    for plugin in plugins:
+        try:
+            result = plugin(result)
+        except Exception as e:
+            logger.error(f"Plugin {plugin.__name__} failed: {e}")
+    return result
+
 
 # 语言代码到 mlx-audio 语言名称的映射
 LANGUAGE_MAP = {
@@ -343,6 +366,9 @@ async def handle_client(websocket):
                     else:
                         polished_text = original_text
                         logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text} (polish disabled)")
+
+                    # Run plugin hooks on transcribed text
+                    polished_text = run_plugins(polished_text)
 
                     await websocket.send(json.dumps({
                         "type": "final",

@@ -101,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var historyWindowController: HistoryWindowController!
     private var replacementStorage: ReplacementStorage!
     private var replacementEngine: TextReplacementEngine!
+    private var pluginManager: PluginManager!
     private var isRecording = false
     private var asrServerProcess: Process?
     private var recordingStartTime: Date?
@@ -135,6 +136,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             replacementStorage: replacementStorage
         )
 
+        // Initialize plugin system
+        pluginManager = PluginManager.shared
+        pluginManager.discoverPlugins()
+
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
 
@@ -155,7 +160,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             DispatchQueue.main.async {
                 // Apply text replacement rules
-                let processedText = self.replacementEngine.applyReplacements(to: text)
+                var processedText = self.replacementEngine.applyReplacements(to: text)
+
+                // Process text through plugins
+                processedText = self.pluginManager.processText(processedText)
 
                 self.overlayPanel.showDone()
                 if !processedText.isEmpty {
@@ -249,6 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        pluginManager.unloadAll()
         stopASRServer()
     }
 

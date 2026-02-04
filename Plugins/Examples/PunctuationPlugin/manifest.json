@@ -1,0 +1,14 @@
+{
+  "$schema": "../../manifest-schema.json",
+  "id": "com.voiceflow.plugins.punctuation",
+  "name": "Punctuation Plugin",
+  "version": "1.0.0",
+  "author": "VoiceFlow Team",
+  "description": "Intelligently adds punctuation to transcribed text. Detects questions and statements, capitalizes first letters, and ensures proper sentence endings.",
+  "entrypoint": "punctuation_plugin.py",
+  "platform": "python",
+  "permissions": [
+    "text.read",
+    "text.modify"
+  ]
+}

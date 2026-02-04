@@ -26,14 +26,17 @@ final class TextInjector {
             return  // Don't attempt injection without permission
         }
 
+        // Process text through enabled plugins
+        let processedText = PluginManager.shared.processText(text)
+
         // Clipboard-based injection for Korean text compatibility
         let pasteboard = NSPasteboard.general
         let previousContents = pasteboard.string(forType: .string)
         NSLog("[TextInjector] 📋 Previous clipboard saved")
 
         pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        NSLog("[TextInjector] 📋 Text copied to clipboard: \(text)")
+        pasteboard.setString(processedText, forType: .string)
+        NSLog("[TextInjector] 📋 Text copied to clipboard: \(processedText)")
 
         simulatePaste()
         NSLog("[TextInjector] ⌨️ Paste command sent (Cmd+V)")
