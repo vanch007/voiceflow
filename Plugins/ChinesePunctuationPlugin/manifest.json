@@ -5,7 +5,7 @@
   "author": "Voiceflow",
   "type": "punctuation-restoration",
   "language": "python",
-  "entry_point": "main.py",
+  "entry_point": "chinese_punctuation_plugin.py",
   "services": [
     {
       "name": "punctuation-restoration-service",
