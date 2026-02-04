@@ -109,8 +109,17 @@ final class PluginManager {
                 return
             }
 
+            // Python 插件由 server 端处理，Swift 端只标记状态不加载
+            guard info.manifest.platform == .swift || info.manifest.platform == .both else {
+                info.state = .enabled
+                NSLog("[PluginManager] Enabled Python plugin (server-side): \(info.manifest.name)")
+                DispatchQueue.main.async { self.onPluginStateChanged?(info) }
+                return
+            }
+
             if info.plugin == nil {
-                let pluginURL = self.pluginsDirectory.appendingPathComponent(info.manifest.id)
+                // 使用目录名而不是 manifest.id 来查找插件
+                let pluginURL = self.pluginsDirectory.appendingPathComponent(info.manifest.name)
                 self.pluginLoader.loadPlugin(
                     at: pluginURL,
                     manifest: info.manifest,
@@ -235,14 +244,10 @@ final class PluginManager {
             let data = try Data(contentsOf: manifestURL)
             let manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
 
-            // Validate platform compatibility
-            guard manifest.platform == .swift || manifest.platform == .both else {
-                NSLog("[PluginManager] Skipping non-Swift plugin: \(manifest.name)")
-                return nil
-            }
-
+            // 显示所有插件（包括 Python 插件），但只有 Swift/both 平台的插件可以在客户端执行
+            // Python 插件由 server 端的 plugin_loader.py 处理
             let info = PluginInfo(manifest: manifest, state: .disabled)
-            NSLog("[PluginManager] Loaded manifest for plugin: \(manifest.name) v\(manifest.version)")
+            NSLog("[PluginManager] Loaded manifest for plugin: \(manifest.name) v\(manifest.version) (platform: \(manifest.platform.rawValue))")
             return info
         } catch {
             NSLog("[PluginManager] Failed to load manifest from \(pluginURL.lastPathComponent): \(error)")
@@ -309,17 +314,13 @@ final class PluginManager {
             let data = try Data(contentsOf: manifestURL)
             let manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
 
-            // Validate platform compatibility
-            guard manifest.platform == .swift || manifest.platform == .both else {
-                NSLog("[PluginManager] Skipping non-Swift plugin: \(manifest.name)")
-                return
-            }
-
+            // 显示所有插件（包括 Python 插件）
+            // Python 插件由 server 端处理，Swift 端只显示不执行
             let info = PluginInfo(manifest: manifest, state: .disabled)
             queue.async { [weak self] in
                 guard let self = self else { return }
                 self.plugins[manifest.id] = info
-                NSLog("[PluginManager] Loaded manifest for plugin: \(manifest.name) v\(manifest.version)")
+                NSLog("[PluginManager] Loaded manifest for plugin: \(manifest.name) v\(manifest.version) (platform: \(manifest.platform.rawValue))")
                 DispatchQueue.main.async { self.onPluginLoaded?(info) }
             }
 

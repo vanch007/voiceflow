@@ -4,6 +4,7 @@
 import asyncio
 import json
 import logging
+import shutil
 import time
 from pathlib import Path
 
@@ -30,6 +31,72 @@ model_lock = threading.Lock()
 
 # Plugin system
 plugins: list = []
+
+# 用户插件目录
+USER_PLUGINS_DIR = Path.home() / "Library" / "Application Support" / "VoiceFlow" / "Plugins"
+
+# 内置插件列表（相对于项目根目录的 Plugins/ 目录）
+BUNDLED_PLUGINS = [
+    "ChinesePunctuationPlugin",
+]
+
+
+def install_bundled_plugins():
+    """将内置插件安装到用户插件目录（首次运行或更新时）"""
+    # 获取项目根目录下的 Plugins 目录
+    server_dir = Path(__file__).parent
+    project_root = server_dir.parent
+    bundled_plugins_dir = project_root / "Plugins"
+
+    if not bundled_plugins_dir.exists():
+        logger.warning(f"⚠️ 内置插件目录不存在: {bundled_plugins_dir}")
+        return
+
+    # 确保用户插件目录存在
+    USER_PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
+
+    for plugin_name in BUNDLED_PLUGINS:
+        src_dir = bundled_plugins_dir / plugin_name
+        dst_dir = USER_PLUGINS_DIR / plugin_name
+
+        if not src_dir.exists():
+            logger.warning(f"⚠️ 内置插件不存在: {plugin_name}")
+            continue
+
+        # 检查是否需要安装或更新
+        src_manifest = src_dir / "manifest.json"
+        dst_manifest = dst_dir / "manifest.json"
+
+        should_install = False
+
+        if not dst_dir.exists():
+            should_install = True
+            logger.info(f"📦 首次安装插件: {plugin_name}")
+        elif src_manifest.exists() and dst_manifest.exists():
+            # 比较版本号决定是否更新
+            try:
+                with open(src_manifest, 'r', encoding='utf-8') as f:
+                    src_version = json.load(f).get("version", "0.0.0")
+                with open(dst_manifest, 'r', encoding='utf-8') as f:
+                    dst_version = json.load(f).get("version", "0.0.0")
+
+                if src_version > dst_version:
+                    should_install = True
+                    logger.info(f"📦 更新插件: {plugin_name} ({dst_version} -> {src_version})")
+            except Exception as e:
+                logger.warning(f"⚠️ 无法比较插件版本: {e}")
+
+        if should_install:
+            try:
+                # 删除旧版本（如果存在）
+                if dst_dir.exists():
+                    shutil.rmtree(dst_dir)
+
+                # 复制插件目录
+                shutil.copytree(src_dir, dst_dir)
+                logger.info(f"✅ 插件已安装: {plugin_name} -> {dst_dir}")
+            except Exception as e:
+                logger.error(f"❌ 插件安装失败 {plugin_name}: {e}")
 
 
 def register_plugin(plugin_func):
@@ -394,6 +461,7 @@ async def handle_client(websocket):
 
 async def main():
     load_config()
+    install_bundled_plugins()  # 安装内置插件到用户目录
     load_model()
     warmup_model()
 
