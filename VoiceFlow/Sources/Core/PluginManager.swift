@@ -52,15 +52,47 @@ final class PluginManager {
             return
         }
 
+        // Synchronously load manifests from directories
+        var loadedInfos: [PluginInfo] = []
         for pluginURL in contents {
             guard (try? pluginURL.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else {
                 continue
             }
-
-            loadPluginManifest(at: pluginURL)
+            if let info = loadPluginManifestSync(at: pluginURL) {
+                loadedInfos.append(info)
+            }
         }
 
-        NSLog("[PluginManager] Discovery complete. Found \(self.getAllPlugins().count) plugin(s)")
+        let loadedIDs = Set(loadedInfos.map { $0.manifest.id })
+
+        // Merge new/updated and remove stale entries on the queue
+        queue.async { [weak self] in
+            guard let self = self else { return }
+
+            // Add or update plugins, preserving existing state and instance
+            for info in loadedInfos {
+                if let existing = self.plugins[info.manifest.id] {
+                    info.state = existing.state
+                    info.plugin = existing.plugin
+                    self.plugins[info.manifest.id] = info
+                } else {
+                    self.plugins[info.manifest.id] = info
+                    DispatchQueue.main.async { self.onPluginLoaded?(info) }
+                }
+            }
+
+            // Remove plugins that no longer exist on disk
+            let existingIDs = Set(self.plugins.keys)
+            let removedIDs = existingIDs.subtracting(loadedIDs)
+            for id in removedIDs {
+                if let removedInfo = self.plugins.removeValue(forKey: id) {
+                    if removedInfo.isEnabled { removedInfo.plugin?.onUnload() }
+                    DispatchQueue.main.async { self.onPluginUnloaded?(id) }
+                }
+            }
+
+            NSLog("[PluginManager] Discovery complete. Found \(self.plugins.count) plugin(s)")
+        }
     }
 
     /// Enable a plugin by ID
@@ -190,6 +222,33 @@ final class PluginManager {
     }
 
     // MARK: - Private Methods
+
+    private func loadPluginManifestSync(at pluginURL: URL) -> PluginInfo? {
+        let manifestURL = pluginURL.appendingPathComponent("manifest.json")
+
+        guard fileManager.fileExists(atPath: manifestURL.path) else {
+            NSLog("[PluginManager] No manifest.json found in \(pluginURL.lastPathComponent)")
+            return nil
+        }
+
+        do {
+            let data = try Data(contentsOf: manifestURL)
+            let manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
+
+            // Validate platform compatibility
+            guard manifest.platform == .swift || manifest.platform == .both else {
+                NSLog("[PluginManager] Skipping non-Swift plugin: \(manifest.name)")
+                return nil
+            }
+
+            let info = PluginInfo(manifest: manifest, state: .disabled)
+            NSLog("[PluginManager] Loaded manifest for plugin: \(manifest.name) v\(manifest.version)")
+            return info
+        } catch {
+            NSLog("[PluginManager] Failed to load manifest from \(pluginURL.lastPathComponent): \(error)")
+            return nil
+        }
+    }
 
     private func startWatchingPluginsDirectory() {
         stopWatchingPluginsDirectory()
