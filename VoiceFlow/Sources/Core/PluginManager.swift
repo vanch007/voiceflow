@@ -10,6 +10,7 @@ final class PluginManager {
     private let pluginsDirectory: URL
     private let fileManager = FileManager.default
     private let pluginLoader = PluginLoader()
+    private let queue = DispatchQueue(label: "com.voiceflow.pluginmanager")
 
     var onPluginLoaded: ((PluginInfo) -> Void)?
     var onPluginUnloaded: ((String) -> Void)?
@@ -49,81 +50,98 @@ final class PluginManager {
             loadPluginManifest(at: pluginURL)
         }
 
-        NSLog("[PluginManager] Discovery complete. Found \(plugins.count) plugin(s)")
+        NSLog("[PluginManager] Discovery complete. Found \(self.getAllPlugins().count) plugin(s)")
     }
 
     /// Enable a plugin by ID
     func enablePlugin(_ pluginID: String) {
-        guard let info = plugins[pluginID] else {
-            NSLog("[PluginManager] Cannot enable plugin '\(pluginID)': not found")
-            return
-        }
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard let info = self.plugins[pluginID] else {
+                NSLog("[PluginManager] Cannot enable plugin '\(pluginID)': not found")
+                return
+            }
 
-        guard case .disabled = info.state else {
-            NSLog("[PluginManager] Plugin '\(pluginID)' is not in disabled state")
-            return
-        }
+            guard case .disabled = info.state else {
+                NSLog("[PluginManager] Plugin '\(pluginID)' is not in disabled state")
+                return
+            }
 
-        // Load plugin instance if not already loaded
-        if info.plugin == nil {
-            let pluginURL = pluginsDirectory.appendingPathComponent(info.manifest.id)
-            pluginLoader.loadPlugin(
-                at: pluginURL,
-                manifest: info.manifest,
-                onSuccess: { [weak self] plugin in
-                    info.plugin = plugin
-                    plugin.onLoad()
-                    info.state = .enabled
-                    NSLog("[PluginManager] Enabled plugin: \(info.manifest.name)")
-                    self?.onPluginStateChanged?(info)
-                },
-                onFailure: { [weak self] error in
-                    info.state = .failed(error)
-                    NSLog("[PluginManager] Failed to load plugin '\(pluginID)': \(error)")
-                    self?.onPluginStateChanged?(info)
-                }
-            )
-        } else {
-            info.plugin?.onLoad()
-            info.state = .enabled
-            NSLog("[PluginManager] Enabled plugin: \(info.manifest.name)")
-            onPluginStateChanged?(info)
+            if info.plugin == nil {
+                let pluginURL = self.pluginsDirectory.appendingPathComponent(info.manifest.id)
+                self.pluginLoader.loadPlugin(
+                    at: pluginURL,
+                    manifest: info.manifest,
+                    onSuccess: { [weak self] plugin in
+                        self?.queue.async {
+                            guard let self = self else { return }
+                            info.plugin = plugin
+                            plugin.onLoad()
+                            info.state = .enabled
+                            NSLog("[PluginManager] Enabled plugin: \(info.manifest.name)")
+                            DispatchQueue.main.async { self.onPluginStateChanged?(info) }
+                        }
+                    },
+                    onFailure: { [weak self] error in
+                        self?.queue.async {
+                            guard let self = self else { return }
+                            info.state = .failed(error)
+                            NSLog("[PluginManager] Failed to load plugin '\(pluginID)': \(error)")
+                            DispatchQueue.main.async { self.onPluginStateChanged?(info) }
+                        }
+                    }
+                )
+            } else {
+                info.plugin?.onLoad()
+                info.state = .enabled
+                NSLog("[PluginManager] Enabled plugin: \(info.manifest.name)")
+                DispatchQueue.main.async { self.onPluginStateChanged?(info) }
+            }
         }
     }
 
     /// Disable a plugin by ID
     func disablePlugin(_ pluginID: String) {
-        guard let info = plugins[pluginID] else {
-            NSLog("[PluginManager] Cannot disable plugin '\(pluginID)': not found")
-            return
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard let info = self.plugins[pluginID] else {
+                NSLog("[PluginManager] Cannot disable plugin '\(pluginID)': not found")
+                return
+            }
+
+            guard case .enabled = info.state else {
+                NSLog("[PluginManager] Plugin '\(pluginID)' is not in enabled state")
+                return
+            }
+
+            info.plugin?.onUnload()
+            info.state = .disabled
+            NSLog("[PluginManager] Disabled plugin: \(info.manifest.name)")
+            DispatchQueue.main.async { self.onPluginStateChanged?(info) }
         }
-
-        guard case .enabled = info.state else {
-            NSLog("[PluginManager] Plugin '\(pluginID)' is not in enabled state")
-            return
-        }
-
-        info.plugin?.onUnload()
-        info.state = .disabled
-
-        NSLog("[PluginManager] Disabled plugin: \(info.manifest.name)")
-        onPluginStateChanged?(info)
     }
 
     /// Process text through all enabled plugins
     func processText(_ text: String) -> String {
         var processedText = text
 
-        for (_, info) in plugins where info.isEnabled {
-            guard let plugin = info.plugin else { continue }
+        // Snapshot enabled plugins to avoid holding the queue while running plugin code
+        let enabledPlugins: [PluginInfo] = queue.sync {
+            return self.plugins.values.filter { $0.isEnabled && $0.plugin != nil }
+        }
 
+        for info in enabledPlugins {
+            guard let plugin = info.plugin else { continue }
             do {
                 processedText = plugin.onTranscription(processedText)
                 NSLog("[PluginManager] Plugin '\(info.manifest.name)' processed text")
             } catch {
                 NSLog("[PluginManager] Plugin '\(info.manifest.name)' failed to process text: \(error)")
-                info.state = .failed(error)
-                onPluginStateChanged?(info)
+                queue.async { [weak self] in
+                    guard let self = self else { return }
+                    info.state = .failed(error)
+                    DispatchQueue.main.async { self.onPluginStateChanged?(info) }
+                }
             }
         }
 
@@ -132,26 +150,32 @@ final class PluginManager {
 
     /// Get all discovered plugins
     func getAllPlugins() -> [PluginInfo] {
-        return Array(plugins.values)
+        return queue.sync { Array(plugins.values) }
     }
 
     /// Get a specific plugin by ID
     func getPlugin(_ pluginID: String) -> PluginInfo? {
-        return plugins[pluginID]
+        return queue.sync { plugins[pluginID] }
     }
 
     /// Unload all plugins
     func unloadAll() {
         NSLog("[PluginManager] Unloading all plugins...")
 
-        for (pluginID, info) in plugins {
+        // Take a snapshot of current plugins
+        let snapshot: [(String, PluginInfo)] = queue.sync { Array(self.plugins) }
+
+        for (pluginID, info) in snapshot {
             if info.isEnabled {
                 info.plugin?.onUnload()
             }
-            onPluginUnloaded?(pluginID)
+            DispatchQueue.main.async { self.onPluginUnloaded?(pluginID) }
         }
 
-        plugins.removeAll()
+        queue.async { [weak self] in
+            self?.plugins.removeAll()
+        }
+
         NSLog("[PluginManager] All plugins unloaded")
     }
 
@@ -176,10 +200,12 @@ final class PluginManager {
             }
 
             let info = PluginInfo(manifest: manifest, state: .disabled)
-            plugins[manifest.id] = info
-
-            NSLog("[PluginManager] Loaded manifest for plugin: \(manifest.name) v\(manifest.version)")
-            onPluginLoaded?(info)
+            queue.async { [weak self] in
+                guard let self = self else { return }
+                self.plugins[manifest.id] = info
+                NSLog("[PluginManager] Loaded manifest for plugin: \(manifest.name) v\(manifest.version)")
+                DispatchQueue.main.async { self.onPluginLoaded?(info) }
+            }
 
         } catch {
             NSLog("[PluginManager] Failed to load manifest from \(pluginURL.lastPathComponent): \(error)")
