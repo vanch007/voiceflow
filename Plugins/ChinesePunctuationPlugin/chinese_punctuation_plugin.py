@@ -143,16 +143,105 @@ class ChinesePunctuationPlugin(VoiceFlowPlugin):
         logger.info(f"Processing text ({len(text)} chars): {text[:50]}...")
 
         try:
-            # TODO: Implement actual punctuation restoration in Phase 3
-            # For now, just return the original text
-            # This will be wired up with model adapters in subtask-3-1
-            logger.warning("Punctuation restoration not yet implemented (pending Phase 2 and 3)")
+            # Lazy load model manager and adapters on first use
+            if self._model_manager is None:
+                logger.info("Lazy loading model manager...")
+                from .model_manager import ModelManager
+                self._model_manager = ModelManager()
+                logger.info("Model manager loaded successfully")
+
+            # Determine primary and fallback libraries based on configuration
+            primary_library = self.library
+            fallback_library = "transformers" if primary_library == "zhpr" else "zhpr"
+
+            logger.info(f"Using library strategy: primary={primary_library}, fallback={fallback_library}")
+
+            # Try primary library first
+            result = self._try_library(text, primary_library)
+            if result is not None:
+                logger.info(f"Successfully processed with {primary_library}")
+                return result
+
+            # Primary library failed, try fallback
+            logger.warning(f"{primary_library} failed, trying fallback: {fallback_library}")
+            result = self._try_library(text, fallback_library)
+            if result is not None:
+                logger.info(f"Successfully processed with fallback {fallback_library}")
+                return result
+
+            # Both libraries failed - return original text (non-destructive)
+            logger.error("Both libraries failed, returning original text")
             return text
 
         except Exception as e:
             logger.error(f"Error processing text: {e}", exc_info=True)
             # Non-destructive: return original text on any error
             return text
+
+    def _try_library(self, text: str, library: str) -> Optional[str]:
+        """
+        Try to restore punctuation using the specified library.
+
+        Args:
+            text: Unpunctuated Chinese text
+            library: Library name ('zhpr' or 'transformers')
+
+        Returns:
+            Punctuated text if successful, None if library failed/unavailable
+
+        This method handles:
+        - Lazy loading of adapters
+        - Library availability checking
+        - Error handling with non-destructive fallback
+        """
+        try:
+            if library == "zhpr":
+                # Lazy load zhpr adapter
+                if self._zhpr_adapter is None:
+                    logger.info("Lazy loading zhpr adapter...")
+                    from .zhpr_adapter import ZhprAdapter
+                    self._zhpr_adapter = ZhprAdapter(self._model_manager)
+                    logger.info("Zhpr adapter loaded successfully")
+
+                # Check availability before attempting
+                if not self._zhpr_adapter.is_available():
+                    logger.warning("zhpr library not available")
+                    return None
+
+                # Process text
+                logger.debug("Attempting punctuation restoration with zhpr...")
+                result = self._zhpr_adapter.restore(text)
+                return result
+
+            elif library == "transformers":
+                # Lazy load transformers adapter
+                if self._transformers_adapter is None:
+                    logger.info("Lazy loading transformers adapter...")
+                    from .transformers_adapter import TransformersAdapter
+                    self._transformers_adapter = TransformersAdapter(self._model_manager)
+                    logger.info("Transformers adapter loaded successfully")
+
+                # Check availability before attempting
+                if not self._transformers_adapter.is_available():
+                    logger.warning("transformers library not available")
+                    return None
+
+                # Process text
+                logger.debug("Attempting punctuation restoration with transformers...")
+                result = self._transformers_adapter.restore(text)
+                return result
+
+            else:
+                logger.error(f"Unknown library: {library}")
+                return None
+
+        except ImportError as e:
+            logger.warning(f"Library {library} not available: {e}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error using {library}: {e}", exc_info=True)
+            return None
 
     def cleanup(self) -> None:
         """
