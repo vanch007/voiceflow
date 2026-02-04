@@ -18,16 +18,20 @@ final class StatusBarController {
     private var currentStatus: AppStatus = .idle
     private var debounceTimer: Timer?
     private let errorDebounceInterval: TimeInterval = 3.0
+    private var lastCheckTime: Date = Date()
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         updateIcon()
         buildMenu()
+        updateTooltip()
     }
 
     func updateConnectionStatus(connected: Bool) {
         isConnected = connected
+        lastCheckTime = Date()
         buildMenu()
+        updateTooltip()
     }
 
     func updateRecordingStatus(recording: Bool) {
@@ -51,6 +55,7 @@ final class StatusBarController {
             // Immediate transition for non-error states
             currentStatus = status
             updateIcon()
+            updateTooltip()
         }
     }
 
@@ -73,11 +78,47 @@ final class StatusBarController {
         }
     }
 
+    private func updateTooltip() {
+        guard let button = statusItem.button else { return }
+
+        // Build localized tooltip content
+        let appStateText: String
+        switch currentStatus {
+        case .idle:
+            appStateText = "대기 중"
+        case .recording:
+            appStateText = "녹음 중"
+        case .processing:
+            appStateText = "처리 중"
+        case .error:
+            appStateText = "오류"
+        }
+
+        let asrStatusText = isConnected ? "연결됨" : "끊어짐"
+
+        // Format timestamp in localized format
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .short
+        dateFormatter.timeStyle = .medium
+        dateFormatter.locale = Locale(identifier: "ko_KR")
+        let lastCheckText = dateFormatter.string(from: lastCheckTime)
+
+        // Build tooltip
+        let tooltip = """
+        앱 상태: \(appStateText)
+        ASR 상태: \(asrStatusText)
+        마지막 확인: \(lastCheckText)
+        """
+
+        button.toolTip = tooltip
+    }
+
     private func startDebounceTimer(targetStatus: AppStatus) {
         debounceTimer = Timer.scheduledTimer(withTimeInterval: errorDebounceInterval, repeats: false) { [weak self] _ in
             guard let self else { return }
             self.currentStatus = targetStatus
             self.updateIcon()
+            self.updateTooltip()
         }
     }
 
