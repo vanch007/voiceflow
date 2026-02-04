@@ -9,6 +9,7 @@ final class PluginManager {
     private var plugins: [String: PluginInfo] = [:]
     private let pluginsDirectory: URL
     private let fileManager = FileManager.default
+    private let pluginLoader = PluginLoader()
 
     var onPluginLoaded: ((PluginInfo) -> Void)?
     var onPluginUnloaded: ((String) -> Void)?
@@ -63,11 +64,31 @@ final class PluginManager {
             return
         }
 
-        info.state = .enabled
-        info.plugin?.onLoad()
-
-        NSLog("[PluginManager] Enabled plugin: \(info.manifest.name)")
-        onPluginStateChanged?(info)
+        // Load plugin instance if not already loaded
+        if info.plugin == nil {
+            let pluginURL = pluginsDirectory.appendingPathComponent(info.manifest.id)
+            pluginLoader.loadPlugin(
+                at: pluginURL,
+                manifest: info.manifest,
+                onSuccess: { [weak self] plugin in
+                    info.plugin = plugin
+                    plugin.onLoad()
+                    info.state = .enabled
+                    NSLog("[PluginManager] Enabled plugin: \(info.manifest.name)")
+                    self?.onPluginStateChanged?(info)
+                },
+                onFailure: { [weak self] error in
+                    info.state = .failed(error)
+                    NSLog("[PluginManager] Failed to load plugin '\(pluginID)': \(error)")
+                    self?.onPluginStateChanged?(info)
+                }
+            )
+        } else {
+            info.plugin?.onLoad()
+            info.state = .enabled
+            NSLog("[PluginManager] Enabled plugin: \(info.manifest.name)")
+            onPluginStateChanged?(info)
+        }
     }
 
     /// Disable a plugin by ID

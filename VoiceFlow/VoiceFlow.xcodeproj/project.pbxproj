@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1000016 /* HotkeyConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000016 /* HotkeyConfig.swift */; };
+		A1000017 /* DictionaryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000017 /* DictionaryManager.swift */; };
+		A1000018 /* HotkeySettingsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000018 /* HotkeySettingsWindow.swift */; };
 		508E638E2F30752D0016E8CD /* SettingsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E638D2F30752D0016E8CD /* SettingsManager.swift */; };
 		508E63902F30754E0016E8CD /* ReplacementRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E638F2F30754E0016E8CD /* ReplacementRule.swift */; };
 		508E63922F3075600016E8CD /* ReplacementStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E63912F3075600016E8CD /* ReplacementStorage.swift */; };
@@ -30,6 +33,9 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B1000016 /* HotkeyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyConfig.swift; sourceTree = "<group>"; };
+		B1000017 /* DictionaryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryManager.swift; sourceTree = "<group>"; };
+		B1000018 /* HotkeySettingsWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeySettingsWindow.swift; sourceTree = "<group>"; };
 		508E638D2F30752D0016E8CD /* SettingsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsManager.swift; sourceTree = "<group>"; };
 		508E638F2F30754E0016E8CD /* ReplacementRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplacementRule.swift; sourceTree = "<group>"; };
 		508E63912F3075600016E8CD /* ReplacementStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplacementStorage.swift; sourceTree = "<group>"; };
@@ -98,6 +104,8 @@
 		E1000004 /* Core */ = {
 			isa = PBXGroup;
 			children = (
+				B1000016 /* HotkeyConfig.swift */,
+				B1000017 /* DictionaryManager.swift */,
 				508E63952F3075870016E8CD /* UserDefaults+VoiceFlow.swift */,
 				508E63932F3075780016E8CD /* TextReplacementEngine.swift */,
 				508E63912F3075600016E8CD /* ReplacementStorage.swift */,
@@ -134,6 +142,7 @@
 		E1000007 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				B1000018 /* HotkeySettingsWindow.swift */,
 				508E63972F30759E0016E8CD /* SettingsWindow.swift */,
 				508E63982F30759E0016E8CD /* SettingsWindowController.swift */,
 				B1000007 /* OverlayPanel.swift */,
@@ -200,6 +209,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1000016 /* HotkeyConfig.swift in Sources */,
+				A1000017 /* DictionaryManager.swift in Sources */,
+				A1000018 /* HotkeySettingsWindow.swift in Sources */,
 				A1000001 /* VoiceFlowApp.swift in Sources */,
 				A1000002 /* AppDelegate.swift in Sources */,
 				A1000003 /* HotkeyManager.swift in Sources */,

@@ -253,10 +253,10 @@ final class SettingsManager: ObservableObject {
     }
 
     private enum Defaults {
-        static let language = "ko"
+        static let language = "zh"
         static let soundEffectsEnabled = true
         static let voiceEnabled = true
-        static let voiceLanguage = "ko"
+        static let voiceLanguage = "zh"
         static let voiceSensitivity = 0.5
     }
 

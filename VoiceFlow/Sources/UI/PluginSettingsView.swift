@@ -42,7 +42,7 @@ final class PluginSettingsView {
             backing: .buffered,
             defer: false
         )
-        p.title = "플러그인 설정"
+        p.title = "插件设置"
         p.level = .floating
         p.isOpaque = false
         p.backgroundColor = .windowBackgroundColor
@@ -123,7 +123,7 @@ private struct PluginSettingsContentView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     // Status
                     HStack {
-                        Text("상태:")
+                        Text("状态:")
                             .fontWeight(.medium)
 
                         Spacer()
@@ -140,7 +140,7 @@ private struct PluginSettingsContentView: View {
 
                     // Author
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("개발자:")
+                        Text("开发者:")
                             .fontWeight(.medium)
 
                         Text(pluginInfo.manifest.author)
@@ -149,7 +149,7 @@ private struct PluginSettingsContentView: View {
 
                     // Description
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("설명:")
+                        Text("描述:")
                             .fontWeight(.medium)
 
                         Text(pluginInfo.manifest.description)
@@ -159,7 +159,7 @@ private struct PluginSettingsContentView: View {
 
                     // Platform
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("플랫폼:")
+                        Text("平台:")
                             .fontWeight(.medium)
 
                         HStack(spacing: 4) {
@@ -174,7 +174,7 @@ private struct PluginSettingsContentView: View {
                     // Permissions
                     if !pluginInfo.manifest.permissions.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("권한:")
+                            Text("权限:")
                                 .fontWeight(.medium)
 
                             VStack(alignment: .leading, spacing: 4) {

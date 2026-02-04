@@ -1,6 +1,6 @@
 #!/bin/bash
-# VoiceFlow 초기 설정 스크립트
-# Python 가상환경 생성 + 의존성 설치
+# VoiceFlow 初始化设置脚本
+# 创建 Python 虚拟环境 + 安装依赖
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -9,7 +9,7 @@ VENV_DIR="$PROJECT_DIR/.venv"
 
 echo "🐍 Setting up Python virtual environment..."
 
-# Python 버전 확인
+# 检查 Python 版本
 PYTHON_CMD=""
 for cmd in python3.11 python3.12 python3; do
   if command -v "$cmd" &>/dev/null; then
@@ -31,7 +31,7 @@ fi
 
 echo "   Using: $PYTHON_CMD ($($PYTHON_CMD --version))"
 
-# 가상환경 생성
+# 创建虚拟环境
 if [ -d "$VENV_DIR" ]; then
   echo "   .venv already exists, skipping creation"
 else
@@ -39,7 +39,7 @@ else
   "$PYTHON_CMD" -m venv "$VENV_DIR"
 fi
 
-# 의존성 설치
+# 安装依赖
 echo "📦 Installing Python dependencies..."
 "$VENV_DIR/bin/pip" install --upgrade pip -q
 "$VENV_DIR/bin/pip" install -r "$PROJECT_DIR/server/requirements.txt" -q

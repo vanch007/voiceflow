@@ -1,23 +1,17 @@
 #!/bin/bash
-# Run VoiceFlow using xcodebuild
+# Run VoiceFlow directly (no build)
 
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
-XCODE_PROJECT="$PROJECT_ROOT/VoiceFlow/VoiceFlow.xcodeproj"
-DERIVED_DATA="$PROJECT_ROOT/VoiceFlow/build"
-APP_PATH="$DERIVED_DATA/Build/Products/Debug/VoiceFlow.app"
-
-echo "🔨 Building VoiceFlow..."
-cd "$PROJECT_ROOT/VoiceFlow"
-xcodebuild -scheme VoiceFlow -configuration Debug -derivedDataPath "$DERIVED_DATA" build 2>&1 | grep -E "(error:|warning:|BUILD|Compiling)" || true
+APP_PATH="$PROJECT_ROOT/VoiceFlow.app"
 
 if [ ! -d "$APP_PATH" ]; then
-    echo "❌ Build failed - app not found at $APP_PATH"
+    echo "❌ App not found at $APP_PATH"
+    echo "   Run ./scripts/build.sh first"
     exit 1
 fi
 
-echo "✅ Build succeeded!"
 echo "🚀 Starting VoiceFlow..."
 
 # Set environment variable for Python path

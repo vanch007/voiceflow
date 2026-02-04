@@ -43,6 +43,7 @@ final class SettingsWindowController: NSWindowController {
 private struct SettingsContentView: View {
     @ObservedObject var settingsManager: SettingsManager
     @ObservedObject var replacementStorage: ReplacementStorage
+    @State private var pluginInfoList: [PluginInfo] = []
 
     var body: some View {
         TabView {
@@ -53,9 +54,16 @@ private struct SettingsContentView: View {
             // 文本替换标签页
             TextReplacementTab(replacementStorage: replacementStorage)
                 .tabItem { Label("文本替换", systemImage: "textformat.alt") }
+
+            // 插件标签页
+            PluginSettingsTab(pluginInfoList: $pluginInfoList)
+                .tabItem { Label("插件", systemImage: "puzzlepiece") }
         }
         .frame(width: 600, height: 600)
         .padding()
+        .onAppear {
+            pluginInfoList = PluginManager.shared.getAllPlugins()
+        }
     }
 }
 
@@ -211,5 +219,264 @@ private struct RuleEditorView: View {
             }
         }
         .padding()
+    }
+}
+
+// 插件设置标签页
+private struct PluginSettingsTab: View {
+    @Binding var pluginInfoList: [PluginInfo]
+    @State private var selectedPlugin: PluginInfo?
+
+    var body: some View {
+        HSplitView {
+            // 左侧：插件列表
+            VStack(alignment: .leading) {
+                List(pluginInfoList, id: \.manifest.id, selection: Binding(
+                    get: { selectedPlugin?.manifest.id },
+                    set: { newID in
+                        selectedPlugin = pluginInfoList.first { $0.manifest.id == newID }
+                    }
+                )) { plugin in
+                    HStack {
+                        Circle()
+                            .fill(plugin.isEnabled ? Color.green : Color.gray)
+                            .frame(width: 8, height: 8)
+
+                        VStack(alignment: .leading) {
+                            Text(plugin.manifest.name)
+                                .font(.headline)
+                            Text("v\(plugin.manifest.version)")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .tag(plugin.manifest.id)
+                }
+
+                if pluginInfoList.isEmpty {
+                    VStack {
+                        Spacer()
+                        Text("暂无插件")
+                            .foregroundColor(.secondary)
+                        Text("将插件放入 ~/Library/Application Support/VoiceFlow/Plugins/ 目录")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding()
+                        Spacer()
+                    }
+                }
+
+                HStack {
+                    Button(action: refreshPlugins) {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .help("刷新插件列表")
+
+                    Button(action: openPluginsFolder) {
+                        Image(systemName: "folder")
+                    }
+                    .help("打开插件目录")
+                }
+                .padding(8)
+            }
+            .frame(minWidth: 200)
+
+            // 右侧：插件详情
+            if let plugin = selectedPlugin {
+                PluginDetailView(plugin: plugin, onToggle: {
+                    togglePlugin(plugin)
+                })
+            } else {
+                VStack {
+                    Spacer()
+                    Text("选择一个插件查看详情")
+                        .foregroundColor(.secondary)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    private func refreshPlugins() {
+        PluginManager.shared.discoverPlugins()
+        pluginInfoList = PluginManager.shared.getAllPlugins()
+    }
+
+    private func openPluginsFolder() {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let pluginsDir = appSupport.appendingPathComponent("VoiceFlow/Plugins")
+
+        // Create directory if it doesn't exist
+        try? FileManager.default.createDirectory(at: pluginsDir, withIntermediateDirectories: true)
+
+        NSWorkspace.shared.open(pluginsDir)
+    }
+
+    private func togglePlugin(_ plugin: PluginInfo) {
+        if plugin.isEnabled {
+            PluginManager.shared.disablePlugin(plugin.manifest.id)
+        } else {
+            PluginManager.shared.enablePlugin(plugin.manifest.id)
+        }
+        pluginInfoList = PluginManager.shared.getAllPlugins()
+        selectedPlugin = pluginInfoList.first { $0.manifest.id == plugin.manifest.id }
+    }
+}
+
+private struct PluginDetailView: View {
+    let plugin: PluginInfo
+    let onToggle: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // 标题
+                HStack {
+                    Image(systemName: platformIcon)
+                        .font(.system(size: 32))
+                        .foregroundColor(.accentColor)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(plugin.manifest.name)
+                            .font(.title2)
+                            .fontWeight(.semibold)
+
+                        Text("v\(plugin.manifest.version)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("启用", isOn: Binding(
+                        get: { plugin.isEnabled },
+                        set: { _ in onToggle() }
+                    ))
+                    .toggleStyle(.switch)
+                }
+
+                Divider()
+
+                // 状态
+                HStack {
+                    Text("状态:")
+                        .fontWeight(.medium)
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(statusColor)
+                            .frame(width: 8, height: 8)
+                        Text(statusText)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // 作者
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("开发者:")
+                        .fontWeight(.medium)
+                    Text(plugin.manifest.author)
+                        .foregroundColor(.secondary)
+                }
+
+                // 描述
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("描述:")
+                        .fontWeight(.medium)
+                    Text(plugin.manifest.description)
+                        .foregroundColor(.secondary)
+                }
+
+                // 平台
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("平台:")
+                        .fontWeight(.medium)
+                    HStack(spacing: 4) {
+                        Image(systemName: platformIcon)
+                            .foregroundColor(.accentColor)
+                        Text(platformText)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                // 权限
+                if !plugin.manifest.permissions.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("权限:")
+                            .fontWeight(.medium)
+                        ForEach(plugin.manifest.permissions, id: \.self) { permission in
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.shield.fill")
+                                    .font(.caption)
+                                    .foregroundColor(.green)
+                                Text(permission)
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                }
+
+                // 插件 ID
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("ID:")
+                        .fontWeight(.medium)
+                    Text(plugin.manifest.id)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+            }
+            .padding()
+        }
+    }
+
+    private var platformIcon: String {
+        switch plugin.manifest.platform {
+        case .swift:
+            return "swift"
+        case .python:
+            return "chevron.left.forwardslash.chevron.right"
+        case .both:
+            return "doc.on.doc"
+        }
+    }
+
+    private var platformText: String {
+        switch plugin.manifest.platform {
+        case .swift:
+            return "Swift"
+        case .python:
+            return "Python"
+        case .both:
+            return "Swift + Python"
+        }
+    }
+
+    private var statusColor: Color {
+        switch plugin.state {
+        case .enabled:
+            return .green
+        case .disabled, .loaded:
+            return .gray
+        case .failed:
+            return .red
+        }
+    }
+
+    private var statusText: String {
+        switch plugin.state {
+        case .enabled:
+            return "已启用"
+        case .disabled:
+            return "已禁用"
+        case .loaded:
+            return "已加载"
+        case .failed(let error):
+            return "失败: \(error.localizedDescription)"
+        }
     }
 }

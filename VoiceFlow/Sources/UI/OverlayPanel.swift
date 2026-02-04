@@ -83,26 +83,38 @@ final class OverlayPanel {
         let textSize = (text as NSString).size(withAttributes: attributes)
 
         // Width = text width + icon size + spacing + horizontal padding
-        // Icon: ~14pt, spacing: 8pt, padding: 16pt * 2 = 32pt
-        let iconWidth: CGFloat = 14
+        // Icon: ~16pt, spacing: 8pt, padding: 16pt * 2 = 32pt
+        let iconWidth: CGFloat = 16
         let spacing: CGFloat = 8
         let horizontalPadding: CGFloat = 32
         let calculatedWidth = textSize.width + iconWidth + spacing + horizontalPadding
 
-        // Minimum and maximum constraints
-        let minWidth: CGFloat = 100
-        let maxWidth: CGFloat = 400
+        // Minimum and maximum constraints - 增大范围
+        let minWidth: CGFloat = 300
+        let maxWidth: CGFloat = 600
 
         return max(minWidth, min(maxWidth, calculatedWidth))
     }
 
+    private func calculateHeight(for text: String, isRecording: Bool) -> CGFloat {
+        if !isRecording {
+            return 44  // 非录音状态保持紧凑
+        }
+
+        // 录音状态：根据文字行数动态调整
+        let lineCount = max(1, min(6, text.components(separatedBy: "\n").count + text.count / 40))
+        let baseHeight: CGFloat = 60  // 状态栏高度
+        let lineHeight: CGFloat = 22  // 每行文字高度
+        return baseHeight + CGFloat(lineCount) * lineHeight
+    }
+
     private func createPanel(width: CGFloat) {
-        let panelHeight: CGFloat = 44
+        let panelHeight = calculateHeightForCurrentState()
 
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - width / 2
-        let y = screenFrame.maxY - panelHeight - 20
+        let y = screenFrame.minY + 100  // 屏幕底部，距离底部 100pt
 
         let frame = NSRect(x: x, y: y, width: width, height: panelHeight)
 
@@ -145,16 +157,27 @@ final class OverlayPanel {
     private func updatePanelFrame(width: CGFloat) {
         guard let panel, let screen = NSScreen.main else { return }
 
-        let panelHeight: CGFloat = 44
+        let panelHeight = calculateHeightForCurrentState()
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - width / 2
-        let y = screenFrame.maxY - panelHeight - 20
+        let y = screenFrame.minY + 100  // 屏幕底部，距离底部 100pt
 
         // Animate the frame change for smooth transitions
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(NSRect(x: x, y: y, width: width, height: panelHeight), display: true)
+        }
+    }
+
+    private func calculateHeightForCurrentState() -> CGFloat {
+        switch currentState {
+        case .recording(let text):
+            return calculateHeight(for: text, isRecording: true)
+        case .processing, .done:
+            return 44
+        case .hidden:
+            return 44
         }
     }
 
@@ -232,34 +255,39 @@ private struct EnhancedOverlayContentView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             // 第一行：录音状态 + 时长
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .foregroundColor(iconColor)
-                    .font(.system(size: 14))
-                Text("录音中...")
+                    .font(.system(size: 16))
+                Text("录音中")
                     .foregroundColor(.white)
                     .font(.system(size: 14, weight: .medium))
                 Spacer()
                 Text(duration)
                     .foregroundColor(.white.opacity(0.8))
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .monospacedDigit()
             }
 
-            // 第二行：转录文字预览
+            // 分隔线
+            Rectangle()
+                .fill(Color.white.opacity(0.2))
+                .frame(height: 1)
+
+            // 转录文字区域（动态高度）
             Text(text.isEmpty || text == "录音中..." ? "等待语音输入..." : text)
                 .foregroundColor(text.isEmpty || text == "录音中..." ? .white.opacity(0.5) : .white)
-                .font(.system(size: 12))
-                .lineLimit(2)
+                .font(.system(size: 14))
+                .lineLimit(6)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.black.opacity(0.85))
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.black.opacity(0.9))
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
