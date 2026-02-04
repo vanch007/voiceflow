@@ -6,6 +6,7 @@ final class StatusBarController {
     var onShowHistory: (() -> Void)?
     var onTextReplacement: (() -> Void)?
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
+    var onDictionaryOpen: (() -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
@@ -128,6 +129,14 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Custom Dictionary menu item
+        let dictItem = NSMenuItem(title: "自定义词典", action: #selector(openDictionary), keyEquivalent: "")
+        dictItem.target = self
+        dictItem.image = NSImage(systemSymbolName: "book.closed", accessibilityDescription: nil)
+        menu.addItem(dictItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         // 模型信息（MLX版本只支持一个模型）
         let modelInfoItem = NSMenuItem(title: "模型: Qwen3-ASR-0.6B (MLX)", action: nil, keyEquivalent: "")
         modelInfoItem.isEnabled = false
@@ -195,6 +204,10 @@ final class StatusBarController {
         }
 
         buildMenu()
+    }
+
+    @objc private func openDictionary() {
+        onDictionaryOpen?()
     }
 
     @objc private func quitAction() {
