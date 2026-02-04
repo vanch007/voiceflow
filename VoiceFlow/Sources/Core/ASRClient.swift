@@ -87,15 +87,54 @@ final class ASRClient {
     }
 
     func sendStart() {
-        let enablePolish = settingsManager.textPolishEnabled
+        let profile = SceneManager.shared.getEffectiveProfile()
         let modelId = settingsManager.modelSize.modelId
-        let language = settingsManager.asrLanguage.rawValue
-        sendJSON([
+
+        // 构建基础消息
+        var message: [String: Any] = [
             "type": "start",
-            "enable_polish": enablePolish ? "true" : "false",
+            "enable_polish": profile.enablePolish ? "true" : "false",
             "model_id": modelId,
-            "language": language
-        ])
+            "language": profile.language.rawValue
+        ]
+
+        // 添加场景信息
+        var sceneInfo: [String: Any] = [
+            "type": profile.sceneType.rawValue,
+            "polish_style": profile.polishStyle.rawValue
+        ]
+        if let customPrompt = profile.customPrompt, !customPrompt.isEmpty {
+            sceneInfo["custom_prompt"] = customPrompt
+        } else if let defaultPrompt = profile.getEffectivePrompt() {
+            sceneInfo["custom_prompt"] = defaultPrompt
+        }
+
+        // 添加术语字典
+        if !profile.glossary.isEmpty {
+            let glossaryData = profile.glossary.map { entry -> [String: Any] in
+                return [
+                    "term": entry.term,
+                    "replacement": entry.replacement,
+                    "case_sensitive": entry.caseSensitive
+                ]
+            }
+            sceneInfo["glossary"] = glossaryData
+        }
+
+        message["scene"] = sceneInfo
+
+        sendJSONObject(message)
+    }
+
+    private func sendJSONObject(_ dict: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              let str = String(data: data, encoding: .utf8) else { return }
+        let message = URLSessionWebSocketTask.Message.string(str)
+        webSocketTask?.send(message) { error in
+            if let error {
+                print("[ASRClient] Send JSON error: \(error)")
+            }
+        }
     }
 
     func sendStop() {
