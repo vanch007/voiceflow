@@ -63,6 +63,26 @@ private struct SettingsContentView: View {
         .padding()
         .onAppear {
             pluginInfoList = PluginManager.shared.getAllPlugins()
+            PluginManager.shared.onPluginLoaded = { _ in
+                DispatchQueue.main.async {
+                    pluginInfoList = PluginManager.shared.getAllPlugins()
+                }
+            }
+            PluginManager.shared.onPluginUnloaded = { _ in
+                DispatchQueue.main.async {
+                    pluginInfoList = PluginManager.shared.getAllPlugins()
+                }
+            }
+            PluginManager.shared.onPluginStateChanged = { _ in
+                DispatchQueue.main.async {
+                    pluginInfoList = PluginManager.shared.getAllPlugins()
+                }
+            }
+        }
+        .onDisappear {
+            PluginManager.shared.onPluginLoaded = nil
+            PluginManager.shared.onPluginUnloaded = nil
+            PluginManager.shared.onPluginStateChanged = nil
         }
     }
 }

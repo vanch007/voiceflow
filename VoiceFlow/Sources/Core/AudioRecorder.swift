@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreMedia
 import CoreAudio
+import Accelerate
 
 final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     var onAudioChunk: ((Data) -> Void)?
@@ -8,6 +9,7 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
     var onDeviceChanged: ((String) -> Void)?
 
     private var captureSession: AVCaptureSession?
+    private var audioOutput: AVCaptureAudioDataOutput?
     private let sessionQueue = DispatchQueue(label: "com.voiceflow.capture")
     private let targetSampleRate: Double = 16000
     private var isRecording = false
@@ -55,12 +57,16 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
             NSLog("[AudioRecorder] Default device changed, reconnecting...")
             setupSession()
         }
-        isRecording = true
+        sessionQueue.async { [weak self] in
+            self?.isRecording = true
+        }
         NSLog("[AudioRecorder] Recording started.")
     }
 
     func stopRecording() {
-        isRecording = false
+        sessionQueue.async { [weak self] in
+            self?.isRecording = false
+        }
         // Restore output volume that macOS ducked
         if let volume = savedOutputVolume {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -76,9 +82,20 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         sessionQueue.async { [weak self] in
             guard let self else { return }
 
-            // Stop existing session
+            // Stop and clean up existing session
             if let existing = self.captureSession {
                 existing.stopRunning()
+                // Remove inputs
+                for input in existing.inputs {
+                    existing.removeInput(input)
+                }
+                // Remove outputs
+                for output in existing.outputs {
+                    existing.removeOutput(output)
+                }
+                // Clear delegate and release audio output reference
+                self.audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+                self.audioOutput = nil
             }
 
             let session = AVCaptureSession()
@@ -114,10 +131,10 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
 
             let output = AVCaptureAudioDataOutput()
             output.setSampleBufferDelegate(self, queue: self.sessionQueue)
-
             if session.canAddOutput(output) {
                 session.addOutput(output)
             }
+            self.audioOutput = output
 
             self.captureSession = session
             session.startRunning()
@@ -341,7 +358,22 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         onAudioChunk?(data)
 
         // Calculate volume level (RMS)
-        let rms = sqrt(output.map { $0 * $0 }.reduce(0, +) / Float(output.count))
-        onVolumeLevel?(rms)
+        let rms = vDSP.rootMeanSquare(output)
+        DispatchQueue.main.async { [weak self] in
+            self?.onVolumeLevel?(rms)
+        }
+    }
+
+    deinit {
+        sessionQueue.sync {
+            self.captureSession?.stopRunning()
+            if let existing = self.captureSession {
+                for input in existing.inputs { existing.removeInput(input) }
+                for output in existing.outputs { existing.removeOutput(output) }
+            }
+            self.audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+            self.audioOutput = nil
+            self.captureSession = nil
+        }
     }
 }
