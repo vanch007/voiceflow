@@ -500,3 +500,20 @@ private struct PluginDetailView: View {
         }
     }
 }
+#Preview("Settings - Default") {
+    SettingsContentView(
+        settingsManager: SettingsManager.shared,
+        replacementStorage: ReplacementStorage()
+    )
+}
+
+#Preview("Settings - General Tab") {
+    GeneralSettingsTab(settingsManager: SettingsManager.shared)
+        .frame(width: 600, height: 600)
+}
+
+#Preview("Settings - Text Replacement") {
+    TextReplacementTab(replacementStorage: ReplacementStorage())
+        .frame(width: 600, height: 600)
+}
+
