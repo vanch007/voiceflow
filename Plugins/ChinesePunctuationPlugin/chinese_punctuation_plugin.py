@@ -146,7 +146,16 @@ class ChinesePunctuationPlugin(VoiceFlowPlugin):
             # Lazy load model manager and adapters on first use
             if self._model_manager is None:
                 logger.info("Lazy loading model manager...")
-                from .model_manager import ModelManager
+                # Use absolute imports to avoid relative import issues when loaded as plugin
+                import sys
+                from pathlib import Path
+
+                # Add plugin directory to sys.path if not already there
+                plugin_dir = Path(__file__).parent
+                if str(plugin_dir) not in sys.path:
+                    sys.path.insert(0, str(plugin_dir))
+
+                from model_manager import ModelManager
                 self._model_manager = ModelManager()
                 logger.info("Model manager loaded successfully")
 
@@ -199,7 +208,12 @@ class ChinesePunctuationPlugin(VoiceFlowPlugin):
                 # Lazy load zhpr adapter
                 if self._zhpr_adapter is None:
                     logger.info("Lazy loading zhpr adapter...")
-                    from .zhpr_adapter import ZhprAdapter
+                    import sys
+                    from pathlib import Path
+                    plugin_dir = Path(__file__).parent
+                    if str(plugin_dir) not in sys.path:
+                        sys.path.insert(0, str(plugin_dir))
+                    from zhpr_adapter import ZhprAdapter
                     self._zhpr_adapter = ZhprAdapter(self._model_manager)
                     logger.info("Zhpr adapter loaded successfully")
 
@@ -217,7 +231,12 @@ class ChinesePunctuationPlugin(VoiceFlowPlugin):
                 # Lazy load transformers adapter
                 if self._transformers_adapter is None:
                     logger.info("Lazy loading transformers adapter...")
-                    from .transformers_adapter import TransformersAdapter
+                    import sys
+                    from pathlib import Path
+                    plugin_dir = Path(__file__).parent
+                    if str(plugin_dir) not in sys.path:
+                        sys.path.insert(0, str(plugin_dir))
+                    from transformers_adapter import TransformersAdapter
                     self._transformers_adapter = TransformersAdapter(self._model_manager)
                     logger.info("Transformers adapter loaded successfully")
 
