@@ -3,12 +3,14 @@ import Foundation
 final class ASRClient {
     var onTranscriptionResult: ((String) -> Void)?
     var onConnectionStatusChanged: ((Bool) -> Void)?
+    var onErrorStateChanged: ((Bool, String?) -> Void)?
 
     private var webSocketTask: URLSessionWebSocketTask?
     private let serverURL = URL(string: "ws://localhost:9876")!
     private var isConnected = false
     private var reconnectTimer: Timer?
     private let reconnectInterval: TimeInterval = 3.0
+    private var lastErrorMessage: String?
 
     func connect() {
         disconnect()
@@ -20,6 +22,8 @@ final class ASRClient {
         onConnectionStatusChanged?(true)
         print("[ASRClient] Connected to \(serverURL)")
         stopReconnectTimer()
+        lastErrorMessage = nil
+        onErrorStateChanged?(false, nil)
     }
 
     func disconnect() {
@@ -70,7 +74,7 @@ final class ASRClient {
                 self.listenForMessages()
             case .failure(let error):
                 print("[ASRClient] Receive error: \(error)")
-                self.handleDisconnect()
+                self.handleDisconnect(error: error.localizedDescription)
             }
         }
     }
@@ -97,11 +101,13 @@ final class ASRClient {
         // partial results can be handled here in the future
     }
 
-    private func handleDisconnect() {
+    private func handleDisconnect(error: String? = nil) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.isConnected = false
             self.onConnectionStatusChanged?(false)
+            self.lastErrorMessage = error ?? "Connection lost"
+            self.onErrorStateChanged?(true, self.lastErrorMessage)
             self.startReconnectTimer()
         }
     }
