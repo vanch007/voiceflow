@@ -1,5 +1,6 @@
 import Foundation
 import os
+import Darwin
 
 private let logger = Logger(subsystem: "com.voiceflow.app", category: "PluginManager")
 
@@ -11,6 +12,10 @@ final class PluginManager {
     private let fileManager = FileManager.default
     private let pluginLoader = PluginLoader()
     private let queue = DispatchQueue(label: "com.voiceflow.pluginmanager")
+
+    private var dirFD: CInt = -1
+    private var dirSource: DispatchSourceFileSystemObject?
+    private var debounceWorkItem: DispatchWorkItem?
 
     var onPluginLoaded: ((PluginInfo) -> Void)?
     var onPluginUnloaded: ((String) -> Void)?
@@ -25,6 +30,11 @@ final class PluginManager {
         try? fileManager.createDirectory(at: pluginsDirectory, withIntermediateDirectories: true)
 
         NSLog("[PluginManager] Initialized with plugins directory: \(pluginsDirectory.path)")
+        startWatchingPluginsDirectory()
+    }
+
+    deinit {
+        stopWatchingPluginsDirectory()
     }
 
     // MARK: - Public API
@@ -181,6 +191,53 @@ final class PluginManager {
 
     // MARK: - Private Methods
 
+    private func startWatchingPluginsDirectory() {
+        stopWatchingPluginsDirectory()
+
+        let fd = open(pluginsDirectory.path, O_EVTONLY)
+        guard fd >= 0 else {
+            NSLog("[PluginManager] Failed to open plugins directory for watching")
+            return
+        }
+        dirFD = fd
+
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: queue)
+        dirSource = source
+
+        source.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            // Debounce rapid events
+            self.debounceWorkItem?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                NSLog("[PluginManager] Directory change detected, rediscovering plugins...")
+                self.discoverPlugins()
+            }
+            self.debounceWorkItem = work
+            self.queue.asyncAfter(deadline: .now() + 0.5, execute: work)
+        }
+
+        source.setCancelHandler { [weak self] in
+            if let fd = self?.dirFD, fd >= 0 {
+                close(fd)
+            }
+        }
+
+        source.resume()
+        NSLog("[PluginManager] Watching plugins directory: \(pluginsDirectory.path)")
+    }
+
+    private func stopWatchingPluginsDirectory() {
+        debounceWorkItem?.cancel()
+        debounceWorkItem = nil
+        dirSource?.cancel()
+        dirSource = nil
+        if dirFD >= 0 {
+            close(dirFD)
+            dirFD = -1
+        }
+    }
+
     private func loadPluginManifest(at pluginURL: URL) {
         let manifestURL = pluginURL.appendingPathComponent("manifest.json")
 
@@ -212,3 +269,4 @@ final class PluginManager {
         }
     }
 }
+
