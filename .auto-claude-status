@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "030-",
+  "state": "building",
+  "subtasks": {
+    "completed": 2,
+    "total": 8,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "Enhanced Icon States",
+    "id": null,
+    "total": 2
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 4,
+    "started_at": "2026-02-04T21:12:54.858132"
+  },
+  "last_update": "2026-02-04T21:19:41.938316"
+}

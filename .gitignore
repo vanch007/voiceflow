@@ -28,3 +28,6 @@ firebase-debug.log
 # IDE
 .vscode/
 .idea/
+
+# Auto Claude data directory
+.auto-claude/
