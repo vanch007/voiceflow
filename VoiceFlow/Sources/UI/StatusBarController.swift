@@ -1,5 +1,12 @@
 import AppKit
 
+enum AppStatus {
+    case idle
+    case recording
+    case processing
+    case error
+}
+
 final class StatusBarController {
     var onQuit: (() -> Void)?
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
@@ -8,6 +15,7 @@ final class StatusBarController {
     private var isConnected = false
     private var isRecording = false
     private var activeDeviceName: String?
+    private var currentStatus: AppStatus = .idle
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -28,6 +36,11 @@ final class StatusBarController {
     func updateActiveDevice(name: String) {
         activeDeviceName = name
         buildMenu()
+    }
+
+    func updateStatus(_ status: AppStatus) {
+        currentStatus = status
+        updateIcon()
     }
 
     private func updateIcon() {
