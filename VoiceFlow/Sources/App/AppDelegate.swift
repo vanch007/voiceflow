@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             DispatchQueue.main.async {
                 self.overlayPanel.showDone()
+                self.statusBarController.updateStatus(.idle)
                 if !text.isEmpty {
                     self.textInjector.inject(text: text)
                 }
@@ -175,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[Recording] Starting recording, playing start sound")
         playSound(startSoundID, name: "startSound")
         overlayPanel.showRecording()
-        statusBarController.updateRecordingStatus(recording: true)
+        statusBarController.updateStatus(.recording)
         asrClient.sendStart()
         audioRecorder.startRecording()
     }
@@ -186,7 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         playSound(stopSoundID, name: "stopSound")
         audioRecorder.stopRecording()
         overlayPanel.showProcessing()
-        statusBarController.updateRecordingStatus(recording: false)
+        statusBarController.updateStatus(.processing)
         asrClient.sendStop()
     }
 }
