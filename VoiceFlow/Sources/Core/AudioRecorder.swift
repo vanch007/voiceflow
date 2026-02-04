@@ -335,30 +335,49 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
             return
         }
 
-        // Resample to 16kHz
-        let ratio = targetSampleRate / srcRate
-        let outputLength = Int(Double(floatSamples.count) * ratio)
-        guard outputLength > 0 else { return }
-
-        var output = [Float](repeating: 0, count: outputLength)
-        for i in 0..<outputLength {
-            let srcIndex = Double(i) / ratio
-            let srcInt = Int(srcIndex)
-            let frac = Float(srcIndex - Double(srcInt))
-            if srcInt + 1 < floatSamples.count {
-                output[i] = floatSamples[srcInt] * (1 - frac) + floatSamples[srcInt + 1] * frac
-            } else if srcInt < floatSamples.count {
-                output[i] = floatSamples[srcInt]
+        // Resample to 16kHz using AVAudioConverter
+        let inputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: srcRate, channels: 1, interleaved: false)!
+        let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: targetSampleRate, channels: 1, interleaved: false)!
+        guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: AVAudioFrameCount(frameCount)) else { return }
+        inputBuffer.frameLength = AVAudioFrameCount(frameCount)
+        // Copy mono samples into the input buffer
+        if let dst = inputBuffer.floatChannelData?.pointee {
+            floatSamples.withUnsafeBufferPointer { src in
+                dst.assign(from: src.baseAddress!, count: frameCount)
             }
+        } else {
+            return
         }
 
-        let data = output.withUnsafeBufferPointer { ptr in
+        let outputCapacity = AVAudioFrameCount(Double(frameCount) * targetSampleRate / srcRate + 1)
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputCapacity) else { return }
+
+        guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else { return }
+        var conversionError: NSError?
+        var providedOnce = false
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            if providedOnce {
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            providedOnce = true
+            outStatus.pointee = .haveData
+            return inputBuffer
+        }
+        converter.convert(to: outputBuffer, error: &conversionError, withInputFrom: inputBlock)
+        if let conversionError { NSLog("[AudioRecorder] AVAudioConverter error: \(conversionError)") }
+
+        let outFrameLength = Int(outputBuffer.frameLength)
+        guard outFrameLength > 0, let outPtr = outputBuffer.floatChannelData?.pointee else { return }
+        let outputArray = Array(UnsafeBufferPointer(start: outPtr, count: outFrameLength))
+
+        let data = outputArray.withUnsafeBufferPointer { ptr in
             Data(bytes: ptr.baseAddress!, count: ptr.count * MemoryLayout<Float>.size)
         }
         onAudioChunk?(data)
 
-        // Calculate volume level (RMS)
-        let rms = vDSP.rootMeanSquare(output)
+        // Calculate volume level (RMS) using Accelerate
+        let rms = vDSP.rootMeanSquare(outputArray)
         DispatchQueue.main.async { [weak self] in
             self?.onVolumeLevel?(rms)
         }

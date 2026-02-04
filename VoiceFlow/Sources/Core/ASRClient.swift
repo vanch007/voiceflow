@@ -52,15 +52,24 @@ final class ASRClient {
         webSocketTask = session.webSocketTask(with: serverURL)
         webSocketTask?.resume()
         listenForMessages()
-        isConnected = true
-        DispatchQueue.main.async { [weak self] in
-            self?.onConnectionStatusChanged?(true)
-            self?.lastErrorMessage = nil
-            self?.onErrorStateChanged?(false, nil)
+
+        webSocketTask?.sendPing { [weak self] error in
+            guard let self = self else { return }
+            if let error {
+                print("[ASRClient] Ping failed after connect: \(error)")
+                self.handleDisconnect(error: error)
+                return
+            }
+            self.isConnected = true
+            DispatchQueue.main.async { [weak self] in
+                self?.onConnectionStatusChanged?(true)
+                self?.lastErrorMessage = nil
+                self?.onErrorStateChanged?(false, nil)
+            }
+            print("[ASRClient] Connected to \(self.serverURL)")
+            self.reconnectTask?.cancel()
+            self.reconnectTask = nil
         }
-        print("[ASRClient] Connected to \(serverURL)")
-        reconnectTask?.cancel()
-        reconnectTask = nil
     }
 
     func disconnect() {
@@ -140,7 +149,7 @@ final class ASRClient {
                 self.listenForMessages()
             case .failure(let error):
                 print("[ASRClient] Receive error: \(error)")
-                self.handleDisconnect(error: error.localizedDescription)
+                self.handleDisconnect(error: error)
             }
         }
     }
@@ -172,17 +181,39 @@ final class ASRClient {
         }
     }
 
-    private func handleDisconnect(error: String? = nil) {
+    private func isRecoverable(_ error: Error?) -> Bool {
+        guard let error = error else { return true }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .dnsLookupFailed, .notConnectedToInternet, .resourceUnavailable:
+                return true
+            case .badURL, .unsupportedURL:
+                return false
+            default:
+                return true
+            }
+        }
+        return true
+    }
+
+    private func handleDisconnect(error: Error?) {
+        let message = (error as NSError?)?.localizedDescription ?? "Connection lost"
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.isConnected = false
             self.onConnectionStatusChanged?(false)
-            self.lastErrorMessage = error ?? "Connection lost"
+            self.lastErrorMessage = message
             self.onErrorStateChanged?(true, self.lastErrorMessage)
         }
 
         // Respect manual disconnect
         guard shouldReconnect else { return }
+
+        // Stop reconnecting for unrecoverable errors
+        if !isRecoverable(error) {
+            shouldReconnect = false
+            return
+        }
 
         // Start or restart reconnect task with exponential backoff
         reconnectTask?.cancel()
@@ -225,3 +256,4 @@ final class ASRClient {
         disconnect()
     }
 }
+
