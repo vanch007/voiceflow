@@ -45,12 +45,20 @@ final class StatusBarController {
 
     private func updateIcon() {
         guard let button = statusItem.button else { return }
-        if isRecording {
+
+        switch currentStatus {
+        case .idle:
+            button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "VoiceFlow - Idle")
+            button.contentTintColor = .systemGray
+        case .recording:
             button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "VoiceFlow - Recording")
             button.contentTintColor = .systemRed
-        } else {
-            button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "VoiceFlow")
-            button.contentTintColor = nil
+        case .processing:
+            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "VoiceFlow - Processing")
+            button.contentTintColor = .systemBlue
+        case .error:
+            button.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "VoiceFlow - Error")
+            button.contentTintColor = .systemOrange
         }
     }
 
