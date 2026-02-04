@@ -7,6 +7,7 @@ final class StatusBarController {
     var onTextReplacement: (() -> Void)?
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
     var onDictionaryOpen: (() -> Void)?
+    var onHotkeySettings: (() -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
@@ -60,6 +61,11 @@ final class StatusBarController {
                 "ko": "설정...",
                 "en": "Settings...",
                 "zh": "设置..."
+            ],
+            "hotkey_settings": [
+                "ko": "단축키 설정...",
+                "en": "Hotkey Settings...",
+                "zh": "快捷键设置..."
             ],
             "quit": [
                 "ko": "종료",
@@ -250,6 +256,10 @@ final class StatusBarController {
         settingsItem.target = self
         menu.addItem(settingsItem)
 
+        let hotkeySettingsItem = NSMenuItem(title: localized("hotkey_settings"), action: #selector(hotkeySettingsAction), keyEquivalent: "")
+        hotkeySettingsItem.target = self
+        menu.addItem(hotkeySettingsItem)
+
         let textReplacementItem = NSMenuItem(title: localized("text_replacement"), action: #selector(textReplacementAction), keyEquivalent: "")
         textReplacementItem.target = self
         menu.addItem(textReplacementItem)
@@ -265,6 +275,10 @@ final class StatusBarController {
 
     @objc private func settingsAction() {
         onSettings?()
+    }
+
+    @objc private func hotkeySettingsAction() {
+        onHotkeySettings?()
     }
 
     @objc private func textReplacementAction() {

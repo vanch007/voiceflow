@@ -5,7 +5,7 @@
   "subtasks": {
     "completed": 4,
     "total": 5,
-    "in_progress": 1,
+    "in_progress": 0,
     "failed": 0
   },
   "phase": {

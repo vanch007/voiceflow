@@ -92,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBarController: StatusBarController!
     private var settingsWindowController: SettingsWindowController!
     private var hotkeyManager: HotkeyManager!
+    private var hotkeySettingsWindow: HotkeySettingsWindow!
     private var audioRecorder: AudioRecorder!
     private var asrClient: ASRClient!
     private var dictionaryManager: DictionaryManager!
@@ -246,6 +247,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.stopRecording()
         }
         hotkeyManager.start()
+
+        // Initialize hotkey settings window
+        hotkeySettingsWindow = HotkeySettingsWindow()
+        hotkeySettingsWindow.onSave = { [weak self] config in
+            self?.hotkeyManager.saveConfig(config)
+        }
+        hotkeySettingsWindow.onReset = { [weak self] in
+            self?.hotkeyManager.resetToDefault()
+        }
+
+        // Setup hotkey settings action (separate from main settings)
+        statusBarController.onHotkeySettings = { [weak self] in
+            self?.hotkeySettingsWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+        }
 
         // Observe hotkey enabled setting
         settingsManager.$hotkeyEnabled
