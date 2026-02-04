@@ -12,7 +12,7 @@ VoiceFlow is a macOS menu bar app for voice-to-text transcription. It captures a
 - MLX-accelerated Qwen3-ASR for Apple Silicon
 - WebSocket connection to local ASR server with auto-reconnect
 - Text polish feature with AI enhancement
-- Status bar UI with connection/recording indicators
+- Plugin system for extensible post-ASR processing
 
 ## Build & Run
 
@@ -28,6 +28,12 @@ open VoiceFlow/VoiceFlow.xcodeproj
 
 # Python environment setup (first time)
 scripts/setup.sh
+
+# Build and bundle app
+scripts/build.sh
+
+# Start ASR server only
+scripts/start-server.sh
 ```
 
 **Requirements:**
@@ -36,6 +42,16 @@ scripts/setup.sh
 - Python 3.11+
 - Accessibility permissions (for global hotkey monitoring)
 - Microphone permissions (for audio recording)
+
+## Testing
+
+```bash
+# Python server tests
+cd server && pytest tests/
+
+# Swift tests (via Xcode)
+cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
+```
 
 ## Architecture
 
@@ -64,6 +80,12 @@ scripts/setup.sh
 - `mlx_asr.py`: MLX-based Qwen3-ASR wrapper for Apple Silicon GPU acceleration
 - `text_polisher.py`: AI text enhancement using LLM
 
+### Plugin System (`Plugins/`)
+
+Extensible post-ASR processing plugins. Each plugin has a `manifest.json` describing its capabilities.
+- `ChinesePunctuationPlugin`: Chinese punctuation normalization
+- `Examples/`: Sample plugins (PunctuationPlugin, UppercasePlugin)
+
 ### Data Flow
 
 ```
@@ -77,7 +99,7 @@ ASRClient sends audio chunks via WebSocket
   ↓
 Python server transcribes with Qwen3-ASR (MLX)
   ↓
-Optional: Text polish with LLM
+Optional: Text polish with LLM + Plugin processing
   ↓
 TextInjector pastes text into active app
 ```
@@ -92,6 +114,17 @@ TextInjector pastes text into active app
 **Server → Client:**
 - `{"type": "final", "text": "..."}` - Final transcription result
 - `{"type": "partial", "text": "..."}` - Partial result during recording
+
+## Key Files for Common Tasks
+
+| Task | Files |
+|------|-------|
+| Modify hotkey behavior | `VoiceFlow/Sources/Core/HotkeyManager.swift` |
+| Change audio processing | `VoiceFlow/Sources/Core/AudioRecorder.swift` |
+| Adjust WebSocket protocol | `VoiceFlow/Sources/Core/ASRClient.swift` + `server/main.py` |
+| Add UI elements | `VoiceFlow/Sources/UI/StatusBarController.swift` |
+| Modify ASR model | `server/mlx_asr.py` |
+| Add text post-processing | `server/text_polisher.py` or create new plugin |
 
 ## Debugging
 
