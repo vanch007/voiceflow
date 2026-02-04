@@ -16,6 +16,8 @@ final class StatusBarController {
     private var isRecording = false
     private var activeDeviceName: String?
     private var currentStatus: AppStatus = .idle
+    private var debounceTimer: Timer?
+    private let errorDebounceInterval: TimeInterval = 3.0
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -39,8 +41,17 @@ final class StatusBarController {
     }
 
     func updateStatus(_ status: AppStatus) {
-        currentStatus = status
-        updateIcon()
+        // Cancel any pending debounced transition
+        stopDebounceTimer()
+
+        // For error state, debounce the transition
+        if status == .error {
+            startDebounceTimer(targetStatus: status)
+        } else {
+            // Immediate transition for non-error states
+            currentStatus = status
+            updateIcon()
+        }
     }
 
     private func updateIcon() {
@@ -60,6 +71,19 @@ final class StatusBarController {
             button.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "VoiceFlow - Error")
             button.contentTintColor = .systemOrange
         }
+    }
+
+    private func startDebounceTimer(targetStatus: AppStatus) {
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: errorDebounceInterval, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.currentStatus = targetStatus
+            self.updateIcon()
+        }
+    }
+
+    private func stopDebounceTimer() {
+        debounceTimer?.invalidate()
+        debounceTimer = nil
     }
 
     private func buildMenu() {
