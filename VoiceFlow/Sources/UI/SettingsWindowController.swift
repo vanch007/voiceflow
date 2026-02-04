@@ -517,3 +517,41 @@ private struct PluginDetailView: View {
         .frame(width: 600, height: 600)
 }
 
+private func mockPlugins() -> [PluginInfo] {
+    let manifest1 = PluginManifest(
+        id: "com.example.echo",
+        name: "Echo",
+        version: "1.0.0",
+        author: "Example Dev",
+        description: "Echoes back the transcription.",
+        entrypoint: "EchoPlugin.bundle",
+        permissions: ["transcription"],
+        platform: .swift
+    )
+    let manifest2 = PluginManifest(
+        id: "com.example.polish",
+        name: "Polish",
+        version: "1.2.0",
+        author: "Example Dev",
+        description: "Polishes text grammar and style.",
+        entrypoint: "PolishPlugin.bundle",
+        permissions: ["transcription"],
+        platform: .swift
+    )
+    let info1 = PluginInfo(manifest: manifest1, state: .enabled)
+    let info2 = PluginInfo(manifest: manifest2, state: .disabled)
+    return [info1, info2]
+}
+
+private struct PluginSettingsPreviewWrapper: View {
+    @State private var list: [PluginInfo] = mockPlugins()
+    var body: some View {
+        PluginSettingsTab(pluginInfoList: $list)
+            .frame(width: 600, height: 600)
+    }
+}
+
+#Preview("Settings - Plugins") {
+    PluginSettingsPreviewWrapper()
+}
+
