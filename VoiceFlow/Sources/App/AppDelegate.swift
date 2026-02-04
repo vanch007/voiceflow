@@ -73,11 +73,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         asrClient.onErrorStateChanged = { [weak self] hasError, errorMessage in
             DispatchQueue.main.async {
-                if hasError {
-                    self?.statusBarController.updateStatus(.error)
-                } else {
-                    self?.statusBarController.updateStatus(.idle)
-                }
+                self?.statusBarController.updateErrorState(hasError: hasError, message: errorMessage)
             }
         }
 

@@ -16,6 +16,7 @@ final class StatusBarController {
     private var isRecording = false
     private var activeDeviceName: String?
     private var currentStatus: AppStatus = .idle
+    private var errorMessage: String?
     private var debounceTimer: Timer?
     private let errorDebounceInterval: TimeInterval = 3.0
     private var lastCheckTime: Date = Date()
@@ -54,8 +55,19 @@ final class StatusBarController {
         } else {
             // Immediate transition for non-error states
             currentStatus = status
+            errorMessage = nil
             updateIcon()
             updateTooltip()
+        }
+    }
+
+    func updateErrorState(hasError: Bool, message: String?) {
+        if hasError {
+            errorMessage = message
+            updateStatus(.error)
+        } else {
+            errorMessage = nil
+            updateStatus(.idle)
         }
     }
 
@@ -104,11 +116,16 @@ final class StatusBarController {
         let lastCheckText = dateFormatter.string(from: lastCheckTime)
 
         // Build tooltip
-        let tooltip = """
+        var tooltip = """
         앱 상태: \(appStateText)
         ASR 상태: \(asrStatusText)
         마지막 확인: \(lastCheckText)
         """
+
+        // Add error message if present
+        if let errorMsg = errorMessage {
+            tooltip += "\n오류 메시지: \(errorMsg)"
+        }
 
         button.toolTip = tooltip
     }
