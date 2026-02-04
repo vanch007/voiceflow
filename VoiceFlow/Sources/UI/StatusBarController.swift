@@ -1,5 +1,17 @@
 import AppKit
 
+enum AppStatus {
+    case idle
+    case recording
+    case processing
+    case error
+}
+
+private enum IconStyle: String {
+    case colored
+    case monochrome
+}
+
 final class StatusBarController {
     var onQuit: (() -> Void)?
     var onSettings: (() -> Void)?
@@ -13,11 +25,29 @@ final class StatusBarController {
     private var isConnected = false
     private var isRecording = false
     private var activeDeviceName: String?
+    private var currentStatus: AppStatus = .idle
+    private var errorMessage: String?
+    private var debounceTimer: Timer?
+    private let errorDebounceInterval: TimeInterval = 3.0
+    private var lastCheckTime: Date = Date()
+
+    private var iconStyle: IconStyle {
+        get {
+            let raw = UserDefaults.standard.string(forKey: "iconStyle") ?? "colored"
+            return IconStyle(rawValue: raw) ?? .colored
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "iconStyle")
+            updateIcon()  // Apply immediately
+            updateTooltip()
+        }
+    }
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         updateIcon()
         buildMenu()
+        updateTooltip()
 
         // Observe language changes for real-time menu updates
         NotificationCenter.default.addObserver(
@@ -101,6 +131,21 @@ final class StatusBarController {
                 "ko": "텍스트 대체...",
                 "en": "Text Replacement...",
                 "zh": "文本替换..."
+            ],
+            "icon_style": [
+                "ko": "아이콘 스타일",
+                "en": "Icon Style",
+                "zh": "图标样式"
+            ],
+            "colored": [
+                "ko": "컬러",
+                "en": "Colored",
+                "zh": "彩色"
+            ],
+            "monochrome": [
+                "ko": "단색",
+                "en": "Monochrome",
+                "zh": "单色"
             ]
         ]
 
@@ -122,7 +167,9 @@ final class StatusBarController {
 
     func updateConnectionStatus(connected: Bool) {
         isConnected = connected
+        lastCheckTime = Date()
         buildMenu()
+        updateTooltip()
     }
 
     func updateRecordingStatus(recording: Bool) {
@@ -135,15 +182,115 @@ final class StatusBarController {
         buildMenu()
     }
 
+    func updateStatus(_ status: AppStatus) {
+        // Cancel any pending debounced transition
+        stopDebounceTimer()
+
+        // For error state, debounce the transition
+        if status == .error {
+            startDebounceTimer(targetStatus: status)
+        } else {
+            // Immediate transition for non-error states
+            currentStatus = status
+            errorMessage = nil
+            updateIcon()
+            updateTooltip()
+        }
+    }
+
+    func updateErrorState(hasError: Bool, message: String?) {
+        if hasError {
+            errorMessage = message
+            updateStatus(.error)
+        } else {
+            errorMessage = nil
+            updateStatus(.idle)
+        }
+    }
+
     private func updateIcon() {
         guard let button = statusItem.button else { return }
-        if isRecording {
-            button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "VoiceFlow - Recording")
-            button.contentTintColor = .systemRed
-        } else {
-            button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "VoiceFlow")
-            button.contentTintColor = nil
+
+        let symbolName: String
+        let baseColor: NSColor
+
+        switch currentStatus {
+        case .idle:
+            symbolName = "mic"
+            baseColor = .systemGray
+        case .recording:
+            symbolName = "mic.fill"
+            baseColor = .systemRed
+        case .processing:
+            symbolName = "waveform"
+            baseColor = .systemBlue
+        case .error:
+            symbolName = "exclamationmark.triangle"
+            baseColor = .systemOrange
         }
+
+        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "VoiceFlow - \(currentStatus)")
+
+        // Apply color based on style preference
+        if iconStyle == .monochrome {
+            button.contentTintColor = .systemGray
+        } else {
+            button.contentTintColor = baseColor
+        }
+    }
+
+    private func updateTooltip() {
+        guard let button = statusItem.button else { return }
+
+        // Build localized tooltip content
+        let appStateText: String
+        switch currentStatus {
+        case .idle:
+            appStateText = "대기 중"
+        case .recording:
+            appStateText = "녹음 중"
+        case .processing:
+            appStateText = "처리 중"
+        case .error:
+            appStateText = "오류"
+        }
+
+        let asrStatusText = isConnected ? "연결됨" : "끊어짐"
+
+        // Format timestamp in localized format
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .short
+        dateFormatter.timeStyle = .medium
+        dateFormatter.locale = Locale(identifier: "ko_KR")
+        let lastCheckText = dateFormatter.string(from: lastCheckTime)
+
+        // Build tooltip
+        var tooltip = """
+        앱 상태: \(appStateText)
+        ASR 상태: \(asrStatusText)
+        마지막 확인: \(lastCheckText)
+        """
+
+        // Add error message if present
+        if let errorMsg = errorMessage {
+            tooltip += "\n오류 메시지: \(errorMsg)"
+        }
+
+        button.toolTip = tooltip
+    }
+
+    private func startDebounceTimer(targetStatus: AppStatus) {
+        debounceTimer = Timer.scheduledTimer(withTimeInterval: errorDebounceInterval, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            self.currentStatus = targetStatus
+            self.updateIcon()
+            self.updateTooltip()
+        }
+    }
+
+    private func stopDebounceTimer() {
+        debounceTimer?.invalidate()
+        debounceTimer = nil
     }
 
     private func buildMenu() {
@@ -201,6 +348,27 @@ final class StatusBarController {
         }
         micItem.submenu = micSubmenu
         menu.addItem(micItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Icon style selection submenu
+        let styleItem = NSMenuItem(title: localized("icon_style"), action: nil, keyEquivalent: "")
+        styleItem.image = NSImage(systemSymbolName: "paintpalette", accessibilityDescription: nil)
+
+        let styleSubmenu = NSMenu()
+
+        let coloredItem = NSMenuItem(title: localized("colored"), action: #selector(selectColoredStyle), keyEquivalent: "")
+        coloredItem.target = self
+        coloredItem.state = iconStyle == .colored ? .on : .off
+        styleSubmenu.addItem(coloredItem)
+
+        let monoItem = NSMenuItem(title: localized("monochrome"), action: #selector(selectMonochromeStyle), keyEquivalent: "")
+        monoItem.target = self
+        monoItem.state = iconStyle == .monochrome ? .on : .off
+        styleSubmenu.addItem(monoItem)
+
+        styleItem.submenu = styleSubmenu
+        menu.addItem(styleItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -318,6 +486,16 @@ final class StatusBarController {
 
     @objc private func openDictionary() {
         onDictionaryOpen?()
+    }
+
+    @objc private func selectColoredStyle() {
+        iconStyle = .colored
+        buildMenu()  // Refresh checkmarks
+    }
+
+    @objc private func selectMonochromeStyle() {
+        iconStyle = .monochrome
+        buildMenu()  // Refresh checkmarks
     }
 
     @objc private func quitAction() {

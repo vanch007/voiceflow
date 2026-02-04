@@ -5,6 +5,7 @@ final class ASRClient {
     var onPartialResult: ((String) -> Void)?  // 实时部分结果回调
     var onOriginalTextReceived: ((String) -> Void)?  // 原始文本回调
     var onConnectionStatusChanged: ((Bool) -> Void)?
+    var onErrorStateChanged: ((Bool, String?) -> Void)?
 
     private var webSocketTask: URLSessionWebSocketTask?
     private let serverURL = URL(string: "ws://localhost:9876")!
@@ -12,6 +13,7 @@ final class ASRClient {
     private var reconnectTimer: Timer?
     private let reconnectInterval: TimeInterval = 3.0
     private var currentLanguage: String = SettingsManager.shared.voiceLanguage
+    private var lastErrorMessage: String?
 
     // 引用 SettingsManager 获取配置
     private let settingsManager: SettingsManager
@@ -38,6 +40,8 @@ final class ASRClient {
         onConnectionStatusChanged?(true)
         print("[ASRClient] Connected to \(serverURL)")
         stopReconnectTimer()
+        lastErrorMessage = nil
+        onErrorStateChanged?(false, nil)
     }
 
     func disconnect() {
@@ -112,7 +116,7 @@ final class ASRClient {
                 self.listenForMessages()
             case .failure(let error):
                 print("[ASRClient] Receive error: \(error)")
-                self.handleDisconnect()
+                self.handleDisconnect(error: error.localizedDescription)
             }
         }
     }
@@ -147,11 +151,13 @@ final class ASRClient {
         }
     }
 
-    private func handleDisconnect() {
+    private func handleDisconnect(error: String? = nil) {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.isConnected = false
             self.onConnectionStatusChanged?(false)
+            self.lastErrorMessage = error ?? "Connection lost"
+            self.onErrorStateChanged?(true, self.lastErrorMessage)
             self.startReconnectTimer()
         }
     }

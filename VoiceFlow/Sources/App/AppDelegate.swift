@@ -182,6 +182,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 processedText = self.pluginManager.processText(processedText)
 
                 self.overlayPanel.showDone()
+                self.statusBarController.updateStatus(.idle)
                 if !processedText.isEmpty {
                     self.textInjector.inject(text: processedText)
                 }
@@ -216,6 +217,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         asrClient.onConnectionStatusChanged = { [weak self] connected in
             DispatchQueue.main.async {
                 self?.statusBarController.updateConnectionStatus(connected: connected)
+            }
+        }
+
+        asrClient.onErrorStateChanged = { [weak self] hasError, errorMessage in
+            DispatchQueue.main.async {
+                self?.statusBarController.updateErrorState(hasError: hasError, message: errorMessage)
             }
         }
 
@@ -450,7 +457,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[Recording] Starting recording, playing start sound")
         playSound(startSoundID, name: "startSound")
         overlayPanel.showRecording()
-        statusBarController.updateRecordingStatus(recording: true)
+        statusBarController.updateStatus(.recording)
         asrClient.sendStart()
         audioRecorder.startRecording()
     }
@@ -491,7 +498,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         playSound(stopSoundID, name: "stopSound")
         audioRecorder.stopRecording()
         overlayPanel.showProcessing()
-        statusBarController.updateRecordingStatus(recording: false)
+        statusBarController.updateStatus(.processing)
         asrClient.sendStop()
     }
 }
