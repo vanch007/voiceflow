@@ -85,6 +85,8 @@ final class HotkeyManager {
         switch currentConfig.triggerType {
         case .doubleTap:
             handleDoubleTapTrigger(event: event)
+        case .longPress:
+            handleLongPressTrigger(event: event)
         case .combination:
             handleCombinationTrigger(event: event)
         }
@@ -107,6 +109,47 @@ final class HotkeyManager {
                 NSLog("[HotkeyManager] 组合键触发: \(currentConfig.displayString)")
                 DispatchQueue.main.async { [weak self] in
                     self?.onLongPress?()
+                }
+            }
+        }
+    }
+
+    private func handleLongPressTrigger(event: NSEvent) {
+        let keyCode = event.keyCode
+        let targetKeyCode = currentConfig.keyCode
+
+        // Check for the specific modifier key
+        let isTargetKey = isMatchingModifierKey(keyCode: keyCode, targetKeyCode: targetKeyCode)
+        guard isTargetKey else { return }
+
+        let isKeyPressed = isModifierKeyPressed(event: event, keyCode: targetKeyCode)
+
+        if isKeyPressed && !keyIsDown {
+            // Key pressed - start long press timer
+            keyIsDown = true
+            keyPressTime = ProcessInfo.processInfo.systemUptime
+
+            longPressTimer = Timer.scheduledTimer(withTimeInterval: currentConfig.interval, repeats: false) { [weak self] _ in
+                guard let self = self, self.keyIsDown else { return }
+                if self.isEnabled {
+                    NSLog("[HotkeyManager] 长按触发: \(self.currentConfig.displayString)")
+                    DispatchQueue.main.async {
+                        self.onLongPress?()
+                    }
+                }
+            }
+        } else if !isKeyPressed && keyIsDown {
+            // Key released
+            keyIsDown = false
+            let pressDuration = ProcessInfo.processInfo.systemUptime - keyPressTime
+
+            longPressTimer?.invalidate()
+            longPressTimer = nil
+
+            if pressDuration >= currentConfig.interval && isEnabled {
+                NSLog("[HotkeyManager] 长按结束 (持续 \(String(format: "%.2f", pressDuration))s)")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onLongPressEnd?()
                 }
             }
         }

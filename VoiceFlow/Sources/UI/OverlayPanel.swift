@@ -55,13 +55,21 @@ final class OverlayPanel {
     private func show(state: State) {
         currentState = state
 
-        let text = textForState(state)
-        let width = calculateWidth(for: text)
+        // 获取实际的转录文字用于计算尺寸
+        let actualText: String
+        switch state {
+        case .recording(let text):
+            actualText = text
+        default:
+            actualText = ""
+        }
+
+        let width = calculateWidth(for: actualText)
 
         if panel == nil {
-            createPanel(width: width)
+            createPanel(width: width, text: actualText)
         } else {
-            updatePanelFrame(width: width)
+            updatePanelFrame(width: width, text: actualText)
         }
 
         updateContent()
@@ -108,8 +116,8 @@ final class OverlayPanel {
         return baseHeight + CGFloat(lineCount) * lineHeight
     }
 
-    private func createPanel(width: CGFloat) {
-        let panelHeight = calculateHeightForCurrentState()
+    private func createPanel(width: CGFloat, text: String) {
+        let panelHeight = calculateHeight(for: text, isRecording: true)
 
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
@@ -154,17 +162,17 @@ final class OverlayPanel {
         updateContent()
     }
 
-    private func updatePanelFrame(width: CGFloat) {
+    private func updatePanelFrame(width: CGFloat, text: String) {
         guard let panel, let screen = NSScreen.main else { return }
 
-        let panelHeight = calculateHeightForCurrentState()
+        let panelHeight = calculateHeight(for: text, isRecording: true)
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - width / 2
         let y = screenFrame.minY + 100  // 屏幕底部，距离底部 100pt
 
         // Animate the frame change for smooth transitions
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
+            context.duration = 0.15
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(NSRect(x: x, y: y, width: width, height: panelHeight), display: true)
         }

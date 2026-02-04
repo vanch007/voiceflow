@@ -4,6 +4,7 @@ struct HotkeyConfig: Codable {
     enum TriggerType: String, Codable {
         case doubleTap
         case combination
+        case longPress  // 长按单个修饰键
     }
 
     let triggerType: TriggerType
@@ -12,16 +13,18 @@ struct HotkeyConfig: Codable {
     let interval: TimeInterval
 
     static let `default` = HotkeyConfig(
-        triggerType: .doubleTap,
-        keyCode: 59, // Left Control
+        triggerType: .longPress,
+        keyCode: 58, // Left Option
         modifiers: [],
-        interval: 0.3
+        interval: 0.3  // 长按阈值 0.3 秒
     )
 
     var displayString: String {
         switch triggerType {
         case .doubleTap:
             return "\(keyName(for: keyCode)) 双击"
+        case .longPress:
+            return "\(keyName(for: keyCode)) 长按"
         case .combination:
             var parts: [String] = []
             if modifiers.contains(.command) { parts.append("⌘") }
