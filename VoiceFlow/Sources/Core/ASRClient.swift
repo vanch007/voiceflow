@@ -1,5 +1,16 @@
 import Foundation
 
+private enum ASRMessageType: String, Decodable {
+    case final
+    case partial
+}
+
+private struct ASRMessage: Decodable {
+    let type: ASRMessageType
+    let text: String
+    let original_text: String?
+}
+
 final class ASRClient {
     var onTranscriptionResult: ((String) -> Void)?
     var onPartialResult: ((String) -> Void)?  // 实时部分结果回调
@@ -8,9 +19,10 @@ final class ASRClient {
     var onErrorStateChanged: ((Bool, String?) -> Void)?
 
     private var webSocketTask: URLSessionWebSocketTask?
+    private let session: URLSession = URLSession(configuration: .default)
+    private var reconnectTask: Task<Void, Never>?
     private let serverURL = URL(string: "ws://localhost:9876")!
     private var isConnected = false
-    private var reconnectTimer: Timer?
     private let reconnectInterval: TimeInterval = 3.0
     private var currentLanguage: String = SettingsManager.shared.voiceLanguage
     private var lastErrorMessage: String?
@@ -32,16 +44,18 @@ final class ASRClient {
 
     func connect() {
         disconnect()
-        let session = URLSession(configuration: .default)
         webSocketTask = session.webSocketTask(with: serverURL)
         webSocketTask?.resume()
         listenForMessages()
         isConnected = true
-        onConnectionStatusChanged?(true)
+        DispatchQueue.main.async { [weak self] in
+            self?.onConnectionStatusChanged?(true)
+            self?.lastErrorMessage = nil
+            self?.onErrorStateChanged?(false, nil)
+        }
         print("[ASRClient] Connected to \(serverURL)")
-        stopReconnectTimer()
-        lastErrorMessage = nil
-        onErrorStateChanged?(false, nil)
+        reconnectTask?.cancel()
+        reconnectTask = nil
     }
 
     func disconnect() {
@@ -49,8 +63,12 @@ final class ASRClient {
         webSocketTask = nil
         if isConnected {
             isConnected = false
-            onConnectionStatusChanged?(false)
+            DispatchQueue.main.async { [weak self] in
+                self?.onConnectionStatusChanged?(false)
+            }
         }
+        reconnectTask?.cancel()
+        reconnectTask = nil
     }
 
     func sendStart() {
@@ -132,22 +150,19 @@ final class ASRClient {
             return
         }
 
-        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = json["type"] as? String,
-              let text = json["text"] as? String else { return }
+        guard let decoded = try? JSONDecoder().decode(ASRMessage.self, from: data) else { return }
+        NSLog("[ASRClient] Received: type=\(decoded.type), text=\(decoded.text), original_text=\(decoded.original_text ?? "nil")")
 
-        let originalText = json["original_text"] as? String
-        NSLog("[ASRClient] Received: type=\(type), text=\(text), original_text=\(originalText ?? "nil")")
-
-        if type == "final" {
-            // 最终结果
-            onTranscriptionResult?(text)
-            if let originalText {
-                onOriginalTextReceived?(originalText)
+        switch decoded.type {
+        case .final:
+            DispatchQueue.main.async { [weak self] in
+                self?.onTranscriptionResult?(decoded.text)
+                if let original = decoded.original_text { self?.onOriginalTextReceived?(original) }
             }
-        } else if type == "partial" {
-            // 实时部分结果
-            onPartialResult?(text)
+        case .partial:
+            DispatchQueue.main.async { [weak self] in
+                self?.onPartialResult?(decoded.text)
+            }
         }
     }
 
@@ -158,21 +173,19 @@ final class ASRClient {
             self.onConnectionStatusChanged?(false)
             self.lastErrorMessage = error ?? "Connection lost"
             self.onErrorStateChanged?(true, self.lastErrorMessage)
-            self.startReconnectTimer()
         }
-    }
 
-    private func startReconnectTimer() {
-        stopReconnectTimer()
-        reconnectTimer = Timer.scheduledTimer(withTimeInterval: reconnectInterval, repeats: true) { [weak self] _ in
-            print("[ASRClient] Attempting reconnect...")
-            self?.connect()
+        // Start or restart reconnect task
+        reconnectTask?.cancel()
+        reconnectTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(reconnectInterval * 1_000_000_000))
+                print("[ASRClient] Attempting reconnect...")
+                self.connect()
+                if self.isConnected { break }
+            }
         }
-    }
-
-    private func stopReconnectTimer() {
-        reconnectTimer?.invalidate()
-        reconnectTimer = nil
     }
 
     // MARK: - Settings Observer
@@ -195,7 +208,7 @@ final class ASRClient {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
-        stopReconnectTimer()
+        reconnectTask?.cancel()
         disconnect()
     }
 }
