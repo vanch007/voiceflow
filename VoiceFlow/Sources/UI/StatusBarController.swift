@@ -7,6 +7,11 @@ enum AppStatus {
     case error
 }
 
+private enum IconStyle: String {
+    case colored
+    case monochrome
+}
+
 final class StatusBarController {
     var onQuit: (() -> Void)?
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
@@ -20,6 +25,18 @@ final class StatusBarController {
     private var debounceTimer: Timer?
     private let errorDebounceInterval: TimeInterval = 3.0
     private var lastCheckTime: Date = Date()
+
+    private var iconStyle: IconStyle {
+        get {
+            let raw = UserDefaults.standard.string(forKey: "iconStyle") ?? "colored"
+            return IconStyle(rawValue: raw) ?? .colored
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "iconStyle")
+            updateIcon()  // Apply immediately
+            updateTooltip()
+        }
+    }
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -74,19 +91,31 @@ final class StatusBarController {
     private func updateIcon() {
         guard let button = statusItem.button else { return }
 
+        let symbolName: String
+        let baseColor: NSColor
+
         switch currentStatus {
         case .idle:
-            button.image = NSImage(systemSymbolName: "mic", accessibilityDescription: "VoiceFlow - Idle")
-            button.contentTintColor = .systemGray
+            symbolName = "mic"
+            baseColor = .systemGray
         case .recording:
-            button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "VoiceFlow - Recording")
-            button.contentTintColor = .systemRed
+            symbolName = "mic.fill"
+            baseColor = .systemRed
         case .processing:
-            button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "VoiceFlow - Processing")
-            button.contentTintColor = .systemBlue
+            symbolName = "waveform"
+            baseColor = .systemBlue
         case .error:
-            button.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: "VoiceFlow - Error")
-            button.contentTintColor = .systemOrange
+            symbolName = "exclamationmark.triangle"
+            baseColor = .systemOrange
+        }
+
+        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: "VoiceFlow - \(currentStatus)")
+
+        // Apply color based on style preference
+        if iconStyle == .monochrome {
+            button.contentTintColor = .systemGray
+        } else {
+            button.contentTintColor = baseColor
         }
     }
 
@@ -201,6 +230,27 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Icon style selection submenu
+        let styleItem = NSMenuItem(title: "아이콘 스타일", action: nil, keyEquivalent: "")
+        styleItem.image = NSImage(systemSymbolName: "paintpalette", accessibilityDescription: nil)
+
+        let styleSubmenu = NSMenu()
+
+        let coloredItem = NSMenuItem(title: "컬러", action: #selector(selectColoredStyle), keyEquivalent: "")
+        coloredItem.target = self
+        coloredItem.state = iconStyle == .colored ? .on : .off
+        styleSubmenu.addItem(coloredItem)
+
+        let monoItem = NSMenuItem(title: "단색", action: #selector(selectMonochromeStyle), keyEquivalent: "")
+        monoItem.target = self
+        monoItem.state = iconStyle == .monochrome ? .on : .off
+        styleSubmenu.addItem(monoItem)
+
+        styleItem.submenu = styleSubmenu
+        menu.addItem(styleItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(title: "종료", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -219,6 +269,16 @@ final class StatusBarController {
         UserDefaults.standard.set(deviceID, forKey: "selectedAudioDevice")
         onDeviceSelected?(deviceID)
         buildMenu()
+    }
+
+    @objc private func selectColoredStyle() {
+        iconStyle = .colored
+        buildMenu()  // Refresh checkmarks
+    }
+
+    @objc private func selectMonochromeStyle() {
+        iconStyle = .monochrome
+        buildMenu()  // Refresh checkmarks
     }
 
     @objc private func quitAction() {
