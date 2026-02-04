@@ -21,6 +21,8 @@ final class RecordingHistory {
     private let maxEntries = 50
     private let userDefaultsKey = "com.voiceflow.recordingHistory"
     private let audioDirectory: URL
+    private let historyFileURL: URL
+    private let queue = DispatchQueue(label: "com.voiceflow.recordinghistory")
 
     private(set) var entries: [RecordingEntry] = []
 
@@ -31,6 +33,7 @@ final class RecordingHistory {
         let fileManager = FileManager.default
         let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         audioDirectory = appSupport.appendingPathComponent("VoiceFlow/Recordings", isDirectory: true)
+        historyFileURL = appSupport.appendingPathComponent("VoiceFlow/recording_history.json")
 
         // Create directory if needed
         try? fileManager.createDirectory(at: audioDirectory, withIntermediateDirectories: true)
@@ -41,50 +44,59 @@ final class RecordingHistory {
     // MARK: - Public Methods
 
     func addEntry(text: String, duration: TimeInterval, audioData: Data? = nil) {
-        let audioPath: String?
-        if let data = audioData {
-            audioPath = saveAudioFile(data)
-        } else {
-            audioPath = nil
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            let audioPath: String?
+            if let data = audioData {
+                audioPath = self.saveAudioFile(data)
+            } else {
+                audioPath = nil
+            }
+
+            let entry = RecordingEntry(text: text, duration: duration, audioPath: audioPath)
+            self.entries.insert(entry, at: 0) // newest first
+
+            // Enforce max entries limit
+            if self.entries.count > self.maxEntries {
+                let removed = self.entries.removeLast()
+                self.deleteAudioFile(path: removed.audioPath)
+            }
+
+            self.saveEntries()
+            DispatchQueue.main.async { self.onEntriesChanged?() }
+            NSLog("[RecordingHistory] Added entry: \(text.prefix(50))... (duration: \(duration)s)")
         }
-
-        let entry = RecordingEntry(text: text, duration: duration, audioPath: audioPath)
-        entries.insert(entry, at: 0) // Insert at beginning (newest first)
-
-        // Enforce max entries limit
-        if entries.count > maxEntries {
-            let removed = entries.removeLast()
-            deleteAudioFile(path: removed.audioPath)
-        }
-
-        saveEntries()
-        onEntriesChanged?()
-        NSLog("[RecordingHistory] Added entry: \(text.prefix(50))... (duration: \(duration)s)")
     }
 
     func deleteEntry(id: UUID) {
-        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
-        let entry = entries.remove(at: index)
-        deleteAudioFile(path: entry.audioPath)
-        saveEntries()
-        onEntriesChanged?()
-        NSLog("[RecordingHistory] Deleted entry: \(id)")
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            guard let index = self.entries.firstIndex(where: { $0.id == id }) else { return }
+            let entry = self.entries.remove(at: index)
+            self.deleteAudioFile(path: entry.audioPath)
+            self.saveEntries()
+            DispatchQueue.main.async { self.onEntriesChanged?() }
+            NSLog("[RecordingHistory] Deleted entry: \(id)")
+        }
     }
 
     func clearAll() {
-        // Delete all audio files
-        for entry in entries {
-            deleteAudioFile(path: entry.audioPath)
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            for entry in self.entries {
+                self.deleteAudioFile(path: entry.audioPath)
+            }
+            self.entries.removeAll()
+            self.saveEntries()
+            DispatchQueue.main.async { self.onEntriesChanged?() }
+            NSLog("[RecordingHistory] Cleared all entries")
         }
-        entries.removeAll()
-        saveEntries()
-        onEntriesChanged?()
-        NSLog("[RecordingHistory] Cleared all entries")
     }
 
     func searchEntries(query: String) -> [RecordingEntry] {
-        guard !query.isEmpty else { return entries }
-        return entries.filter { $0.text.localizedCaseInsensitiveContains(query) }
+        let snapshot: [RecordingEntry] = queue.sync { entries }
+        guard !query.isEmpty else { return snapshot }
+        return snapshot.filter { $0.text.localizedCaseInsensitiveContains(query) }
     }
 
     func getAudioData(for entry: RecordingEntry) -> Data? {
@@ -96,27 +108,44 @@ final class RecordingHistory {
 
     private func saveEntries() {
         let encoder = JSONEncoder()
-        guard let data = try? encoder.encode(entries) else {
-            NSLog("[RecordingHistory] ERROR: Failed to encode entries")
-            return
+        encoder.dateEncodingStrategy = .iso8601
+        do {
+            let data = try encoder.encode(entries)
+            try data.write(to: historyFileURL, options: .atomic)
+        } catch {
+            NSLog("[RecordingHistory] ERROR: Failed to write entries to file: \(error)")
         }
-        UserDefaults.standard.set(data, forKey: userDefaultsKey)
     }
 
     private func loadEntries() {
-        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey) else {
-            NSLog("[RecordingHistory] No saved entries found")
-            return
-        }
-
+        let fm = FileManager.default
         let decoder = JSONDecoder()
-        guard let decoded = try? decoder.decode([RecordingEntry].self, from: data) else {
-            NSLog("[RecordingHistory] ERROR: Failed to decode entries")
-            return
+        decoder.dateDecodingStrategy = .iso8601
+
+        if fm.fileExists(atPath: historyFileURL.path) {
+            do {
+                let data = try Data(contentsOf: historyFileURL)
+                entries = try decoder.decode([RecordingEntry].self, from: data)
+                NSLog("[RecordingHistory] Loaded \(entries.count) entries from file")
+                return
+            } catch {
+                NSLog("[RecordingHistory] ERROR: Failed to decode entries from file: \(error)")
+            }
         }
 
-        entries = decoded
-        NSLog("[RecordingHistory] Loaded \(entries.count) entries")
+        // Fallback: migrate from UserDefaults if present
+        if let data = UserDefaults.standard.data(forKey: userDefaultsKey) {
+            do {
+                entries = try decoder.decode([RecordingEntry].self, from: data)
+                NSLog("[RecordingHistory] Migrated \(entries.count) entries from UserDefaults")
+                saveEntries()
+                UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+            } catch {
+                NSLog("[RecordingHistory] ERROR: Failed to decode entries from UserDefaults: \(error)")
+            }
+        } else {
+            NSLog("[RecordingHistory] No saved entries found")
+        }
     }
 
     // MARK: - Audio File Management

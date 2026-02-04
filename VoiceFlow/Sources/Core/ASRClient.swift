@@ -24,6 +24,9 @@ final class ASRClient {
     private let serverURL = URL(string: "ws://localhost:9876")!
     private var isConnected = false
     private let reconnectInterval: TimeInterval = 3.0
+    private let maxReconnectInterval: TimeInterval = 30.0
+    private var currentReconnectInterval: TimeInterval = 3.0
+    private var shouldReconnect = true
     private var currentLanguage: String = SettingsManager.shared.voiceLanguage
     private var lastErrorMessage: String?
 
@@ -44,6 +47,8 @@ final class ASRClient {
 
     func connect() {
         disconnect()
+        shouldReconnect = true
+        currentReconnectInterval = reconnectInterval
         webSocketTask = session.webSocketTask(with: serverURL)
         webSocketTask?.resume()
         listenForMessages()
@@ -59,6 +64,7 @@ final class ASRClient {
     }
 
     func disconnect() {
+        shouldReconnect = false
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
         if isConnected {
@@ -175,15 +181,22 @@ final class ASRClient {
             self.onErrorStateChanged?(true, self.lastErrorMessage)
         }
 
-        // Start or restart reconnect task
+        // Respect manual disconnect
+        guard shouldReconnect else { return }
+
+        // Start or restart reconnect task with exponential backoff
         reconnectTask?.cancel()
         reconnectTask = Task { [weak self] in
             guard let self else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(reconnectInterval * 1_000_000_000))
-                print("[ASRClient] Attempting reconnect...")
+            var delay = self.currentReconnectInterval
+            while !Task.isCancelled && self.shouldReconnect {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                print("[ASRClient] Attempting reconnect after \(delay)s...")
                 self.connect()
                 if self.isConnected { break }
+                // Exponential backoff up to a maximum
+                delay = min(self.maxReconnectInterval, delay * 2)
+                self.currentReconnectInterval = delay
             }
         }
     }
