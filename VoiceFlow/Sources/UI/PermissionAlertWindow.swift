@@ -245,8 +245,9 @@ final class PermissionAlertWindow: NSObject {
     // MARK: - Localization
 
     private func localized(_ key: String) -> String {
-        // Get language from SettingsManager following Pattern 1
-        let language = SettingsManager.shared.language
+        // Default to Korean to match existing app UI (StatusBarController uses Korean)
+        // Note: SettingsManager does not exist in this codebase
+        let language = "ko"
 
         let strings: [String: [String: String]] = [
             "permission_title": [
@@ -307,12 +308,12 @@ final class PermissionAlertWindow: NSObject {
             "instruction_click_accessibility": [
                 "ko": "\"접근성 설정 열기\" 버튼 클릭",
                 "en": "Click \"Open Accessibility Settings\" button",
-                "zh": "点击"打开辅助功能设置"按钮"
+                "zh": "点击\"打开辅助功能设置\"按钮"
             ],
             "instruction_click_microphone": [
                 "ko": "\"마이크 설정 열기\" 버튼 클릭",
                 "en": "Click \"Open Microphone Settings\" button",
-                "zh": "点击"打开麦克风设置"按钮"
+                "zh": "点击\"打开麦克风设置\"按钮"
             ],
             "instruction_find_voiceflow": [
                 "ko": "목록에서 VoiceFlow 찾기",
