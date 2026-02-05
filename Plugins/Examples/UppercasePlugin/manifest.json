@@ -1,0 +1,15 @@
+{
+  "id": "dev.voiceflow.examples.uppercase",
+  "name": "Uppercase Transform",
+  "version": "1.0.0",
+  "author": "VoiceFlow Team",
+  "description": "Transforms all transcribed text to uppercase for emphasis and clarity",
+  "entrypoint": "UppercasePlugin.swift",
+  "platform": "swift",
+  "permissions": [
+    "text.read",
+    "text.modify"
+  ],
+  "homepage": "https://github.com/voiceflow/voiceflow",
+  "license": "MIT"
+}
