@@ -44,8 +44,8 @@ final class OnboardingWindow: NSObject {
         w.isReleasedWhenClosed = false
         w.delegate = self
 
-        // Temporary placeholder view - will be replaced with OnboardingContentView
-        let contentView = OnboardingPlaceholderView(onComplete: { [weak self] in
+        // Multi-step onboarding content view
+        let contentView = OnboardingContentView(onComplete: { [weak self] in
             self?.handleComplete()
         })
 
@@ -68,39 +68,82 @@ extension OnboardingWindow: NSWindowDelegate {
     }
 }
 
-// MARK: - Placeholder View
-private struct OnboardingPlaceholderView: View {
+// MARK: - Onboarding Content View
+private struct OnboardingContentView: View {
     let onComplete: () -> Void
 
+    @State private var currentStep: OnboardingStep = .welcome
+
+    enum OnboardingStep {
+        case welcome
+        case microphone
+        case accessibility
+        case hotkeyPractice
+        case completion
+    }
+
     var body: some View {
-        VStack(spacing: 20) {
-            Text("欢迎使用 VoiceFlow")
-                .font(.system(size: 24, weight: .bold))
-
-            Text("语音转文字助手")
-                .font(.system(size: 16))
-                .foregroundColor(.secondary)
-
-            Spacer()
-
-            Text("Onboarding steps will be added in Phase 3")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-
-            Spacer()
-
-            Button(action: onComplete) {
-                Text("完成")
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
+        VStack(spacing: 0) {
+            // Progress indicator
+            HStack(spacing: 8) {
+                ForEach(0..<5) { index in
+                    Circle()
+                        .fill(index <= stepIndex ? Color.blue : Color.gray.opacity(0.3))
+                        .frame(width: 8, height: 8)
+                }
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 40)
+            .padding(.top, 20)
+            .padding(.bottom, 10)
+
+            // Current step view
+            Group {
+                switch currentStep {
+                case .welcome:
+                    WelcomeView(onNext: {
+                        currentStep = .microphone
+                    })
+                case .microphone:
+                    MicrophonePermissionView(
+                        onNext: {
+                            currentStep = .accessibility
+                        },
+                        onBack: {
+                            currentStep = .welcome
+                        }
+                    )
+                case .accessibility:
+                    AccessibilityPermissionView(
+                        onNext: {
+                            currentStep = .hotkeyPractice
+                        },
+                        onBack: {
+                            currentStep = .microphone
+                        }
+                    )
+                case .hotkeyPractice:
+                    HotkeyPracticeView(
+                        onNext: {
+                            currentStep = .completion
+                        },
+                        onBack: {
+                            currentStep = .accessibility
+                        }
+                    )
+                case .completion:
+                    CompletionView(onComplete: onComplete)
+                }
+            }
         }
-        .padding(40)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var stepIndex: Int {
+        switch currentStep {
+        case .welcome: return 0
+        case .microphone: return 1
+        case .accessibility: return 2
+        case .hotkeyPractice: return 3
+        case .completion: return 4
+        }
     }
 }
