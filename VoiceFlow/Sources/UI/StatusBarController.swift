@@ -8,9 +8,11 @@ final class StatusBarController {
     private var isConnected = false
     private var isRecording = false
     private var activeDeviceName: String?
+    private var permissionAlertWindow: PermissionAlertWindow!
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        permissionAlertWindow = PermissionAlertWindow()
         updateIcon()
         buildMenu()
     }
@@ -126,7 +128,7 @@ final class StatusBarController {
     }
 
     @objc private func checkPermissionsAction() {
-        PermissionAlertWindow.show()
+        permissionAlertWindow.show()
     }
 
     @objc private func quitAction() {

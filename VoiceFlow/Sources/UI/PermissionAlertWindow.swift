@@ -245,8 +245,8 @@ final class PermissionAlertWindow: NSObject {
     // MARK: - Localization
 
     private func localized(_ key: String) -> String {
-        // Get language from UserDefaults, default to Chinese (zh)
-        let language = UserDefaults.standard.string(forKey: "language") ?? "zh"
+        // Get language from SettingsManager following Pattern 1
+        let language = SettingsManager.shared.language
 
         let strings: [String: [String: String]] = [
             "permission_title": [
