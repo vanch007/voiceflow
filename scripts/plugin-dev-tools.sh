@@ -175,7 +175,7 @@ except Exception as e:
   fi
 }
 
-# Test command (placeholder)
+# Test command
 cmd_test() {
   local plugin_path="$1"
 
@@ -185,9 +185,71 @@ cmd_test() {
     exit 1
   fi
 
-  print_warning "Test command not yet implemented"
-  echo "This command will execute plugin tests in the future"
-  exit 0
+  # Resolve to absolute path if relative
+  if [[ "$plugin_path" != /* ]]; then
+    plugin_path="$PROJECT_DIR/$plugin_path"
+  fi
+
+  if [ ! -d "$plugin_path" ]; then
+    print_error "Plugin directory not found: $plugin_path"
+    exit 1
+  fi
+
+  print_info "Looking for tests in: $plugin_path"
+
+  # Check if Python is available
+  PYTHON_CMD=""
+  for cmd in python3 python; do
+    if command -v "$cmd" &>/dev/null; then
+      PYTHON_CMD="$cmd"
+      break
+    fi
+  done
+
+  if [ -z "$PYTHON_CMD" ]; then
+    print_error "Python not found. Install Python 3.x to run tests."
+    exit 1
+  fi
+
+  # Look for test files (test_*.py) or tests directory
+  test_files=$(find "$plugin_path" -name "test_*.py" -o -name "*_test.py" 2>/dev/null)
+  tests_dir="$plugin_path/tests"
+
+  if [ -n "$test_files" ] || [ -d "$tests_dir" ]; then
+    # Check if pytest is available
+    if ! "$PYTHON_CMD" -m pytest --version &>/dev/null; then
+      print_warning "pytest not installed"
+      print_info "Attempting to run tests with unittest..."
+
+      # Run with unittest
+      if [ -n "$test_files" ]; then
+        echo "$test_files" | while read -r test_file; do
+          print_info "Running: $test_file"
+          "$PYTHON_CMD" "$test_file"
+        done
+      fi
+
+      if [ -d "$tests_dir" ]; then
+        print_info "Running tests in: $tests_dir"
+        "$PYTHON_CMD" -m unittest discover -s "$tests_dir" -p "test_*.py"
+      fi
+    else
+      # Run with pytest
+      print_info "Running tests with pytest..."
+      if [ -d "$tests_dir" ]; then
+        "$PYTHON_CMD" -m pytest "$tests_dir" -v
+      else
+        "$PYTHON_CMD" -m pytest "$plugin_path" -v
+      fi
+    fi
+
+    print_success "Tests completed"
+  else
+    print_warning "No test files found in $plugin_path"
+    print_info "Skipping tests (no test_*.py or tests/ directory found)"
+    echo ""
+    echo "Test command executed (no tests found)"
+  fi
 }
 
 # Package command (placeholder)
