@@ -7,6 +7,7 @@ extension Notification.Name {
 final class HotkeyManager {
     var onLongPress: (() -> Void)?
     var onLongPressEnd: (() -> Void)?
+    var onToggleRecording: (() -> Void)?  // 自由说话模式：切换录音状态
 
     private var currentConfig: HotkeyConfig
     private var keyIsDown = false
@@ -98,6 +99,8 @@ final class HotkeyManager {
             handleLongPressTrigger(event: event)
         case .combination:
             handleCombinationTrigger(event: event)
+        case .freeSpeak:
+            handleFreeSpeakTrigger(event: event)
         }
     }
 
@@ -217,6 +220,33 @@ final class HotkeyManager {
                     }
                 }
                 tapCount = 0
+            }
+        }
+    }
+
+    private func handleFreeSpeakTrigger(event: NSEvent) {
+        let keyCode = event.keyCode
+        let targetKeyCode = currentConfig.keyCode
+
+        let isTargetKey = isMatchingModifierKey(keyCode: keyCode, targetKeyCode: targetKeyCode)
+        guard isTargetKey else { return }
+
+        let isKeyPressed = isModifierKeyPressed(event: event, keyCode: targetKeyCode)
+
+        // 自由说话模式：单击切换录音状态
+        if isKeyPressed && !keyIsDown {
+            keyIsDown = true
+            keyPressTime = ProcessInfo.processInfo.systemUptime
+        } else if !isKeyPressed && keyIsDown {
+            keyIsDown = false
+            let pressDuration = ProcessInfo.processInfo.systemUptime - keyPressTime
+
+            // 短按（<0.3s）触发切换
+            if pressDuration < 0.3 && isEnabled {
+                NSLog("[HotkeyManager] 自由说话模式：切换录音状态")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onToggleRecording?()
+                }
             }
         }
     }
@@ -346,5 +376,107 @@ final class HotkeyManager {
 
     func getCurrentConfig() -> HotkeyConfig {
         return currentConfig
+    }
+
+    // MARK: - Hotkey Conflict Detection (阶段4.3)
+
+    /// 检测快捷键冲突
+    struct HotkeyConflict {
+        let description: String
+        let conflictingApp: String?
+        let severity: ConflictSeverity
+
+        enum ConflictSeverity {
+            case warning   // 可能冲突
+            case critical  // 确定冲突
+        }
+    }
+
+    /// 检查当前配置是否与系统快捷键冲突
+    func checkForConflicts() -> [HotkeyConflict] {
+        var conflicts: [HotkeyConflict] = []
+
+        let config = currentConfig
+
+        // 检查常见系统快捷键冲突
+        switch config.triggerType {
+        case .longPress, .doubleTap, .freeSpeak:
+            // 单独修饰键通常不会冲突
+            break
+
+        case .combination:
+            // 检查组合键冲突
+            if config.modifiers.contains(.command) {
+                if config.keyCode == 49 { // Cmd + Space
+                    conflicts.append(HotkeyConflict(
+                        description: "⌘Space 与 Spotlight 搜索冲突",
+                        conflictingApp: "Spotlight",
+                        severity: .critical
+                    ))
+                }
+                if config.keyCode == 12 { // Cmd + Q
+                    conflicts.append(HotkeyConflict(
+                        description: "⌘Q 与退出应用冲突",
+                        conflictingApp: "系统",
+                        severity: .critical
+                    ))
+                }
+            }
+
+            if config.modifiers.contains(.control) && config.modifiers.contains(.command) {
+                if config.keyCode == 49 { // Ctrl + Cmd + Space
+                    conflicts.append(HotkeyConflict(
+                        description: "⌃⌘Space 与表情符号选择器冲突",
+                        conflictingApp: "系统",
+                        severity: .critical
+                    ))
+                }
+            }
+
+            if config.modifiers.contains(.option) && config.modifiers.contains(.command) {
+                if config.keyCode == 53 { // Opt + Cmd + Esc
+                    conflicts.append(HotkeyConflict(
+                        description: "⌥⌘Esc 与强制退出冲突",
+                        conflictingApp: "系统",
+                        severity: .critical
+                    ))
+                }
+            }
+        }
+
+        // 检查与其他语音输入工具的潜在冲突
+        if config.triggerType == .doubleTap && config.keyCode == 59 { // Control 双击
+            conflicts.append(HotkeyConflict(
+                description: "Control 双击可能与 macOS 听写功能冲突",
+                conflictingApp: "macOS 听写",
+                severity: .warning
+            ))
+        }
+
+        if !conflicts.isEmpty {
+            NSLog("[HotkeyManager] Detected \(conflicts.count) potential conflicts")
+        }
+
+        return conflicts
+    }
+
+    /// 检查并显示冲突警告
+    func checkAndWarnConflicts() {
+        let conflicts = checkForConflicts()
+
+        guard !conflicts.isEmpty else { return }
+
+        let criticalConflicts = conflicts.filter { $0.severity == .critical }
+
+        if !criticalConflicts.isEmpty {
+            DispatchQueue.main.async {
+                let alert = NSAlert()
+                alert.messageText = "快捷键冲突警告"
+                alert.informativeText = criticalConflicts.map { $0.description }.joined(separator: "\n")
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "知道了")
+                alert.runModal()
+            }
+        }
     }
 }
