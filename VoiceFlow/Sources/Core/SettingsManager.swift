@@ -239,11 +239,24 @@ final class SettingsManager: ObservableObject {
         }
     }
 
+    // MARK: - Onboarding
+
+    var hasCompletedOnboarding: Bool {
+        get {
+            return UserDefaults.standard.bool(forKey: Keys.hasCompletedOnboarding)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: Keys.hasCompletedOnboarding)
+            NSLog("[SettingsManager] hasCompletedOnboarding changed to: \(newValue)")
+        }
+    }
+
     private enum Keys {
         static let hotkeyEnabled = "hotkeyEnabled"
         static let modelSize = "modelSize"
         static let autoLaunchEnabled = "autoLaunchEnabled"
         static let asrLanguage = "asrLanguage"
+        static let hasCompletedOnboarding = "hasCompletedOnboarding"
         // General settings keys
         static let language = "settings.general.language"
         static let soundEffectsEnabled = "settings.general.soundEffectsEnabled"

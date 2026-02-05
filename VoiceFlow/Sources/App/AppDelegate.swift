@@ -105,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var replacementEngine: TextReplacementEngine!
     private var pluginManager: PluginManager!
     private var permissionAlertWindow: PermissionAlertWindow!
+    private var onboardingWindow: OnboardingWindow?
     private var sceneManager: SceneManager!
     private var termLearner: TermLearner!
     private var isRecording = false
@@ -327,6 +328,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }
+
+        // Show onboarding wizard on first launch
+        if !settingsManager.hasCompletedOnboarding {
+            showOnboarding()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -458,6 +464,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         AudioServicesPlaySystemSound(soundID)
         NSLog("[Audio] %@ played via AudioServices", name)
+    }
+
+    // MARK: - Onboarding
+
+    private func showOnboarding() {
+        NSLog("[Onboarding] Showing onboarding wizard (first launch)")
+        onboardingWindow = OnboardingWindow()
+        onboardingWindow?.show { [weak self] in
+            guard let self = self else { return }
+            NSLog("[Onboarding] Wizard completed, marking onboarding as complete")
+            self.settingsManager.hasCompletedOnboarding = true
+            self.onboardingWindow = nil
+        }
     }
 
     // MARK: - Recording

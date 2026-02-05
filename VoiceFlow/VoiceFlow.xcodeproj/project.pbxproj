@@ -40,6 +40,12 @@
 		T1000001 /* LearnedTerm.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001 /* LearnedTerm.swift */; };
 		T1000002 /* TermLearner.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000002 /* TermLearner.swift */; };
 		T1000003 /* DictionaryWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000003 /* DictionaryWindow.swift */; };
+		0483771F70A247EBAB11AEC6 /* OnboardingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED6D97AF1F7B4AF5B3B727AD /* OnboardingWindow.swift */; };
+		DE92135E782B4279952A59B3 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12BA7BF8DD424D87AF7F3915 /* WelcomeView.swift */; };
+		4A2ECC1AEC7442ED8D1C2972 /* MicrophonePermissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607CC0B7CC2247F982A5CB42 /* MicrophonePermissionView.swift */; };
+		356EB440273F4E55B330A865 /* AccessibilityPermissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 320465FF2D314116A50C4491 /* AccessibilityPermissionView.swift */; };
+		151EB03BC5FA4F8A9DAA41F3 /* HotkeyPracticeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 040D1C9EAB2249909DCA3F06 /* HotkeyPracticeView.swift */; };
+		5FD03A00272E42B1B34B3D04 /* CompletionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 793C1B88629340EE802BB296 /* CompletionView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -79,6 +85,12 @@
 		T2000001 /* LearnedTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnedTerm.swift; sourceTree = "<group>"; };
 		T2000002 /* TermLearner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermLearner.swift; sourceTree = "<group>"; };
 		T2000003 /* DictionaryWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryWindow.swift; sourceTree = "<group>"; };
+		ED6D97AF1F7B4AF5B3B727AD /* OnboardingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWindow.swift; sourceTree = "<group>"; };
+		12BA7BF8DD424D87AF7F3915 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		607CC0B7CC2247F982A5CB42 /* MicrophonePermissionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophonePermissionView.swift; sourceTree = "<group>"; };
+		320465FF2D314116A50C4491 /* AccessibilityPermissionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityPermissionView.swift; sourceTree = "<group>"; };
+		040D1C9EAB2249909DCA3F06 /* HotkeyPracticeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyPracticeView.swift; sourceTree = "<group>"; };
+		793C1B88629340EE802BB296 /* CompletionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -177,6 +189,8 @@
 		E1000007 /* UI */ = {
 			isa = PBXGroup;
 			children = (
+				18557D16F5D9465499A8486F /* OnboardingSteps */,
+				ED6D97AF1F7B4AF5B3B727AD /* OnboardingWindow.swift */,
 				B1000018 /* HotkeySettingsWindow.swift */,
 				508E63972F30759E0016E8CD /* SettingsWindow.swift */,
 				508E63982F30759E0016E8CD /* SettingsWindowController.swift */,
@@ -188,6 +202,18 @@
 				T2000003 /* DictionaryWindow.swift */,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		18557D16F5D9465499A8486F /* OnboardingSteps */ = {
+			isa = PBXGroup;
+			children = (
+				12BA7BF8DD424D87AF7F3915 /* WelcomeView.swift */,
+				607CC0B7CC2247F982A5CB42 /* MicrophonePermissionView.swift */,
+				320465FF2D314116A50C4491 /* AccessibilityPermissionView.swift */,
+				040D1C9EAB2249909DCA3F06 /* HotkeyPracticeView.swift */,
+				793C1B88629340EE802BB296 /* CompletionView.swift */,
+			);
+			path = OnboardingSteps;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -280,6 +306,12 @@
 				T1000001 /* LearnedTerm.swift in Sources */,
 				T1000002 /* TermLearner.swift in Sources */,
 				T1000003 /* DictionaryWindow.swift in Sources */,
+				0483771F70A247EBAB11AEC6 /* OnboardingWindow.swift in Sources */,
+				DE92135E782B4279952A59B3 /* WelcomeView.swift in Sources */,
+				4A2ECC1AEC7442ED8D1C2972 /* MicrophonePermissionView.swift in Sources */,
+				356EB440273F4E55B330A865 /* AccessibilityPermissionView.swift in Sources */,
+				151EB03BC5FA4F8A9DAA41F3 /* HotkeyPracticeView.swift in Sources */,
+				5FD03A00272E42B1B34B3D04 /* CompletionView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
