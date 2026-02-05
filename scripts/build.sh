@@ -1,10 +1,10 @@
 #!/bin/bash
-# VoiceFlow 빌드 + 배포 스크립트
+# VoiceFlow 编译 + 部署脚本
 #
-# IMPORTANT: 앱 복사 시 반드시 ditto를 사용해야 합니다.
-# cp -R은 macOS 코드사인(code signature)을 보존하지 않아서
-# 접근성(Accessibility) 권한이 깨집니다.
-# ditto는 코드사인, extended attributes, ACL을 모두 보존합니다.
+# IMPORTANT: 复制 app 时必须使用 ditto。
+# cp -R 不会保留 macOS 代码签名(code signature)，
+# 辅助功能(Accessibility)权限会失效。
+# ditto 会保留代码签名、扩展属性和 ACL。
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -15,13 +15,19 @@ echo "🔨 Building VoiceFlow..."
 xcodebuild -project "$PROJECT_DIR/VoiceFlow/VoiceFlow.xcodeproj" \
   -scheme VoiceFlow \
   -configuration Debug \
+  CODE_SIGN_IDENTITY="-" \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
   build \
   -quiet
 
-# DerivedData에서 빌드된 앱 경로를 동적으로 가져옴
+# 从 DerivedData 动态获取编译后的 app 路径
 DERIVED_DATA=$(xcodebuild -project "$PROJECT_DIR/VoiceFlow/VoiceFlow.xcodeproj" \
   -scheme VoiceFlow \
   -configuration Debug \
+  CODE_SIGN_IDENTITY="-" \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGNING_ALLOWED=NO \
   -showBuildSettings 2>/dev/null \
   | grep -m1 "BUILT_PRODUCTS_DIR" \
   | awk '{print $3}')
@@ -33,13 +39,13 @@ fi
 
 echo "✅ Build succeeded"
 
-# 기존 앱 삭제
+# 删除旧 app
 if [ -d "$DEST" ]; then
   echo "🗑️  Removing old VoiceFlow.app..."
   rm -rf "$DEST"
 fi
 
-# ditto로 복사 (코드사인 보존 - cp -R 사용 금지!)
+# 使用 ditto 复制 (保留代码签名 - 禁止使用 cp -R!)
 echo "📦 Copying VoiceFlow.app (ditto, preserving codesign)..."
 ditto "$DERIVED_DATA/VoiceFlow.app" "$DEST"
 
@@ -47,6 +53,6 @@ echo ""
 echo "✅ Build & deploy complete!"
 echo "   → $DEST"
 echo ""
-echo "⚠️  빌드 후 접근성 권한 재승인 필요:"
-echo "   시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용"
-echo "   → VoiceFlow 토글 off → on"
+echo "⚠️  编译后需重新授权辅助功能权限:"
+echo "   系统设置 → 隐私与安全性 → 辅助功能"
+echo "   → VoiceFlow 开关 off → on"

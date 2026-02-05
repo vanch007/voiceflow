@@ -1,0 +1,37 @@
+{
+  "id": "com.example.template",
+  "name": "My Plugin Template",
+  "version": "1.0.0",
+  "author": "YOUR_NAME",
+  "description": "A template plugin for VoiceFlow - replace this description with your plugin's purpose",
+  "entrypoint": "PluginTemplate.swift",
+  "permissions": [
+    "text.read",
+    "text.modify"
+  ],
+  "platform": "swift",
+  "minVoiceFlowVersion": "1.0.0",
+  "license": "MIT",
+  "homepage": "https://github.com/yourusername/your-plugin",
+  "configuration": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "exampleSetting": {
+          "type": "string",
+          "description": "An example configuration setting"
+        },
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable or disable the plugin functionality",
+          "default": true
+        }
+      },
+      "required": []
+    },
+    "defaults": {
+      "exampleSetting": "default value",
+      "enabled": true
+    }
+  }
+}

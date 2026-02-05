@@ -1,0 +1,64 @@
+{
+  "id": "com.voiceflow.plugins.chinese-punctuation",
+  "name": "ChinesePunctuationPlugin",
+  "version": "1.0.1",
+  "description": "Automatic Chinese punctuation restoration for transcribed text",
+  "author": "Voiceflow",
+  "entrypoint": "chinese_punctuation_plugin.py",
+  "platform": "python",
+  "permissions": ["text.read", "text.modify"],
+  "type": "punctuation-restoration",
+  "services": [
+    {
+      "name": "punctuation-restoration-service",
+      "type": "ml-service",
+      "port": 8000,
+      "endpoints": [
+        {
+          "path": "/restore",
+          "method": "POST",
+          "description": "Restore punctuation in Chinese text"
+        },
+        {
+          "path": "/health",
+          "method": "GET",
+          "description": "Health check endpoint"
+        }
+      ]
+    }
+  ],
+  "configuration": {
+    "auto_punctuation": {
+      "type": "boolean",
+      "default": true,
+      "description": "Enable/disable automatic punctuation restoration"
+    },
+    "library": {
+      "type": "string",
+      "default": "zhpr",
+      "enum": ["zhpr", "transformers"],
+      "description": "ML library to use for punctuation restoration"
+    },
+    "device": {
+      "type": "string",
+      "default": "auto",
+      "enum": ["auto", "cpu", "cuda"],
+      "description": "Computing device (auto-detect, CPU, or GPU)"
+    }
+  },
+  "dependencies": {
+    "python": ">=3.8",
+    "requirements_file": "requirements.txt"
+  },
+  "features": {
+    "supported_punctuation": ["，", "、", "。", "？", "！", "；"],
+    "batch_processing": true,
+    "gpu_acceleration": true,
+    "model_caching": true
+  },
+  "limitations": {
+    "languages": ["zh"],
+    "max_text_length": 10000,
+    "processing_mode": "batch"
+  }
+}

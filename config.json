@@ -1,0 +1,23 @@
+{
+  "model_id": "mlx-community/Qwen3-ASR-0.6B-8bit",
+  "language": "Chinese",
+  "chinese_punctuation": {
+    "enabled": true,
+    "library": "zhpr",
+    "fallback_enabled": true,
+    "punctuation_marks": {
+      "comma": true,
+      "period": true,
+      "question_mark": true,
+      "exclamation_mark": true,
+      "semicolon": true,
+      "enumeration_comma": true
+    },
+    "batch_size": 1000,
+    "gpu_enabled": true
+  },
+  "app": {
+    "name": "VoiceFlow",
+    "version": "1.0.0"
+  }
+}

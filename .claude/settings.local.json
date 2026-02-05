@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(swift build:*)",
+      "Bash(bash:*)",
+      "Bash(log show:*)",
+      "Bash(sqlite3:*)",
+      "Bash(killall:*)",
+      "Bash(open VoiceFlow.app)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  }
+}

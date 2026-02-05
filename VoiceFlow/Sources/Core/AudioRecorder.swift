@@ -1,12 +1,15 @@
 import AVFoundation
 import CoreMedia
 import CoreAudio
+import Accelerate
 
 final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     var onAudioChunk: ((Data) -> Void)?
+    var onVolumeLevel: ((Float) -> Void)?
     var onDeviceChanged: ((String) -> Void)?
 
     private var captureSession: AVCaptureSession?
+    private var audioOutput: AVCaptureAudioDataOutput?
     private let sessionQueue = DispatchQueue(label: "com.voiceflow.capture")
     private let targetSampleRate: Double = 16000
     private var isRecording = false
@@ -71,12 +74,16 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
             NSLog("[AudioRecorder] Default device changed, reconnecting...")
             setupSession()
         }
-        isRecording = true
+        sessionQueue.async { [weak self] in
+            self?.isRecording = true
+        }
         NSLog("[AudioRecorder] Recording started.")
     }
 
     func stopRecording() {
-        isRecording = false
+        sessionQueue.async { [weak self] in
+            self?.isRecording = false
+        }
         // Restore output volume that macOS ducked
         if let volume = savedOutputVolume {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
@@ -92,9 +99,20 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         sessionQueue.async { [weak self] in
             guard let self else { return }
 
-            // Stop existing session
+            // Stop and clean up existing session
             if let existing = self.captureSession {
                 existing.stopRunning()
+                // Remove inputs
+                for input in existing.inputs {
+                    existing.removeInput(input)
+                }
+                // Remove outputs
+                for output in existing.outputs {
+                    existing.removeOutput(output)
+                }
+                // Clear delegate and release audio output reference
+                self.audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+                self.audioOutput = nil
             }
 
             let session = AVCaptureSession()
@@ -130,10 +148,10 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
 
             let output = AVCaptureAudioDataOutput()
             output.setSampleBufferDelegate(self, queue: self.sessionQueue)
-
             if session.canAddOutput(output) {
                 session.addOutput(output)
             }
+            self.audioOutput = output
 
             self.captureSession = session
             session.startRunning()
@@ -141,7 +159,92 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         }
     }
 
+    // MARK: - CoreAudio Device Enumeration
+
+    private func enumerateInputDevices() -> [(id: AudioDeviceID, name: String)] {
+        var devices: [(id: AudioDeviceID, name: String)] = []
+
+        // Get all audio devices
+        var size: UInt32 = 0
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        // Get size of device array
+        var status = AudioObjectGetPropertyDataSize(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size
+        )
+        guard status == noErr else { return devices }
+
+        // Get device IDs
+        let deviceCount = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
+        status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceIDs
+        )
+        guard status == noErr else { return devices }
+
+        // Filter for input devices and get their names
+        for deviceID in deviceIDs {
+            // Check if device has input streams
+            var streamAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreams,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var streamSize: UInt32 = 0
+            status = AudioObjectGetPropertyDataSize(deviceID, &streamAddress, 0, nil, &streamSize)
+            guard status == noErr, streamSize > 0 else { continue }
+
+            // Get device name
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceNameCFString,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>>.size)
+            var nameRef: Unmanaged<CFString>?
+            status = AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &nameRef)
+            guard status == noErr, let nameRef else { continue }
+
+            let name = nameRef.takeUnretainedValue() as String
+            devices.append((id: deviceID, name: name))
+        }
+
+        return devices
+    }
+
+    private func getDeviceName(deviceID: AudioDeviceID) -> String? {
+        var nameAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceNameCFString,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>>.size)
+        var nameRef: Unmanaged<CFString>?
+        let status = AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &nameRef)
+        guard status == noErr, let nameRef else { return nil }
+
+        return nameRef.takeUnretainedValue() as String
+    }
+
     // MARK: - Output Volume (CoreAudio)
+
+    private func getDefaultInputDeviceID() -> AudioDeviceID? {
+        var deviceID = AudioDeviceID(0)
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let status = AudioObjectGetPropertyData(
+            AudioObjectID(kAudioObjectSystemObject), &address, 0, nil, &size, &deviceID
+        )
+        return status == noErr ? deviceID : nil
+    }
 
     private func getDefaultOutputDeviceID() -> AudioDeviceID? {
         var deviceID = AudioDeviceID(0)
@@ -249,26 +352,64 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
             return
         }
 
-        // Resample to 16kHz
-        let ratio = targetSampleRate / srcRate
-        let outputLength = Int(Double(floatSamples.count) * ratio)
-        guard outputLength > 0 else { return }
-
-        var output = [Float](repeating: 0, count: outputLength)
-        for i in 0..<outputLength {
-            let srcIndex = Double(i) / ratio
-            let srcInt = Int(srcIndex)
-            let frac = Float(srcIndex - Double(srcInt))
-            if srcInt + 1 < floatSamples.count {
-                output[i] = floatSamples[srcInt] * (1 - frac) + floatSamples[srcInt + 1] * frac
-            } else if srcInt < floatSamples.count {
-                output[i] = floatSamples[srcInt]
+        // Resample to 16kHz using AVAudioConverter
+        let inputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: srcRate, channels: 1, interleaved: false)!
+        let outputFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: targetSampleRate, channels: 1, interleaved: false)!
+        guard let inputBuffer = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: AVAudioFrameCount(frameCount)) else { return }
+        inputBuffer.frameLength = AVAudioFrameCount(frameCount)
+        // Copy mono samples into the input buffer
+        if let dst = inputBuffer.floatChannelData?.pointee {
+            floatSamples.withUnsafeBufferPointer { src in
+                dst.assign(from: src.baseAddress!, count: frameCount)
             }
+        } else {
+            return
         }
 
-        let data = output.withUnsafeBufferPointer { ptr in
+        let outputCapacity = AVAudioFrameCount(Double(frameCount) * targetSampleRate / srcRate + 1)
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: outputCapacity) else { return }
+
+        guard let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else { return }
+        var conversionError: NSError?
+        var providedOnce = false
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            if providedOnce {
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            providedOnce = true
+            outStatus.pointee = .haveData
+            return inputBuffer
+        }
+        converter.convert(to: outputBuffer, error: &conversionError, withInputFrom: inputBlock)
+        if let conversionError { NSLog("[AudioRecorder] AVAudioConverter error: \(conversionError)") }
+
+        let outFrameLength = Int(outputBuffer.frameLength)
+        guard outFrameLength > 0, let outPtr = outputBuffer.floatChannelData?.pointee else { return }
+        let outputArray = Array(UnsafeBufferPointer(start: outPtr, count: outFrameLength))
+
+        let data = outputArray.withUnsafeBufferPointer { ptr in
             Data(bytes: ptr.baseAddress!, count: ptr.count * MemoryLayout<Float>.size)
         }
         onAudioChunk?(data)
+
+        // Calculate volume level (RMS) using Accelerate
+        let rms = vDSP.rootMeanSquare(outputArray)
+        DispatchQueue.main.async { [weak self] in
+            self?.onVolumeLevel?(rms)
+        }
+    }
+
+    deinit {
+        sessionQueue.sync {
+            self.captureSession?.stopRunning()
+            if let existing = self.captureSession {
+                for input in existing.inputs { existing.removeInput(input) }
+                for output in existing.outputs { existing.removeOutput(output) }
+            }
+            self.audioOutput?.setSampleBufferDelegate(nil, queue: nil)
+            self.audioOutput = nil
+            self.captureSession = nil
+        }
     }
 }
