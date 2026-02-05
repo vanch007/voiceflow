@@ -14,6 +14,15 @@ final class HotkeyManager {
     private let doubleTapInterval: TimeInterval = 0.3
 
     func start() {
+        // Check Accessibility permissions first
+        let isTrusted = AXIsProcessTrusted()
+        NSLog("[HotkeyManager] Accessibility permission status: \(isTrusted)")
+
+        guard isTrusted else {
+            NSLog("[HotkeyManager] FAILED to start: Accessibility permission not granted!")
+            return
+        }
+
         let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue) |
                                       (1 << CGEventType.keyDown.rawValue)
 
