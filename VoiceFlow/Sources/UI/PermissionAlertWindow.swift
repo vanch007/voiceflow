@@ -245,9 +245,7 @@ final class PermissionAlertWindow: NSObject {
     // MARK: - Localization
 
     private func localized(_ key: String) -> String {
-        // Default to Korean to match existing app UI (StatusBarController uses Korean)
-        // Note: SettingsManager does not exist in this codebase
-        let language = "ko"
+        let language = SettingsManager.shared.language
 
         let strings: [String: [String: String]] = [
             "permission_title": [
