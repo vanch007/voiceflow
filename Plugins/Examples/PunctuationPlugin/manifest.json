@@ -1,0 +1,33 @@
+{
+  "id": "dev.voiceflow.examples.punctuation",
+  "name": "Punctuation Plugin",
+  "version": "1.0.0",
+  "author": "VoiceFlow Team",
+  "description": "Adds smart punctuation to transcribed text based on speech patterns and context.",
+  "entrypoint": "punctuation_plugin.py",
+  "platform": "python",
+  "permissions": [
+    "text.read",
+    "text.modify"
+  ],
+  "license": "MIT",
+  "configuration": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "addPeriods": {
+          "type": "boolean",
+          "description": "Automatically add periods at sentence ends"
+        },
+        "capitalizeFirst": {
+          "type": "boolean",
+          "description": "Capitalize first letter of sentences"
+        }
+      }
+    },
+    "defaults": {
+      "addPeriods": true,
+      "capitalizeFirst": true
+    }
+  }
+}
