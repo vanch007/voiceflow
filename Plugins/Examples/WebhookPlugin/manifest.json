@@ -1,0 +1,38 @@
+{
+  "id": "dev.voiceflow.examples.webhook",
+  "name": "Webhook Integration",
+  "version": "1.0.0",
+  "author": "VoiceFlow Team",
+  "description": "Example plugin that sends transcribed text to a configurable webhook endpoint via HTTP POST, demonstrating network integration capabilities",
+  "entrypoint": "WebhookPlugin.swift",
+  "permissions": [
+    "text.read",
+    "network.http"
+  ],
+  "platform": "swift",
+  "minVoiceFlowVersion": "1.0.0",
+  "license": "MIT",
+  "homepage": "https://github.com/voiceflow/voiceflow",
+  "configuration": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "webhookUrl": {
+          "type": "string",
+          "format": "uri",
+          "description": "The webhook endpoint URL to send transcriptions to"
+        },
+        "timeout": {
+          "type": "number",
+          "description": "HTTP request timeout in seconds",
+          "default": 5
+        }
+      },
+      "required": ["webhookUrl"]
+    },
+    "defaults": {
+      "webhookUrl": "https://example.com/webhook",
+      "timeout": 5
+    }
+  }
+}

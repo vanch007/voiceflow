@@ -10,5 +10,25 @@
   "permissions": [
     "text.read",
     "text.modify"
-  ]
+  ],
+  "license": "MIT",
+  "configuration": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "addPeriods": {
+          "type": "boolean",
+          "description": "Automatically add periods at sentence ends"
+        },
+        "capitalizeFirst": {
+          "type": "boolean",
+          "description": "Capitalize first letter of sentences"
+        }
+      }
+    },
+    "defaults": {
+      "addPeriods": true,
+      "capitalizeFirst": true
+    }
+  }
 }

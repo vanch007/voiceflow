@@ -5,11 +5,12 @@
   "author": "VoiceFlow Team",
   "description": "Example plugin that transforms all transcribed text to uppercase for emphasis and demonstration purposes",
   "entrypoint": "UppercasePlugin.swift",
+  "platform": "swift",
   "permissions": [
     "text.read",
     "text.modify"
   ],
-  "platform": "swift",
   "minVoiceFlowVersion": "1.0.0",
+  "homepage": "https://github.com/voiceflow/voiceflow",
   "license": "MIT"
 }
