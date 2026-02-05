@@ -108,6 +108,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: OnboardingWindow?
     private var sceneManager: SceneManager!
     private var termLearner: TermLearner!
+    private var dictionaryWindow: DictionaryWindow!
     private var isRecording = false
     private var asrServerProcess: Process?
     private var recordingStartTime: Date?
@@ -184,6 +185,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.termLearner.analyzeAndRefresh(from: self.recordingHistory)
         }
         dictionaryManager = DictionaryManager()
+        dictionaryWindow = DictionaryWindow(
+            dictionaryManager: dictionaryManager,
+            termLearner: termLearner,
+            replacementStorage: replacementStorage
+        )
         audioRecorder = AudioRecorder()
         audioRecorder.onAudioChunk = { [weak self] data in
             self?.asrClient.sendAudioChunk(data)
@@ -295,6 +301,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController.onHotkeySettings = { [weak self] in
             self?.hotkeySettingsWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+        }
+
+        // Setup dictionary window action
+        statusBarController.onDictionaryOpen = { [weak self] in
+            self?.dictionaryWindow.show()
         }
 
         // Observe hotkey enabled setting

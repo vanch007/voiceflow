@@ -118,8 +118,9 @@ final class PluginManager {
             }
 
             if info.plugin == nil {
-                // 使用目录名而不是 manifest.id 来查找插件
-                let pluginURL = self.pluginsDirectory.appendingPathComponent(info.manifest.name)
+                // 使用 directory 字段（如有），否则回退到 name
+                let directoryName = info.manifest.directory ?? info.manifest.name
+                let pluginURL = self.pluginsDirectory.appendingPathComponent(directoryName)
                 self.pluginLoader.loadPlugin(
                     at: pluginURL,
                     manifest: info.manifest,
@@ -242,7 +243,12 @@ final class PluginManager {
 
         do {
             let data = try Data(contentsOf: manifestURL)
-            let manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
+            var manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
+
+            // 如果 manifest 没有指定 directory，自动填充为实际目录名
+            if manifest.directory == nil {
+                manifest.directory = pluginURL.lastPathComponent
+            }
 
             // 显示所有插件（包括 Python 插件），但只有 Swift/both 平台的插件可以在客户端执行
             // Python 插件由 server 端的 plugin_loader.py 处理
@@ -312,7 +318,12 @@ final class PluginManager {
 
         do {
             let data = try Data(contentsOf: manifestURL)
-            let manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
+            var manifest = try JSONDecoder().decode(PluginManifest.self, from: data)
+
+            // 如果 manifest 没有指定 directory，自动填充为实际目录名
+            if manifest.directory == nil {
+                manifest.directory = pluginURL.lastPathComponent
+            }
 
             // 显示所有插件（包括 Python 插件）
             // Python 插件由 server 端处理，Swift 端只显示不执行

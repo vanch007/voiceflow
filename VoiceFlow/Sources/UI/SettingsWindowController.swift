@@ -311,6 +311,7 @@ private struct PluginSettingsTab: View {
                 PluginDetailView(plugin: plugin, onToggle: {
                     togglePlugin(plugin)
                 })
+                .frame(minWidth: 350)
             } else {
                 VStack {
                     Spacer()
@@ -380,6 +381,12 @@ private struct PluginDetailView: View {
                     ))
                     .toggleStyle(.switch)
                 }
+
+                // 描述信息（开关下方）
+                Text(plugin.manifest.description)
+                    .font(.callout)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Divider()
 

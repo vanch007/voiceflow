@@ -46,30 +46,45 @@ final class ASRClient {
     }
 
     func connect() {
-        disconnect()
+        // 先取消正在进行的重连任务，防止并发竞争
+        reconnectTask?.cancel()
+        reconnectTask = nil
+
+        // 清理旧连接
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+
         shouldReconnect = true
         currentReconnectInterval = reconnectInterval
-        webSocketTask = session.webSocketTask(with: serverURL)
-        webSocketTask?.resume()
-        listenForMessages()
 
-        webSocketTask?.sendPing { [weak self] error in
-            guard let self = self else { return }
-            if let error {
-                print("[ASRClient] Ping failed after connect: \(error)")
-                self.handleDisconnect(error: error)
-                return
+        let task = session.webSocketTask(with: serverURL)
+        webSocketTask = task
+        task.resume()
+
+        // 延迟发送 ping，等待 WebSocket 握手完成
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self, self.webSocketTask === task else { return }
+
+            task.sendPing { [weak self] error in
+                guard let self = self, self.webSocketTask === task else { return }
+
+                if let error {
+                    print("[ASRClient] Ping failed after connect: \(error)")
+                    self.handleDisconnect(error: error)
+                    return
+                }
+
+                self.isConnected = true
+                DispatchQueue.main.async { [weak self] in
+                    self?.onConnectionStatusChanged?(true)
+                    self?.lastErrorMessage = nil
+                    self?.onErrorStateChanged?(false, nil)
+                }
+                print("[ASRClient] Connected to \(self.serverURL)")
             }
-            self.isConnected = true
-            DispatchQueue.main.async { [weak self] in
-                self?.onConnectionStatusChanged?(true)
-                self?.lastErrorMessage = nil
-                self?.onErrorStateChanged?(false, nil)
-            }
-            print("[ASRClient] Connected to \(self.serverURL)")
-            self.reconnectTask?.cancel()
-            self.reconnectTask = nil
         }
+
+        listenForMessages()
     }
 
     func disconnect() {
@@ -237,12 +252,16 @@ final class ASRClient {
 
     private func handleDisconnect(error: Error?) {
         let message = (error as NSError?)?.localizedDescription ?? "Connection lost"
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.isConnected = false
-            self.onConnectionStatusChanged?(false)
-            self.lastErrorMessage = message
-            self.onErrorStateChanged?(true, self.lastErrorMessage)
+
+        // 只在已连接状态下触发断开回调，避免重复通知
+        if isConnected {
+            isConnected = false
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.onConnectionStatusChanged?(false)
+                self.lastErrorMessage = message
+                self.onErrorStateChanged?(true, self.lastErrorMessage)
+            }
         }
 
         // Respect manual disconnect
@@ -254,20 +273,33 @@ final class ASRClient {
             return
         }
 
-        // Start or restart reconnect task with exponential backoff
-        reconnectTask?.cancel()
+        // 如果已有重连任务在运行，不再创建新的
+        guard reconnectTask == nil else { return }
+
+        // Start reconnect task with exponential backoff
         reconnectTask = Task { [weak self] in
             guard let self else { return }
             var delay = self.currentReconnectInterval
-            while !Task.isCancelled && self.shouldReconnect {
+
+            while !Task.isCancelled && self.shouldReconnect && !self.isConnected {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard !Task.isCancelled && self.shouldReconnect else { break }
+
                 print("[ASRClient] Attempting reconnect after \(delay)s...")
                 self.connect()
+
+                // 等待连接结果
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+
                 if self.isConnected { break }
+
                 // Exponential backoff up to a maximum
                 delay = min(self.maxReconnectInterval, delay * 2)
                 self.currentReconnectInterval = delay
             }
+
+            // 任务结束时清理自身引用
+            self.reconnectTask = nil
         }
     }
 

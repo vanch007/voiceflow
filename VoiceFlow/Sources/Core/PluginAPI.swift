@@ -11,6 +11,8 @@ struct PluginManifest: Codable {
     let entrypoint: String
     let permissions: [String]
     let platform: PluginPlatform
+    /// 插件目录名（可选，用于路径查找；如未指定则使用 name）
+    var directory: String?
 }
 
 enum PluginPlatform: String, Codable {
