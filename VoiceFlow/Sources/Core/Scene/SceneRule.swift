@@ -36,6 +36,7 @@ struct SceneRule: Codable, Equatable, Identifiable {
         SceneRule(bundleID: "com.googlecode.iterm2", appName: "iTerm2", sceneType: .coding, isBuiltin: true),
         SceneRule(bundleID: "com.apple.Terminal", appName: "终端", sceneType: .coding, isBuiltin: true),
         SceneRule(bundleID: "dev.warp.Warp-Stable", appName: "Warp", sceneType: .coding, isBuiltin: true),
+        SceneRule(bundleID: "com.google.antigravity", appName: "Antigravity", sceneType: .coding, isBuiltin: true),
 
         // 写作应用
         SceneRule(bundleID: "md.obsidian", appName: "Obsidian", sceneType: .writing, isBuiltin: true),
