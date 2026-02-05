@@ -11,15 +11,15 @@ class TextPolisher:
     """Polishes transcribed text by removing filler words and adding punctuation."""
 
     # Chinese filler words and patterns
+    # 注意：只保留真正的语气词，避免误删有意义的词
+    # "这个"、"那个"、"然后" 在很多上下文中是有意义的，不应删除
     CHINESE_FILLERS = [
-        r'嗯+',      # um, uh
-        r'那个',     # that (filler)
-        r'然后',     # then (when used as filler)
-        r'就是说?',  # I mean
-        r'这个',     # this (filler)
-        r'呃+',      # uh
-        r'啊+',      # ah (when repeated)
-        r'哦+',      # oh
+        r'嗯+',      # um, uh (语气词)
+        r'呃+',      # uh (语气词)
+        r'啊{2,}',   # ah (只匹配连续2个以上的"啊")
+        r'哦+',      # oh (语气词)
+        r'额+',      # uh (语气词变体)
+        r'(?:^|[，。！？\s])就是说(?=[，。！？\s]|$)',  # "就是说" 只在独立使用时删除
     ]
 
     # Korean filler words
@@ -64,11 +64,18 @@ class TextPolisher:
         # Clean up multiple spaces
         polished = re.sub(r'\s+', ' ', polished)
 
+        # Clean up orphaned punctuation at the start (e.g., "，那个" -> "，" after removing "那个")
+        polished = re.sub(r'^[\s，,。.！!？?、;；:：]+', '', polished)
+
+        # Clean up orphaned punctuation patterns (multiple punctuation marks in a row)
+        polished = re.sub(r'[，,]\s*[，,]', '，', polished)
+        polished = re.sub(r'[。.]\s*[。.]', '。', polished)
+
         # Strip leading/trailing whitespace
         polished = polished.strip()
 
-        # Add period at end if missing and text is non-empty
-        if polished and not re.search(r'[.!?。!?]$', polished):
+        # Add period at end ONLY if missing and text doesn't end with any punctuation
+        if polished and not re.search(r'[.!?。！？,，;；:：]$', polished):
             # Detect if text is primarily Chinese/Korean to choose appropriate punctuation
             if re.search(r'[\u4e00-\u9fff\uac00-\ud7af]', polished):
                 # Use Chinese/Korean period

@@ -20,6 +20,7 @@ final class StatusBarController {
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
     var onDictionaryOpen: (() -> Void)?
     var onHotkeySettings: (() -> Void)?
+    var onSceneSettings: (() -> Void)?
 
     private let statusItem: NSStatusItem
     private var isConnected = false
@@ -30,6 +31,7 @@ final class StatusBarController {
     private var debounceTimer: Timer?
     private let errorDebounceInterval: TimeInterval = 3.0
     private var lastCheckTime: Date = Date()
+    private var sceneObserver: Any?
 
     private var iconStyle: IconStyle {
         get {
@@ -56,10 +58,22 @@ final class StatusBarController {
             name: SettingsManager.settingsDidChangeNotification,
             object: nil
         )
+
+        // Observe scene changes for real-time menu updates
+        sceneObserver = NotificationCenter.default.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.buildMenu()
+        }
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+        if let observer = sceneObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // MARK: - Localization Helper
@@ -146,6 +160,41 @@ final class StatusBarController {
                 "ko": "단색",
                 "en": "Monochrome",
                 "zh": "单色"
+            ],
+            "scene": [
+                "ko": "장면",
+                "en": "Scene",
+                "zh": "场景"
+            ],
+            "scene_auto_detect": [
+                "ko": "자동 감지",
+                "en": "Auto Detect",
+                "zh": "自动检测"
+            ],
+            "scene_social": [
+                "ko": "소셜 채팅",
+                "en": "Social Chat",
+                "zh": "社交聊天"
+            ],
+            "scene_coding": [
+                "ko": "IDE 코딩",
+                "en": "IDE Coding",
+                "zh": "IDE编程"
+            ],
+            "scene_writing": [
+                "ko": "글쓰기",
+                "en": "Writing",
+                "zh": "写作"
+            ],
+            "scene_general": [
+                "ko": "일반",
+                "en": "General",
+                "zh": "通用"
+            ],
+            "scene_settings": [
+                "ko": "장면 설정...",
+                "en": "Scene Settings...",
+                "zh": "场景设置..."
             ]
         ]
 
@@ -313,6 +362,48 @@ final class StatusBarController {
             connItem.image = statusImage?.withSymbolConfiguration(config)
         }
         menu.addItem(connItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Scene selection submenu
+        let sceneSubmenu = NSMenu()
+        let sceneManager = SceneManager.shared
+
+        // Auto detect option
+        let autoDetectItem = NSMenuItem(title: localized("scene_auto_detect"), action: #selector(selectAutoDetectScene), keyEquivalent: "")
+        autoDetectItem.target = self
+        autoDetectItem.state = sceneManager.isAutoDetectEnabled ? .on : .off
+        sceneSubmenu.addItem(autoDetectItem)
+        sceneSubmenu.addItem(NSMenuItem.separator())
+
+        // Scene type options
+        for sceneType in SceneType.allCases {
+            let item = NSMenuItem(title: localizedSceneName(sceneType), action: #selector(selectScene(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = sceneType.rawValue
+            item.image = NSImage(systemSymbolName: sceneType.icon, accessibilityDescription: nil)
+            if !sceneManager.isAutoDetectEnabled && sceneManager.manualOverride == sceneType {
+                item.state = .on
+            } else if sceneManager.isAutoDetectEnabled && sceneManager.currentScene == sceneType {
+                // Show current auto-detected scene with a different indicator
+                item.state = .mixed
+            }
+            sceneSubmenu.addItem(item)
+        }
+
+        sceneSubmenu.addItem(NSMenuItem.separator())
+
+        // Scene settings
+        let sceneSettingsItem = NSMenuItem(title: localized("scene_settings"), action: #selector(sceneSettingsAction), keyEquivalent: "")
+        sceneSettingsItem.target = self
+        sceneSubmenu.addItem(sceneSettingsItem)
+
+        let currentScene = sceneManager.manualOverride ?? sceneManager.currentScene
+        let sceneTitle = "\(localized("scene")): \(localizedSceneName(currentScene))"
+        let sceneItem = NSMenuItem(title: sceneTitle, action: nil, keyEquivalent: "")
+        sceneItem.image = NSImage(systemSymbolName: currentScene.icon, accessibilityDescription: nil)
+        sceneItem.submenu = sceneSubmenu
+        menu.addItem(sceneItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -500,5 +591,32 @@ final class StatusBarController {
 
     @objc private func quitAction() {
         onQuit?()
+    }
+
+    // MARK: - Scene Actions
+
+    @objc private func selectAutoDetectScene() {
+        SceneManager.shared.setManualScene(nil)
+        buildMenu()
+    }
+
+    @objc private func selectScene(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let sceneType = SceneType(rawValue: rawValue) else { return }
+        SceneManager.shared.setManualScene(sceneType)
+        buildMenu()
+    }
+
+    @objc private func sceneSettingsAction() {
+        onSceneSettings?()
+    }
+
+    private func localizedSceneName(_ sceneType: SceneType) -> String {
+        switch sceneType {
+        case .social: return localized("scene_social")
+        case .coding: return localized("scene_coding")
+        case .writing: return localized("scene_writing")
+        case .general: return localized("scene_general")
+        }
     }
 }

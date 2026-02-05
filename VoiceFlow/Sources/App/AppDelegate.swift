@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var replacementStorage: ReplacementStorage!
     private var replacementEngine: TextReplacementEngine!
     private var pluginManager: PluginManager!
+    private var sceneManager: SceneManager!
     private var isRecording = false
     private var asrServerProcess: Process?
     private var recordingStartTime: Date?
@@ -141,6 +142,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize plugin system
         pluginManager = PluginManager.shared
         pluginManager.discoverPlugins()
+
+        // Initialize scene manager for automatic scene detection
+        sceneManager = SceneManager.shared
+        NSLog("[AppDelegate] SceneManager initialized, current scene: %@", sceneManager.currentScene.rawValue)
 
         // Observe settings changes for real-time application
         NotificationCenter.default.addObserver(

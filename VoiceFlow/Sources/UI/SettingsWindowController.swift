@@ -51,6 +51,10 @@ private struct SettingsContentView: View {
             GeneralSettingsTab(settingsManager: settingsManager)
                 .tabItem { Label("通用", systemImage: "gear") }
 
+            // 场景设置标签页
+            SceneSettingsTab()
+                .tabItem { Label("场景", systemImage: "sparkles.rectangle.stack") }
+
             // 文本替换标签页
             TextReplacementTab(replacementStorage: replacementStorage)
                 .tabItem { Label("文本替换", systemImage: "textformat.alt") }

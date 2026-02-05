@@ -191,6 +191,14 @@ final class OverlayPanel {
 
 
     private func updateContent() {
+        // 确保在主线程执行
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.updateContent()
+            }
+            return
+        }
+
         guard let panel else { return }
 
         let view: NSView
@@ -200,12 +208,26 @@ final class OverlayPanel {
             let seconds = Int(recordingDuration) % 60
             let durationText = String(format: "%02d:%02d", minutes, seconds)
             let displayText = text.isEmpty ? "录音中..." : text
+
+            // 获取当前场景信息（安全访问）
+            let currentScene: SceneType
+            let isAutoDetected: Bool
+            if let sceneManager = SceneManager.shared as SceneManager? {
+                currentScene = sceneManager.manualOverride ?? sceneManager.currentScene
+                isAutoDetected = sceneManager.isAutoDetectEnabled && sceneManager.manualOverride == nil
+            } else {
+                currentScene = .general
+                isAutoDetected = false
+            }
+
             view = NSHostingView(rootView: EnhancedOverlayContentView(
                 icon: "circle.fill",
                 iconColor: .red,
                 text: displayText,
                 duration: durationText,
-                volume: currentVolume
+                volume: currentVolume,
+                sceneType: currentScene,
+                sceneAutoDetected: isAutoDetected
             ))
         case .processing:
             view = NSHostingView(rootView: OverlayContentView(
@@ -257,6 +279,8 @@ private struct EnhancedOverlayContentView: View {
     let text: String
     let duration: String
     let volume: Double
+    let sceneType: SceneType
+    let sceneAutoDetected: Bool
 
     private var showLowVolumeWarning: Bool {
         volume < 0.15
@@ -264,7 +288,7 @@ private struct EnhancedOverlayContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // 第一行：录音状态 + 时长
+            // 第一行：录音状态 + 场景 + 时长
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .foregroundColor(iconColor)
@@ -272,6 +296,22 @@ private struct EnhancedOverlayContentView: View {
                 Text("录音中")
                     .foregroundColor(.white)
                     .font(.system(size: 14, weight: .medium))
+
+                // 场景标签
+                HStack(spacing: 4) {
+                    Image(systemName: sceneType.icon)
+                        .font(.system(size: 10))
+                    Text(sceneType.displayName)
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundColor(.white.opacity(0.9))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    Capsule()
+                        .fill(sceneColor.opacity(0.6))
+                )
+
                 Spacer()
                 Text(duration)
                     .foregroundColor(.white.opacity(0.8))
@@ -298,6 +338,15 @@ private struct EnhancedOverlayContentView: View {
                 .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var sceneColor: Color {
+        switch sceneType {
+        case .social: return .blue
+        case .coding: return .purple
+        case .writing: return .orange
+        case .general: return .gray
+        }
     }
 }
 

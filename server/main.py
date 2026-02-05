@@ -12,6 +12,7 @@ import numpy as np
 import websockets
 from mlx_asr import MLXQwen3ASR
 from text_polisher import TextPolisher
+from scene_polisher import ScenePolisher
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ PORT = 9876
 models: dict[str, MLXQwen3ASR] = {}
 current_model_id: str = None
 polisher: TextPolisher = None
+scene_polisher: ScenePolisher = None
 config = {}
 
 # 模型访问锁，防止并发转录导致 MLX 崩溃
@@ -322,7 +324,7 @@ async def vad_streaming_transcribe(
 
 def warmup_model():
     """Warm up the model with a short silent audio segment."""
-    global polisher
+    global polisher, scene_polisher
     model = get_model()
     if model is None:
         raise RuntimeError("Model not loaded. Call load_model() first.")
@@ -339,7 +341,8 @@ def warmup_model():
 
     logger.info("Initializing text polisher...")
     polisher = TextPolisher()
-    logger.info("✅ Text polisher initialized.")
+    scene_polisher = ScenePolisher(polisher)
+    logger.info("✅ Text polisher and scene polisher initialized.")
 
 
 async def handle_client(websocket):
@@ -350,6 +353,7 @@ async def handle_client(websocket):
     enable_polish = False
     session_model_id = None
     session_language = None
+    session_scene = None  # 场景信息
     transcription_task: asyncio.Task = None
     custom_dictionary: list[str] = []
 
@@ -364,8 +368,9 @@ async def handle_client(websocket):
                     session_model_id = data.get("model_id")
                     lang_code = data.get("language", "auto")
                     session_language = LANGUAGE_MAP.get(lang_code, None)
+                    session_scene = data.get("scene", {})  # 解析场景信息
 
-                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, Model: {session_model_id}, Language: {lang_code} -> {session_language}")
+                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene}")
 
                     # 确保模型已加载
                     if session_model_id:
@@ -434,9 +439,10 @@ async def handle_client(websocket):
 
                     # Polish the transcribed text only if enabled
                     if enable_polish:
-                        polished_text = polisher.polish(original_text)
+                        # 使用场景感知润色器
+                        polished_text = scene_polisher.polish(original_text, session_scene)
                         logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text}")
-                        logger.info(f"✨ 润色后文本: {polished_text}")
+                        logger.info(f"✨ 润色后文本 (scene={session_scene.get('type', 'general')}): {polished_text}")
                     else:
                         polished_text = original_text
                         logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text} (polish disabled)")

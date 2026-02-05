@@ -158,7 +158,10 @@
     "swiftc",
     "xcodebuild"
   ],
-  "script_commands": [],
+  "script_commands": [
+    "./init.sh",
+    "./run.sh"
+  ],
   "custom_commands": [],
   "detected_stack": {
     "languages": [
@@ -181,10 +184,12 @@
     "make_targets": [],
     "poetry_scripts": [],
     "cargo_aliases": [],
-    "shell_scripts": []
+    "shell_scripts": [
+      "init.sh",
+      "run.sh"
+    ]
   },
   "project_dir": "/Users/vanch/voiceflow",
-  "created_at": "2026-02-02T00:29:41.811737",
-  "project_hash": "9623196a62bcac101dda3e484d238e7d",
-  "inherited_from": "/Users/vanch/voiceflow"
+  "created_at": "2026-02-05T04:27:28.344606",
+  "project_hash": "feacc412a7589026de45009ba68201ad"
 }
