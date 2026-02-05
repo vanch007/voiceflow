@@ -45,17 +45,11 @@ final class SceneManager: ObservableObject {
     // MARK: - Initialization
 
     private init() {
-        // 加载设置
         self.isAutoDetectEnabled = UserDefaults.standard.object(forKey: Keys.autoDetectEnabled) as? Bool ?? true
         loadProfiles()
         loadCustomRules()
-
-        // 开始监听前台应用变化
         startObservingFrontmostApp()
-
-        // 初始检测
         detectCurrentScene()
-
         NSLog("[SceneManager] Initialized. Auto-detect: \(isAutoDetectEnabled), Current scene: \(currentScene.rawValue)")
     }
 
@@ -86,11 +80,9 @@ final class SceneManager: ObservableObject {
 
     /// 查找指定 Bundle ID 对应的场景
     func findScene(for bundleID: String) -> SceneType {
-        // 先检查自定义规则
         if let rule = customRules.first(where: { $0.bundleID == bundleID }) {
             return rule.sceneType
         }
-        // 再检查内置规则
         if let rule = SceneRule.builtinRules.first(where: { $0.bundleID == bundleID }) {
             return rule.sceneType
         }
@@ -111,13 +103,11 @@ final class SceneManager: ObservableObject {
 
     /// 添加自定义规则
     func addRule(_ rule: SceneRule) {
-        // 如果已存在，先移除
         customRules.removeAll { $0.bundleID == rule.bundleID }
         customRules.append(rule)
         saveCustomRules()
         NSLog("[SceneManager] Added rule: \(rule.appName) -> \(rule.sceneType.rawValue)")
 
-        // 如果是当前应用，重新检测
         if let frontmostApp = NSWorkspace.shared.frontmostApplication,
            frontmostApp.bundleIdentifier == rule.bundleID {
             detectCurrentScene()
@@ -134,7 +124,6 @@ final class SceneManager: ObservableObject {
     /// 获取所有规则（内置 + 自定义）
     func getAllRules() -> [SceneRule] {
         var allRules = SceneRule.builtinRules
-        // 自定义规则覆盖内置规则
         for customRule in customRules {
             allRules.removeAll { $0.bundleID == customRule.bundleID }
             allRules.append(customRule)
@@ -145,6 +134,66 @@ final class SceneManager: ObservableObject {
     /// 获取自定义规则
     func getCustomRules() -> [SceneRule] {
         return customRules
+    }
+
+    // MARK: - Import/Export
+
+    /// Export a scene profile to a file
+    func exportScene(sceneType: SceneType, toPath: String) -> Bool {
+        let profile = getProfile(for: sceneType)
+
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+
+        do {
+            let data = try encoder.encode(profile)
+            let url = URL(fileURLWithPath: toPath)
+            try data.write(to: url, options: .atomic)
+            NSLog("[SceneManager] Successfully exported \(sceneType.rawValue) scene to \(toPath)")
+            return true
+        } catch {
+            NSLog("[SceneManager] Failed to export scene: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Import a scene profile from a file
+    func importScene(fromPath: String) -> Result<SceneProfile, Error> {
+        let url = URL(fileURLWithPath: fromPath)
+
+        do {
+            let data = try Data(contentsOf: url)
+
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return .failure(SceneImportError.invalidJSON)
+            }
+
+            guard json["sceneType"] != nil else {
+                return .failure(SceneImportError.missingRequiredField("sceneType"))
+            }
+            guard json["glossary"] != nil else {
+                return .failure(SceneImportError.missingRequiredField("glossary"))
+            }
+            guard json["enablePolish"] != nil else {
+                return .failure(SceneImportError.missingRequiredField("enablePolish"))
+            }
+            guard json["polishStyle"] != nil else {
+                return .failure(SceneImportError.missingRequiredField("polishStyle"))
+            }
+
+            let decoder = JSONDecoder()
+            let profile = try decoder.decode(SceneProfile.self, from: data)
+
+            NSLog("[SceneManager] Successfully imported scene: \(profile.sceneType.rawValue)")
+            return .success(profile)
+
+        } catch let error as DecodingError {
+            NSLog("[SceneManager] Failed to decode scene profile: \(error)")
+            return .failure(SceneImportError.decodingFailed(error))
+        } catch {
+            NSLog("[SceneManager] Failed to import scene: \(error.localizedDescription)")
+            return .failure(error)
+        }
     }
 
     // MARK: - Private Methods
@@ -181,7 +230,6 @@ final class SceneManager: ObservableObject {
     private func loadProfiles() {
         guard let data = UserDefaults.standard.data(forKey: Keys.profiles),
               let decoded = try? JSONDecoder().decode([SceneType: SceneProfile].self, from: data) else {
-            // 初始化默认配置
             for sceneType in SceneType.allCases {
                 profiles[sceneType] = SceneProfile.defaultProfile(for: sceneType)
             }
@@ -207,6 +255,24 @@ final class SceneManager: ObservableObject {
     private func saveCustomRules() {
         if let encoded = try? JSONEncoder().encode(customRules) {
             UserDefaults.standard.set(encoded, forKey: Keys.customRules)
+        }
+    }
+}
+
+/// Errors that can occur during scene import
+enum SceneImportError: LocalizedError {
+    case invalidJSON
+    case missingRequiredField(String)
+    case decodingFailed(Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidJSON:
+            return "The file does not contain valid JSON data"
+        case .missingRequiredField(let field):
+            return "Missing required field: \(field)"
+        case .decodingFailed(let error):
+            return "Failed to decode scene profile: \(error.localizedDescription)"
         }
     }
 }

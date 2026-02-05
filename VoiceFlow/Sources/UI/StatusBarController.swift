@@ -635,6 +635,8 @@ final class StatusBarController {
         case .coding: return localized("scene_coding")
         case .writing: return localized("scene_writing")
         case .general: return localized("scene_general")
+        case .medical, .legal, .technical, .finance, .engineering:
+            return sceneType.displayName
         }
     }
 }

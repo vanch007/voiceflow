@@ -346,6 +346,11 @@ private struct EnhancedOverlayContentView: View {
         case .coding: return .purple
         case .writing: return .orange
         case .general: return .gray
+        case .medical: return .green
+        case .legal: return .brown
+        case .technical: return .cyan
+        case .finance: return .yellow
+        case .engineering: return .red
         }
     }
 }

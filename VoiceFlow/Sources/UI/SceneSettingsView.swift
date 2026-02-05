@@ -56,7 +56,6 @@ struct SceneSettingsTab: View {
 
                         Spacer()
 
-                        // 显示配置状态
                         let profile = sceneManager.getProfile(for: sceneType)
                         if profile.enablePolish {
                             Image(systemName: "sparkles")
@@ -100,6 +99,12 @@ private struct SceneProfileEditor: View {
     @State private var glossary: [GlossaryEntry] = []
     @State private var showingAddGlossarySheet: Bool = false
     @State private var editingGlossaryEntry: GlossaryEntry? = nil
+
+    // Import/Export 状态
+    @State private var showExportSuccess = false
+    @State private var showExportError = false
+    @State private var showImportError = false
+    @State private var importErrorMessage = ""
 
     var body: some View {
         ScrollView {
@@ -322,6 +327,34 @@ private struct SceneProfileEditor: View {
                     }
                 }
 
+                Divider()
+
+                // Import/Export 场景管理
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("场景管理")
+                        .fontWeight(.medium)
+
+                    HStack(spacing: 12) {
+                        Button(action: exportScene) {
+                            HStack {
+                                Image(systemName: "square.and.arrow.up")
+                                Text("导出场景")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+
+                        Button(action: importScene) {
+                            HStack {
+                                Image(systemName: "square.and.arrow.down")
+                                Text("导入场景")
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
                 Spacer()
 
                 // 保存按钮
@@ -355,6 +388,21 @@ private struct SceneProfileEditor: View {
                 isPresented: $showingAddGlossarySheet
             )
         }
+        .alert("导出成功", isPresented: $showExportSuccess) {
+            Button("确定", role: .cancel) { }
+        } message: {
+            Text("场景配置已成功导出")
+        }
+        .alert("导出失败", isPresented: $showExportError) {
+            Button("确定", role: .cancel) { }
+        } message: {
+            Text("无法导出场景配置，请检查文件路径权限")
+        }
+        .alert("导入失败", isPresented: $showImportError) {
+            Button("确定", role: .cancel) { }
+        } message: {
+            Text(importErrorMessage)
+        }
     }
 
     private func loadCurrentProfile() {
@@ -381,6 +429,55 @@ private struct SceneProfileEditor: View {
             glossary: glossary
         )
         sceneManager.updateProfile(profile)
+    }
+
+    private func exportScene() {
+        let savePanel = NSSavePanel()
+        savePanel.title = "导出场景配置"
+        savePanel.message = "选择保存位置"
+        savePanel.nameFieldStringValue = "\(sceneType.rawValue).vfscene"
+        savePanel.allowedContentTypes = [.init(filenameExtension: "vfscene")!]
+        savePanel.canCreateDirectories = true
+
+        savePanel.begin { [self] response in
+            guard response == .OK, let url = savePanel.url else { return }
+
+            let success = SceneManager.shared.exportScene(
+                sceneType: sceneType,
+                toPath: url.path
+            )
+
+            if success {
+                showExportSuccess = true
+            } else {
+                showExportError = true
+            }
+        }
+    }
+
+    private func importScene() {
+        let openPanel = NSOpenPanel()
+        openPanel.title = "导入场景配置"
+        openPanel.message = "选择要导入的场景文件"
+        openPanel.allowedContentTypes = [.init(filenameExtension: "vfscene")!]
+        openPanel.allowsMultipleSelection = false
+        openPanel.canChooseDirectories = false
+
+        openPanel.begin { [self] response in
+            guard response == .OK, let url = openPanel.url else { return }
+
+            let result = SceneManager.shared.importScene(fromPath: url.path)
+
+            switch result {
+            case .success(let profile):
+                loadProfile(profile)
+                NSLog("[SceneSettingsView] Successfully imported scene: \(profile.sceneType.rawValue)")
+
+            case .failure(let error):
+                importErrorMessage = error.localizedDescription
+                showImportError = true
+            }
+        }
     }
 }
 
@@ -456,7 +553,6 @@ private struct AddGlossaryEntrySheet: View {
 
     private func saveEntry() {
         if let existing = editingEntry {
-            // 编辑现有条目
             if let index = glossary.firstIndex(where: { $0.id == existing.id }) {
                 glossary[index] = GlossaryEntry(
                     id: existing.id,
@@ -466,7 +562,6 @@ private struct AddGlossaryEntrySheet: View {
                 )
             }
         } else {
-            // 添加新条目
             let entry = GlossaryEntry(
                 term: term,
                 replacement: replacement,
@@ -494,7 +589,6 @@ private struct AddSceneRuleSheet: View {
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            // 从运行中的应用选择
             VStack(alignment: .leading, spacing: 8) {
                 Text("从运行中的应用选择：")
                     .fontWeight(.medium)
@@ -530,7 +624,6 @@ private struct AddSceneRuleSheet: View {
                 )
             }
 
-            // 手动输入
             VStack(alignment: .leading, spacing: 8) {
                 Text("或手动输入：")
                     .fontWeight(.medium)
@@ -540,7 +633,6 @@ private struct AddSceneRuleSheet: View {
                     .font(.system(.body, design: .monospaced))
             }
 
-            // 目标场景
             HStack {
                 Text("目标场景：")
                     .fontWeight(.medium)
@@ -553,7 +645,6 @@ private struct AddSceneRuleSheet: View {
 
             Spacer()
 
-            // 按钮
             HStack {
                 Button("取消") {
                     isPresented = false
