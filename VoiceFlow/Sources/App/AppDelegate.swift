@@ -198,6 +198,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         audioRecorder.onVolumeLevel = { [weak self] volume in
             DispatchQueue.main.async {
                 self?.overlayPanel.updateVolume(Double(volume))
+                // 更新静音倒计时显示
+                if let silenceDuration = self?.audioRecorder.getCurrentSilenceDuration() {
+                    self?.overlayPanel.updateSilenceCountdown(silenceDuration, threshold: 2.0)
+                }
+            }
+        }
+
+        // 静音检测回调（自由说话模式）
+        audioRecorder.onSilenceDetected = { [weak self] in
+            guard let self = self, self.isRecording else { return }
+            NSLog("[AppDelegate] Silence detected, auto-stopping recording")
+            self.stopRecording()
+        }
+
+        // SNR 更新回调（噪声环境自适应）
+        audioRecorder.onSNRUpdated = { [weak self] snr, _ in
+            guard let self = self else { return }
+            DispatchQueue.main.async {
+                self.overlayPanel.updateSNR(snr)
             }
         }
 
@@ -252,6 +271,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSLog("[AppDelegate] Original text stored: %@", originalText)
         }
 
+        asrClient.onPolishUpdate = { [weak self] updatedText in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                NSLog("[AppDelegate] Received polish update: %@", updatedText)
+
+                // 应用文本替换规则
+                var processedText = self.replacementEngine.applyReplacements(to: updatedText)
+                processedText = self.pluginManager.processText(processedText)
+
+                // 更新剪贴板（如果用户还没有进行其他操作）
+                let pasteboard = NSPasteboard.general
+                let currentChangeCount = pasteboard.changeCount
+
+                // 检查剪贴板是否被用户修改过
+                if let lastInjectedChangeCount = UserDefaults.standard.object(forKey: "lastInjectedChangeCount") as? Int,
+                   currentChangeCount == lastInjectedChangeCount {
+                    // 剪贴板未被修改，可以安全更新
+                    pasteboard.clearContents()
+                    pasteboard.setString(processedText, forType: .string)
+                    UserDefaults.standard.set(pasteboard.changeCount, forKey: "lastInjectedChangeCount")
+                    NSLog("[AppDelegate] Clipboard updated with LLM polished text")
+                } else {
+                    NSLog("[AppDelegate] Clipboard modified by user, skipping update")
+                }
+            }
+        }
+
         asrClient.onConnectionStatusChanged = { [weak self] connected in
             DispatchQueue.main.async {
                 self?.statusBarController.updateConnectionStatus(connected: connected)
@@ -290,6 +336,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hotkeyManager.onLongPressEnd = { [weak self] in
             self?.stopRecording()
+        }
+        hotkeyManager.onToggleRecording = { [weak self] in
+            guard let self = self else { return }
+            if self.isRecording {
+                self.stopRecording()
+            } else {
+                self.startRecordingFreeSpeak()
+            }
         }
         hotkeyManager.start()
 
@@ -558,8 +612,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[Recording] Stopping recording, playing stop sound")
         playSound(stopSoundID, name: "stopSound")
         audioRecorder.stopRecording()
+        audioRecorder.disableSilenceDetection()  // 停止时禁用静音检测
         overlayPanel.showProcessing()
+        overlayPanel.setFreeSpeakMode(false)  // 退出自由说话模式
         statusBarController.updateStatus(.processing)
         asrClient.sendStop()
+    }
+
+    /// 自由说话模式：开始录音（启用静音自动停止）
+    private func startRecordingFreeSpeak() {
+        guard SettingsManager.shared.voiceEnabled else {
+            NSLog("[Recording] Voice recognition is disabled")
+            showVoiceDisabledAlert()
+            return
+        }
+
+        isRecording = true
+        recordingStartTime = Date()
+        NSLog("[Recording] Starting free speak recording with silence detection")
+        playSound(startSoundID, name: "startSound")
+        overlayPanel.showRecording(partialText: "")
+        overlayPanel.setFreeSpeakMode(true)  // 启用自由说话模式显示
+        statusBarController.updateStatus(.recording)
+        asrClient.sendStart()
+        audioRecorder.enableSilenceDetection(threshold: 0.005, duration: 2.0)
+        audioRecorder.startRecording()
     }
 }

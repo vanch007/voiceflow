@@ -5,6 +5,7 @@ struct HotkeyConfig: Codable {
         case doubleTap
         case combination
         case longPress  // 长按单个修饰键
+        case freeSpeak  // 自由说话模式：单击开始，静音自动停止
     }
 
     let triggerType: TriggerType
@@ -25,6 +26,8 @@ struct HotkeyConfig: Codable {
             return "\(keyName(for: keyCode)) 双击"
         case .longPress:
             return "\(keyName(for: keyCode)) 长按"
+        case .freeSpeak:
+            return "\(keyName(for: keyCode)) 自由说话"
         case .combination:
             var parts: [String] = []
             if modifiers.contains(.command) { parts.append("⌘") }
