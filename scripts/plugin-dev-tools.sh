@@ -324,7 +324,7 @@ cmd_package() {
   fi
 }
 
-# Install command (placeholder)
+# Install command
 cmd_install() {
   local plugin_path="$1"
 
@@ -334,9 +334,98 @@ cmd_install() {
     exit 1
   fi
 
-  print_warning "Install command not yet implemented"
-  echo "This command will install plugins to user directory in the future"
-  exit 0
+  # Resolve to absolute path if relative
+  if [[ "$plugin_path" != /* ]]; then
+    plugin_path="$PROJECT_DIR/$plugin_path"
+  fi
+
+  if [ ! -d "$plugin_path" ]; then
+    print_error "Plugin directory not found: $plugin_path"
+    exit 1
+  fi
+
+  local manifest_path="$plugin_path/manifest.json"
+
+  if [ ! -f "$manifest_path" ]; then
+    print_error "manifest.json not found in $plugin_path"
+    exit 1
+  fi
+
+  # Check if Python is available
+  PYTHON_CMD=""
+  for cmd in python3 python; do
+    if command -v "$cmd" &>/dev/null; then
+      PYTHON_CMD="$cmd"
+      break
+    fi
+  done
+
+  if [ -z "$PYTHON_CMD" ]; then
+    print_error "Python not found. Install Python 3.x to install plugins."
+    exit 1
+  fi
+
+  # Extract plugin info from manifest
+  plugin_id=$("$PYTHON_CMD" -c "import json; print(json.load(open('$manifest_path'))['id'])" 2>/dev/null)
+  plugin_name=$("$PYTHON_CMD" -c "import json; print(json.load(open('$manifest_path'))['name'])" 2>/dev/null)
+  plugin_version=$("$PYTHON_CMD" -c "import json; print(json.load(open('$manifest_path'))['version'])" 2>/dev/null)
+
+  if [ -z "$plugin_id" ]; then
+    print_error "Could not read plugin ID from manifest"
+    exit 1
+  fi
+
+  # Get plugin directory name
+  local plugin_dir_name=$(basename "$plugin_path")
+
+  # Define user plugins directory
+  local user_plugins_dir="$HOME/Library/Application Support/VoiceFlow/Plugins"
+  local install_path="$user_plugins_dir/$plugin_dir_name"
+
+  print_info "Installing plugin: $plugin_name (v$plugin_version)"
+  print_info "Plugin ID: $plugin_id"
+  print_info "Destination: $install_path"
+
+  # Create user plugins directory if it doesn't exist
+  if [ ! -d "$user_plugins_dir" ]; then
+    print_info "Creating plugins directory: $user_plugins_dir"
+    mkdir -p "$user_plugins_dir"
+    if [ $? -ne 0 ]; then
+      print_error "Failed to create plugins directory"
+      exit 1
+    fi
+  fi
+
+  # Check if plugin already exists
+  if [ -d "$install_path" ]; then
+    print_warning "Plugin already exists at destination"
+    read -p "Overwrite existing plugin? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      print_info "Installation cancelled"
+      exit 0
+    fi
+    print_info "Removing existing plugin..."
+    rm -rf "$install_path"
+  fi
+
+  # Copy plugin to user directory
+  print_info "Copying plugin files..."
+  cp -R "$plugin_path" "$install_path"
+
+  if [ $? -eq 0 ]; then
+    print_success "Plugin installed successfully"
+    echo ""
+    echo "Installation Details:"
+    echo "  Plugin: $plugin_name"
+    echo "  Version: $plugin_version"
+    echo "  Location: $install_path"
+    echo ""
+    echo "The plugin will be available when VoiceFlow is restarted."
+  else
+    print_error "Failed to copy plugin files"
+    exit 1
+  fi
 }
 
 # Main command dispatcher
