@@ -7,5 +7,36 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #629 | 8:22 PM | ✅ | Staged all resolved merge conflicts in main repository | ~303 |
+| #733 | 11:28 PM | 🟣 | Auto-Populate Directory Field During Manifest Loading | ~319 |
+| #732 | " | 🔴 | Added Auto-Population of manifest.directory Field | ~357 |
+| #731 | " | 🔵 | Located Plugin Discovery and Manifest Loading Logic | ~381 |
+| #730 | " | 🟣 | Added Directory Field Support to Plugin Manifest for Custom Paths | ~350 |
+| #729 | " | 🔵 | PluginManager Uses manifest.name for Directory Path Construction | ~350 |
+| #728 | " | 🔵 | Located Plugin Path Construction Code in PluginManager | ~299 |
+| #727 | " | 🟣 | Added Optional Directory Field to PluginManifest | ~294 |
+| #726 | 11:27 PM | 🔵 | VoiceFlowPlugin Protocol Defines Plugin Contract and Lifecycle | ~411 |
+| #721 | 11:18 PM | 🔵 | PluginLoader Implementation Uses Swift Bundle Loading Mechanism | ~386 |
+| #701 | 10:57 PM | 🔵 | DictionaryManager Core Implementation Complete with Persistence | ~401 |
+| #693 | 10:45 PM | 🔴 | Improved Reconnection Logic to Prevent Duplicate Tasks | ~413 |
+| #692 | " | 🔴 | Fixed WebSocket Connection Race Condition in ASRClient | ~397 |
+| #689 | 10:44 PM | 🔵 | ASRClient WebSocket Implementation Analysis | ~385 |
+| #685 | 8:37 PM | 🟣 | Python Plugin State-Only Enablement and Plugin URL Path Fix | ~627 |
+| #684 | " | 🔵 | Swift PluginLoader Bundle Loading with Principal Class Instantiation | ~706 |
+| #683 | 8:36 PM | ✅ | Default Language Changed from Korean to Chinese | ~475 |
+| #682 | " | ✅ | Removed Platform Filter from Deprecated loadPluginManifest Method | ~445 |
+| #681 | " | 🔵 | SettingsManager Default Language Configuration | ~449 |
+| #680 | " | ✅ | Swift PluginManager Platform Filter Removed to Display All Plugins | ~580 |
+| #673 | 8:34 PM | 🔵 | Swift Plugin API Protocol with Synchronous Lifecycle Hooks | ~719 |
+| #648 | 8:23 PM | 🔵 | Swift PluginManager with Hot-Reload and Thread-Safe Plugin Lifecycle | ~841 |
+| #626 | 8:21 PM | 🔵 | SettingsManager Localization System | ~462 |
+| #568 | 7:47 PM | 🔄 | Extracted HotkeyConfig to Separate File | ~412 |
+| #550 | 7:46 PM | 🔵 | Custom Dictionary Manager | ~409 |
+| #526 | 7:45 PM | 🔵 | Hotkey Manager Implementation | ~394 |
+
+### Feb 6, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #747 | 12:25 AM | ✅ | Staged Code Changes for Git Commit | ~304 |
+| #746 | 12:24 AM | 🔵 | Session Changes Summary Shows Multiple Modifications | ~364 |
 </claude-mem-context>
