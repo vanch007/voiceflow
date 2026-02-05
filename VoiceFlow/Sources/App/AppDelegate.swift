@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var recordingHistory: RecordingHistory!
+    private var termLearner: TermLearner!
     private var isRecording = false
     private var asrServerProcess: Process?
 
@@ -47,6 +49,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         textInjector = TextInjector()
         asrClient = ASRClient()
         audioRecorder = AudioRecorder()
+        recordingHistory = RecordingHistory()
+        termLearner = TermLearner()
+
         audioRecorder.onAudioChunk = { [weak self] data in
             self?.asrClient.sendAudioChunk(data)
         }
@@ -57,11 +62,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.overlayPanel.showDone()
                 if !text.isEmpty {
                     self.textInjector.inject(text: text)
+                    self.recordingHistory.addEntry(text: text)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     self.overlayPanel.hide()
                 }
             }
+        }
+
+        // Connect RecordingHistory changes to TermLearner auto-refresh
+        recordingHistory.onEntriesChanged = { [weak self] in
+            guard let self = self else { return }
+            self.termLearner.analyzeAndRefresh(from: self.recordingHistory)
         }
 
         asrClient.onConnectionStatusChanged = { [weak self] connected in
