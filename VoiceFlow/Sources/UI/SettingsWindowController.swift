@@ -4,13 +4,15 @@ import SwiftUI
 final class SettingsWindowController: NSWindowController {
     private let settingsManager: SettingsManager
     private let replacementStorage: ReplacementStorage
+    private let recordingHistory: RecordingHistory
 
-    init(settingsManager: SettingsManager, replacementStorage: ReplacementStorage) {
+    init(settingsManager: SettingsManager, replacementStorage: ReplacementStorage, recordingHistory: RecordingHistory) {
         self.settingsManager = settingsManager
         self.replacementStorage = replacementStorage
+        self.recordingHistory = recordingHistory
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 600, height: 600),
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -24,7 +26,8 @@ final class SettingsWindowController: NSWindowController {
         let contentView = NSHostingView(
             rootView: SettingsContentView(
                 settingsManager: settingsManager,
-                replacementStorage: replacementStorage
+                replacementStorage: replacementStorage,
+                recordingHistory: recordingHistory
             )
         )
         window.contentView = contentView
@@ -43,6 +46,7 @@ final class SettingsWindowController: NSWindowController {
 private struct SettingsContentView: View {
     @ObservedObject var settingsManager: SettingsManager
     @ObservedObject var replacementStorage: ReplacementStorage
+    let recordingHistory: RecordingHistory
     @State private var pluginInfoList: [PluginInfo] = []
 
     var body: some View {
@@ -55,6 +59,10 @@ private struct SettingsContentView: View {
             SceneSettingsTab()
                 .tabItem { Label("场景", systemImage: "sparkles.rectangle.stack") }
 
+            // 录音记录标签页
+            RecordingHistoryTab(recordingHistory: recordingHistory)
+                .tabItem { Label("录音记录", systemImage: "waveform") }
+
             // 文本替换标签页
             TextReplacementTab(replacementStorage: replacementStorage)
                 .tabItem { Label("文本替换", systemImage: "textformat.alt") }
@@ -63,7 +71,7 @@ private struct SettingsContentView: View {
             PluginSettingsTab(pluginInfoList: $pluginInfoList)
                 .tabItem { Label("插件", systemImage: "puzzlepiece") }
         }
-        .frame(width: 600, height: 600)
+        .frame(width: 800, height: 600)
         .padding()
         .onAppear {
             pluginInfoList = PluginManager.shared.getAllPlugins()
@@ -243,6 +251,165 @@ private struct RuleEditorView: View {
             }
         }
         .padding()
+    }
+}
+
+// 录音记录标签页
+private struct RecordingHistoryTab: View {
+    let recordingHistory: RecordingHistory
+    @State private var entries: [RecordingEntry] = []
+    @State private var searchQuery: String = ""
+    @State private var selectedEntry: RecordingEntry?
+    @State private var selectedApp: String = "全部"
+    @State private var sortAscending: Bool = false  // false = 倒序（最新在前）
+
+    // 获取所有应用列表
+    var appList: [String] {
+        var apps = Set<String>()
+        for entry in entries {
+            if let appName = entry.appName, !appName.isEmpty {
+                apps.insert(appName)
+            }
+        }
+        return ["全部"] + apps.sorted()
+    }
+
+    var filteredEntries: [RecordingEntry] {
+        var result = entries
+
+        // 应用筛选
+        if selectedApp != "全部" {
+            result = result.filter { $0.appName == selectedApp }
+        }
+
+        // 搜索筛选
+        if !searchQuery.isEmpty {
+            result = result.filter { $0.text.localizedCaseInsensitiveContains(searchQuery) }
+        }
+
+        // 时间排序
+        if sortAscending {
+            result = result.sorted { $0.timestamp < $1.timestamp }
+        } else {
+            result = result.sorted { $0.timestamp > $1.timestamp }
+        }
+
+        return result
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 顶部工具栏
+            HStack {
+                TextField("搜索...", text: $searchQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 200)
+
+                // 应用筛选
+                Picker("应用", selection: $selectedApp) {
+                    ForEach(appList, id: \.self) { app in
+                        Text(app).tag(app)
+                    }
+                }
+                .frame(width: 150)
+
+                // 排序按钮
+                Button(action: {
+                    sortAscending.toggle()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: sortAscending ? "arrow.up" : "arrow.down")
+                        Text(sortAscending ? "旧→新" : "新→旧")
+                    }
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Button("全部删除") {
+                    clearAll()
+                }
+                .disabled(entries.isEmpty)
+            }
+            .padding()
+
+            Divider()
+
+            // 列表
+            List(filteredEntries, selection: $selectedEntry) { entry in
+                HStack {
+                    Text(formatTimestamp(entry.timestamp))
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .frame(width: 140, alignment: .leading)
+
+                    // 应用名称
+                    Text(entry.appName ?? "-")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .frame(width: 100, alignment: .leading)
+                        .lineLimit(1)
+
+                    Text(entry.text)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Spacer()
+
+                    Text(formatDuration(entry.duration))
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .frame(width: 70, alignment: .trailing)
+                }
+                .tag(entry)
+                .contextMenu {
+                    Button("复制文本") {
+                        copyText(entry)
+                    }
+                    Button("删除", role: .destructive) {
+                        deleteEntry(entry)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            entries = recordingHistory.entries
+            recordingHistory.onEntriesChanged = {
+                entries = recordingHistory.entries
+            }
+        }
+    }
+
+    private func formatTimestamp(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .medium
+        return formatter.string(from: date)
+    }
+
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let seconds = Int(duration)
+        if seconds < 60 {
+            return "\(seconds)秒"
+        } else {
+            let minutes = seconds / 60
+            let remainingSeconds = seconds % 60
+            return "\(minutes)分\(remainingSeconds)秒"
+        }
+    }
+
+    private func copyText(_ entry: RecordingEntry) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(entry.text, forType: .string)
+    }
+
+    private func deleteEntry(_ entry: RecordingEntry) {
+        recordingHistory.deleteEntry(id: entry.id)
+    }
+
+    private func clearAll() {
+        recordingHistory.clearAll()
     }
 }
 
@@ -514,7 +681,8 @@ private struct PluginDetailView: View {
 #Preview("Settings - Default") {
     SettingsContentView(
         settingsManager: SettingsManager.shared,
-        replacementStorage: ReplacementStorage()
+        replacementStorage: ReplacementStorage(),
+        recordingHistory: RecordingHistory()
     )
 }
 

@@ -1,19 +1,31 @@
 import Foundation
 
 // Data model for a single recording entry
-struct RecordingEntry: Codable, Identifiable {
+struct RecordingEntry: Codable, Identifiable, Hashable {
     let id: UUID
     let timestamp: Date
     let text: String
     let duration: TimeInterval
     let audioPath: String?
+    let appName: String?
+    let bundleID: String?
 
-    init(id: UUID = UUID(), timestamp: Date = Date(), text: String, duration: TimeInterval, audioPath: String? = nil) {
+    init(id: UUID = UUID(), timestamp: Date = Date(), text: String, duration: TimeInterval, audioPath: String? = nil, appName: String? = nil, bundleID: String? = nil) {
         self.id = id
         self.timestamp = timestamp
         self.text = text
         self.duration = duration
         self.audioPath = audioPath
+        self.appName = appName
+        self.bundleID = bundleID
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+
+    static func == (lhs: RecordingEntry, rhs: RecordingEntry) -> Bool {
+        lhs.id == rhs.id
     }
 }
 
@@ -43,7 +55,7 @@ final class RecordingHistory {
 
     // MARK: - Public Methods
 
-    func addEntry(text: String, duration: TimeInterval, audioData: Data? = nil) {
+    func addEntry(text: String, duration: TimeInterval, audioData: Data? = nil, appName: String? = nil, bundleID: String? = nil) {
         queue.async { [weak self] in
             guard let self = self else { return }
             let audioPath: String?
@@ -53,7 +65,7 @@ final class RecordingHistory {
                 audioPath = nil
             }
 
-            let entry = RecordingEntry(text: text, duration: duration, audioPath: audioPath)
+            let entry = RecordingEntry(text: text, duration: duration, audioPath: audioPath, appName: appName, bundleID: bundleID)
             self.entries.insert(entry, at: 0) // newest first
 
             // Enforce max entries limit

@@ -151,9 +151,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsManager = SettingsManager.shared
         replacementStorage = ReplacementStorage()
         replacementEngine = TextReplacementEngine(storage: replacementStorage)
+        recordingHistory = RecordingHistory()
         settingsWindowController = SettingsWindowController(
             settingsManager: settingsManager,
-            replacementStorage: replacementStorage
+            replacementStorage: replacementStorage,
+            recordingHistory: recordingHistory
         )
 
         // Initialize plugin system
@@ -176,7 +178,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         textInjector = TextInjector()
 
         asrClient = ASRClient()
-        recordingHistory = RecordingHistory()
         termLearner = TermLearner()
         historyWindowController = HistoryWindowController(recordingHistory: recordingHistory)
         // Connect RecordingHistory changes to TermLearner auto-refresh
@@ -223,7 +224,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Add to recording history with processed text
                 if let startTime = self.recordingStartTime {
                     let duration = Date().timeIntervalSince(startTime)
-                    self.recordingHistory.addEntry(text: processedText, duration: duration)
+                    // Get current frontmost app info
+                    let frontmostApp = NSWorkspace.shared.frontmostApplication
+                    let appName = frontmostApp?.localizedName
+                    let bundleID = frontmostApp?.bundleIdentifier
+                    self.recordingHistory.addEntry(text: processedText, duration: duration, appName: appName, bundleID: bundleID)
                     self.recordingStartTime = nil
                 }
 
