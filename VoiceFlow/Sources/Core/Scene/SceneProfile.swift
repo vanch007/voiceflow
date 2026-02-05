@@ -53,6 +53,46 @@ struct SceneProfile: Codable, Equatable {
     var customPrompt: String?
     var glossary: [GlossaryEntry]
 
+    // MARK: - LLM 相关字段
+
+    /// 是否使用 LLM 润色（覆盖全局设置）
+    var useLLMPolish: Bool?
+
+    /// LLM 分析建议的关键词
+    var keywords: [String]
+
+    /// LLM 建议的术语（待添加到字典）
+    var suggestedTerms: [String]
+
+    /// 上次分析时间
+    var lastAnalyzedAt: Date?
+
+    init(
+        sceneType: SceneType,
+        language: ASRLanguage,
+        enablePolish: Bool,
+        polishStyle: PolishStyle,
+        enabledPluginIDs: [String],
+        customPrompt: String?,
+        glossary: [GlossaryEntry],
+        useLLMPolish: Bool? = nil,
+        keywords: [String] = [],
+        suggestedTerms: [String] = [],
+        lastAnalyzedAt: Date? = nil
+    ) {
+        self.sceneType = sceneType
+        self.language = language
+        self.enablePolish = enablePolish
+        self.polishStyle = polishStyle
+        self.enabledPluginIDs = enabledPluginIDs
+        self.customPrompt = customPrompt
+        self.glossary = glossary
+        self.useLLMPolish = useLLMPolish
+        self.keywords = keywords
+        self.suggestedTerms = suggestedTerms
+        self.lastAnalyzedAt = lastAnalyzedAt
+    }
+
     // MARK: - 默认提示词
 
     /// 各场景的默认提示词

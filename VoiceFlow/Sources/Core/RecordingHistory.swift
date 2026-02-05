@@ -111,6 +111,27 @@ final class RecordingHistory {
         return snapshot.filter { $0.text.localizedCaseInsensitiveContains(query) }
     }
 
+    /// Get entries for a specific application name
+    func entriesForApp(_ appName: String, limit: Int = 100) -> [RecordingEntry] {
+        let snapshot: [RecordingEntry] = queue.sync { entries }
+        let filtered = snapshot.filter { $0.appName == appName }
+        return Array(filtered.prefix(limit))
+    }
+
+    /// Get entries for a specific bundle ID
+    func entriesForBundleID(_ bundleID: String, limit: Int = 100) -> [RecordingEntry] {
+        let snapshot: [RecordingEntry] = queue.sync { entries }
+        let filtered = snapshot.filter { $0.bundleID == bundleID }
+        return Array(filtered.prefix(limit))
+    }
+
+    /// Get all unique application names in history
+    func uniqueAppNames() -> [String] {
+        let snapshot: [RecordingEntry] = queue.sync { entries }
+        let names = snapshot.compactMap { $0.appName }
+        return Array(Set(names)).sorted()
+    }
+
     func getAudioData(for entry: RecordingEntry) -> Data? {
         guard let path = entry.audioPath else { return nil }
         return try? Data(contentsOf: URL(fileURLWithPath: path))

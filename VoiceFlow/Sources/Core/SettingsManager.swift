@@ -133,6 +133,14 @@ final class SettingsManager: ObservableObject {
         }
     }
 
+    @Published var llmSettings: LLMSettings {
+        didSet {
+            saveLLMSettings()
+            NSLog("[SettingsManager] LLM settings changed: enabled=\(llmSettings.isEnabled), model=\(llmSettings.model)")
+            notifySettingsChanged(category: "llm", key: "settings", value: llmSettings.isEnabled)
+        }
+    }
+
     @Published var asrLanguage: ASRLanguage {
         didSet {
             if let encoded = try? JSONEncoder().encode(asrLanguage) {
@@ -263,6 +271,8 @@ final class SettingsManager: ObservableObject {
         static let voiceEnabled = "settings.voice.enabled"
         static let voiceLanguage = "settings.voice.language"
         static let voiceSensitivity = "settings.voice.sensitivity"
+        // LLM settings keys
+        static let llmSettings = "settings.llm"
     }
 
     private enum Defaults {
@@ -290,6 +300,9 @@ final class SettingsManager: ObservableObject {
 
         // Load text polish enabled (default: false)
         self.textPolishEnabled = UserDefaults.standard.isTextPolishEnabled
+
+        // Load LLM settings
+        self.llmSettings = Self.loadLLMSettingsStatic()
 
         // Load ASR language (default: auto)
         if let data = UserDefaults.standard.data(forKey: Keys.asrLanguage),
@@ -436,5 +449,52 @@ final class SettingsManager: ObservableObject {
         voiceEnabled = Defaults.voiceEnabled
         voiceLanguage = Defaults.voiceLanguage
         voiceSensitivity = Defaults.voiceSensitivity
+    }
+
+    // MARK: - LLM Settings
+
+    /// Save LLM settings to UserDefaults (excluding API key)
+    private func saveLLMSettings() {
+        // Save settings without API key (stored in Keychain)
+        var settingsToSave = llmSettings
+        let apiKey = settingsToSave.apiKey
+        settingsToSave.apiKey = ""  // Don't store in UserDefaults
+
+        if let data = try? JSONEncoder().encode(settingsToSave) {
+            UserDefaults.standard.set(data, forKey: Keys.llmSettings)
+        }
+
+        // Save API key to Keychain if not empty
+        if !apiKey.isEmpty {
+            do {
+                try KeychainHelper.saveAPIKey(apiKey)
+            } catch {
+                NSLog("[SettingsManager] Failed to save API key to Keychain: \(error)")
+            }
+        }
+    }
+
+    /// Load LLM settings (static version for init)
+    private static func loadLLMSettingsStatic() -> LLMSettings {
+        var settings: LLMSettings
+
+        if let data = UserDefaults.standard.data(forKey: Keys.llmSettings),
+           let decoded = try? JSONDecoder().decode(LLMSettings.self, from: data) {
+            settings = decoded
+        } else {
+            settings = .default
+        }
+
+        // Load API key from Keychain
+        if let apiKey = KeychainHelper.loadAPIKey() {
+            settings.apiKey = apiKey
+        }
+
+        return settings
+    }
+
+    /// Reload LLM settings from storage
+    func reloadLLMSettings() {
+        llmSettings = Self.loadLLMSettingsStatic()
     }
 }

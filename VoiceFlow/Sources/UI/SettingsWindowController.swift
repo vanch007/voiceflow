@@ -55,6 +55,10 @@ private struct SettingsContentView: View {
             GeneralSettingsTab(settingsManager: settingsManager)
                 .tabItem { Label("通用", systemImage: "gear") }
 
+            // LLM 设置标签页
+            LLMSettingsView(settingsManager: settingsManager)
+                .tabItem { Label("LLM", systemImage: "brain") }
+
             // 场景设置标签页
             SceneSettingsTab()
                 .tabItem { Label("场景", systemImage: "sparkles.rectangle.stack") }

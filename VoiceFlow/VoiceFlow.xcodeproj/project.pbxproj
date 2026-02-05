@@ -14,6 +14,10 @@
 		508E63962F3075870016E8CD /* UserDefaults+VoiceFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E63952F3075870016E8CD /* UserDefaults+VoiceFlow.swift */; };
 		508E63992F30759E0016E8CD /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E63982F30759E0016E8CD /* SettingsWindowController.swift */; };
 		508E639A2F30759E0016E8CD /* SettingsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E63972F30759E0016E8CD /* SettingsWindow.swift */; };
+		L1000001 /* LLMSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = L2000001 /* LLMSettings.swift */; };
+		L1000002 /* HistoryAnalysisResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = L2000002 /* HistoryAnalysisResult.swift */; };
+		L1000003 /* LLMSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = L2000003 /* LLMSettingsView.swift */; };
+		L1000004 /* HistoryAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = L2000004 /* HistoryAnalysisView.swift */; };
 		A1000001 /* VoiceFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000001 /* VoiceFlowApp.swift */; };
 		A1000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002 /* AppDelegate.swift */; };
 		A1000003 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000003 /* HotkeyManager.swift */; };
@@ -91,6 +95,10 @@
 		320465FF2D314116A50C4491 /* AccessibilityPermissionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityPermissionView.swift; sourceTree = "<group>"; };
 		040D1C9EAB2249909DCA3F06 /* HotkeyPracticeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyPracticeView.swift; sourceTree = "<group>"; };
 		793C1B88629340EE802BB296 /* CompletionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompletionView.swift; sourceTree = "<group>"; };
+		L2000001 /* LLMSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMSettings.swift; sourceTree = "<group>"; };
+		L2000002 /* HistoryAnalysisResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryAnalysisResult.swift; sourceTree = "<group>"; };
+		L2000003 /* LLMSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMSettingsView.swift; sourceTree = "<group>"; };
+		L2000004 /* HistoryAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryAnalysisView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -155,6 +163,8 @@
 				P1000001 /* PermissionManager.swift */,
 				T2000001 /* LearnedTerm.swift */,
 				T2000002 /* TermLearner.swift */,
+				L2000001 /* LLMSettings.swift */,
+				L2000002 /* HistoryAnalysisResult.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -200,6 +210,8 @@
 				D2000005 /* SceneSettingsView.swift */,
 				P1000002 /* PermissionAlertWindow.swift */,
 				T2000003 /* DictionaryWindow.swift */,
+				L2000003 /* LLMSettingsView.swift */,
+				L2000004 /* HistoryAnalysisView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -306,6 +318,10 @@
 				T1000001 /* LearnedTerm.swift in Sources */,
 				T1000002 /* TermLearner.swift in Sources */,
 				T1000003 /* DictionaryWindow.swift in Sources */,
+				L1000001 /* LLMSettings.swift in Sources */,
+				L1000002 /* HistoryAnalysisResult.swift in Sources */,
+				L1000003 /* LLMSettingsView.swift in Sources */,
+				L1000004 /* HistoryAnalysisView.swift in Sources */,
 				0483771F70A247EBAB11AEC6 /* OnboardingWindow.swift in Sources */,
 				DE92135E782B4279952A59B3 /* WelcomeView.swift in Sources */,
 				4A2ECC1AEC7442ED8D1C2972 /* MicrophonePermissionView.swift in Sources */,

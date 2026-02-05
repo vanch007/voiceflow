@@ -13,6 +13,9 @@ import websockets
 from mlx_asr import MLXQwen3ASR
 from text_polisher import TextPolisher
 from scene_polisher import ScenePolisher
+from llm_client import LLMClient, LLMConfig, init_llm_client, get_llm_client, shutdown_llm_client
+from llm_polisher import LLMPolisher, init_llm_polisher, get_llm_polisher
+from history_analyzer import HistoryAnalyzer, init_history_analyzer, get_history_analyzer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -25,6 +28,7 @@ models: dict[str, MLXQwen3ASR] = {}
 current_model_id: str = None
 polisher: TextPolisher = None
 scene_polisher: ScenePolisher = None
+llm_polisher: LLMPolisher = None
 config = {}
 
 # 模型访问锁，防止并发转录导致 MLX 崩溃
@@ -324,7 +328,7 @@ async def vad_streaming_transcribe(
 
 def warmup_model():
     """Warm up the model with a short silent audio segment."""
-    global polisher, scene_polisher
+    global polisher, scene_polisher, llm_polisher
     model = get_model()
     if model is None:
         raise RuntimeError("Model not loaded. Call load_model() first.")
@@ -344,6 +348,13 @@ def warmup_model():
     scene_polisher = ScenePolisher(polisher)
     logger.info("✅ Text polisher and scene polisher initialized.")
 
+    # Initialize LLM components (with default config, will be updated by client)
+    logger.info("Initializing LLM components...")
+    init_llm_client()
+    llm_polisher = init_llm_polisher(base_polisher=polisher)
+    init_history_analyzer()
+    logger.info("✅ LLM polisher and history analyzer initialized.")
+
 
 async def handle_client(websocket):
     """处理客户端连接"""
@@ -351,6 +362,7 @@ async def handle_client(websocket):
     audio_chunks: list[bytes] = []
     recording = False
     enable_polish = False
+    use_llm_polish = False  # LLM 润色开关
     session_model_id = None
     session_language = None
     session_scene = None  # 场景信息
@@ -363,14 +375,69 @@ async def handle_client(websocket):
                 data = json.loads(message)
                 msg_type = data.get("type")
 
-                if msg_type == "start":
+                if msg_type == "config_llm":
+                    # 配置 LLM 连接参数
+                    llm_config = LLMConfig.from_dict(data.get("config", {}))
+                    llm_client = get_llm_client()
+                    if llm_client:
+                        llm_client.update_config(llm_config)
+                        logger.info(f"🔧 LLM 配置已更新: model={llm_config.model}, url={llm_config.api_url}")
+                        await websocket.send(json.dumps({
+                            "type": "config_llm_ack",
+                            "success": True
+                        }))
+                    else:
+                        await websocket.send(json.dumps({
+                            "type": "config_llm_ack",
+                            "success": False,
+                            "error": "LLM client not initialized"
+                        }))
+
+                elif msg_type == "test_llm_connection":
+                    # 测试 LLM 连接
+                    llm_client = get_llm_client()
+                    if llm_client:
+                        success, latency = await llm_client.health_check()
+                        await websocket.send(json.dumps({
+                            "type": "test_llm_connection_result",
+                            "success": success,
+                            "latency_ms": latency
+                        }))
+                    else:
+                        await websocket.send(json.dumps({
+                            "type": "test_llm_connection_result",
+                            "success": False,
+                            "error": "LLM client not initialized"
+                        }))
+
+                elif msg_type == "analyze_history":
+                    # 分析录音历史
+                    entries = data.get("entries", [])
+                    app_name = data.get("app_name", "Unknown")
+                    existing_terms = data.get("existing_terms", [])
+
+                    analyzer = get_history_analyzer()
+                    if analyzer:
+                        result = await analyzer.analyze_app_history(entries, app_name, existing_terms)
+                        await websocket.send(json.dumps({
+                            "type": "analysis_result",
+                            "result": result
+                        }))
+                    else:
+                        await websocket.send(json.dumps({
+                            "type": "analysis_result",
+                            "error": "History analyzer not initialized"
+                        }))
+
+                elif msg_type == "start":
                     enable_polish = data.get("enable_polish") == "true"
+                    use_llm_polish = data.get("use_llm_polish", False)  # 新增 LLM 润色开关
                     session_model_id = data.get("model_id")
                     lang_code = data.get("language", "auto")
                     session_language = LANGUAGE_MAP.get(lang_code, None)
                     session_scene = data.get("scene", {})  # 解析场景信息
 
-                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene}")
+                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, LLM: {use_llm_polish}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene}")
 
                     # 确保模型已加载
                     if session_model_id:
@@ -409,7 +476,7 @@ async def handle_client(websocket):
                         transcription_task = None
 
                     if not audio_chunks:
-                        await websocket.send(json.dumps({"type": "final", "text": ""}))
+                        await websocket.send(json.dumps({"type": "final", "text": "", "polish_method": "none"}))
                         continue
 
                     raw = b"".join(audio_chunks)
@@ -438,11 +505,20 @@ async def handle_client(websocket):
                         original_text = str(result)
 
                     # Polish the transcribed text only if enabled
+                    polish_method = "none"
                     if enable_polish:
-                        # 使用场景感知润色器
-                        polished_text = scene_polisher.polish(original_text, session_scene)
+                        llm_pol = get_llm_polisher()
+                        if llm_pol and use_llm_polish:
+                            # 使用 LLM 润色器（带回退）
+                            polished_text, polish_method = await llm_pol.polish_async(
+                                original_text, session_scene, use_llm=True
+                            )
+                        else:
+                            # 使用场景感知润色器（规则）
+                            polished_text = scene_polisher.polish(original_text, session_scene)
+                            polish_method = "rules"
                         logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text}")
-                        logger.info(f"✨ 润色后文本 (scene={session_scene.get('type', 'general')}): {polished_text}")
+                        logger.info(f"✨ 润色后文本 (method={polish_method}, scene={session_scene.get('type', 'general')}): {polished_text}")
                     else:
                         polished_text = original_text
                         logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text} (polish disabled)")
@@ -453,7 +529,8 @@ async def handle_client(websocket):
                     await websocket.send(json.dumps({
                         "type": "final",
                         "text": polished_text,
-                        "original_text": original_text
+                        "original_text": original_text,
+                        "polish_method": polish_method
                     }))
 
             elif isinstance(message, bytes) and recording:

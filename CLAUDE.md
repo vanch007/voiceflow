@@ -68,17 +68,24 @@ cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
 - `TextInjector.swift`: CGEvent-based text injection into active apps
 - `SettingsManager.swift`: User preferences management
 - `ReplacementRule.swift` / `ReplacementStorage.swift`: Text replacement rules
+- `LLMSettings.swift`: LLM configuration with Keychain storage for API keys
+- `HistoryAnalysisResult.swift`: Recording history analysis result model
 
 **UI Layer** (`UI/`)
 - `StatusBarController.swift`: Menu bar item and status management
 - `OverlayPanel.swift`: Visual recording indicator (bottom of screen)
 - `SettingsWindow.swift`: Settings UI
+- `LLMSettingsView.swift`: LLM configuration interface
+- `HistoryAnalysisView.swift`: Recording history analysis results display
 
 ### Python ASR Server (`server/`)
 
 - `main.py`: WebSocket server (ws://localhost:9876), handles audio streaming and transcription
 - `mlx_asr.py`: MLX-based Qwen3-ASR wrapper for Apple Silicon GPU acceleration
 - `text_polisher.py`: AI text enhancement using LLM
+- `llm_client.py`: OpenAI-compatible LLM client (supports Ollama, vLLM, OpenAI)
+- `llm_polisher.py`: LLM-based text polisher with rule fallback
+- `history_analyzer.py`: Recording history analysis for keyword extraction
 
 ### Plugin System (`Plugins/`)
 
@@ -112,8 +119,15 @@ TextInjector pastes text into active app
 - Binary audio data (Float32, 16kHz, mono)
 
 **Server → Client:**
-- `{"type": "final", "text": "..."}` - Final transcription result
+- `{"type": "final", "text": "...", "polish_method": "llm"|"rules"|"none"}` - Final transcription result
 - `{"type": "partial", "text": "..."}` - Partial result during recording
+- `{"type": "test_llm_connection_result", "success": bool, "latency_ms": int}` - LLM connection test
+- `{"type": "analysis_result", "result": {...}}` - History analysis result
+
+**LLM Configuration Messages:**
+- `{"type": "config_llm", "config": {...}}` - Configure LLM connection (Client → Server)
+- `{"type": "test_llm_connection"}` - Test LLM service availability (Client → Server)
+- `{"type": "analyze_history", "entries": [...], "app_name": "..."}` - Analyze recording history (Client → Server)
 
 ## Key Files for Common Tasks
 
@@ -125,6 +139,8 @@ TextInjector pastes text into active app
 | Add UI elements | `VoiceFlow/Sources/UI/StatusBarController.swift` |
 | Modify ASR model | `server/mlx_asr.py` |
 | Add text post-processing | `server/text_polisher.py` or create new plugin |
+| Configure LLM polish | `VoiceFlow/Sources/Core/LLMSettings.swift` + `server/llm_client.py` |
+| Add history analysis | `server/history_analyzer.py` + `VoiceFlow/Sources/UI/HistoryAnalysisView.swift` |
 
 ## Debugging
 
@@ -177,3 +193,37 @@ Both are requested automatically on first launch.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `VOICEFLOW_PYTHON` | Python interpreter path | `<project_root>/.venv/bin/python3` |
+
+## Known Issues & Solutions
+
+### WebSocket Connection Race Condition
+ASRClient 的 WebSocket 连接可能出现 `NSURLErrorDomain Code=-999 "cancelled"` 错误。原因是 `URLSessionWebSocketTask.resume()` 后立即发送 ping，此时握手可能尚未完成。
+
+**解决方案**（已在代码中实现）：
+- 在 ping 前添加 500ms 延迟等待握手完成
+- 使用 `===` 身份检查确保异步回调操作的是当前连接
+- 取消旧的重连任务防止并发冲突
+- `handleDisconnect()` 仅在状态从已连接变为断开时发送通知
+
+### Plugin System
+
+**插件位置：**
+- 内置插件: `Plugins/` 目录（随项目分发）
+- 用户插件: `~/Library/Application Support/VoiceFlow/Plugins/`
+
+**自动安装：** ASR 服务器启动时会自动将 `ChinesePunctuationPlugin` 从内置目录复制到用户目录。
+
+**manifest.json 必需字段：**
+```json
+{
+  "name": "PluginName",
+  "version": "1.0.0",
+  "platform": ["python"],
+  "entry_point": "plugin.py"
+}
+```
+
+**插件生命周期：**
+1. 服务器启动时加载所有插件 (`plugin_loader.py`)
+2. 每个插件实现 `process(text)` 方法处理转录文本
+3. 插件按顺序执行，前一个插件的输出作为下一个的输入

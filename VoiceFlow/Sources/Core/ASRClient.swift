@@ -3,20 +3,27 @@ import Foundation
 private enum ASRMessageType: String, Decodable {
     case final
     case partial
+    case config_llm_ack
+    case test_llm_connection_result
+    case analysis_result
 }
 
 private struct ASRMessage: Decodable {
     let type: ASRMessageType
     let text: String
     let original_text: String?
+    let polish_method: String?  // LLM 润色方法: "llm", "rules", "none"
 }
 
 final class ASRClient {
     var onTranscriptionResult: ((String) -> Void)?
     var onPartialResult: ((String) -> Void)?  // 实时部分结果回调
     var onOriginalTextReceived: ((String) -> Void)?  // 原始文本回调
+    var onPolishMethodReceived: ((String) -> Void)?  // 润色方法回调
     var onConnectionStatusChanged: ((Bool) -> Void)?
     var onErrorStateChanged: ((Bool, String?) -> Void)?
+    var onLLMConnectionTestResult: ((Bool, Int?) -> Void)?  // LLM 连接测试结果
+    var onHistoryAnalysisResult: ((HistoryAnalysisResult?) -> Void)?  // 历史分析结果
 
     private var webSocketTask: URLSessionWebSocketTask?
     private let session: URLSession = URLSession(configuration: .default)
@@ -219,19 +226,58 @@ final class ASRClient {
             return
         }
 
-        guard let decoded = try? JSONDecoder().decode(ASRMessage.self, from: data) else { return }
-        NSLog("[ASRClient] Received: type=\(decoded.type), text=\(decoded.text), original_text=\(decoded.original_text ?? "nil")")
+        // Try to decode as generic JSON first to handle different message types
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let typeString = json["type"] as? String else {
+            return
+        }
 
-        switch decoded.type {
-        case .final:
+        switch typeString {
+        case "final":
+            let text = json["text"] as? String ?? ""
+            let originalText = json["original_text"] as? String
+            let polishMethod = json["polish_method"] as? String
+            NSLog("[ASRClient] Received final: text=\(text), polish_method=\(polishMethod ?? "nil")")
             DispatchQueue.main.async { [weak self] in
-                self?.onTranscriptionResult?(decoded.text)
-                if let original = decoded.original_text { self?.onOriginalTextReceived?(original) }
+                self?.onTranscriptionResult?(text)
+                if let original = originalText { self?.onOriginalTextReceived?(original) }
+                if let method = polishMethod { self?.onPolishMethodReceived?(method) }
             }
-        case .partial:
+
+        case "partial":
+            let text = json["text"] as? String ?? ""
             DispatchQueue.main.async { [weak self] in
-                self?.onPartialResult?(decoded.text)
+                self?.onPartialResult?(text)
             }
+
+        case "config_llm_ack":
+            let success = json["success"] as? Bool ?? false
+            NSLog("[ASRClient] LLM config ack: success=\(success)")
+
+        case "test_llm_connection_result":
+            let success = json["success"] as? Bool ?? false
+            let latency = json["latency_ms"] as? Int
+            NSLog("[ASRClient] LLM connection test: success=\(success), latency=\(latency ?? -1)ms")
+            DispatchQueue.main.async { [weak self] in
+                self?.onLLMConnectionTestResult?(success, latency)
+            }
+
+        case "analysis_result":
+            if let resultDict = json["result"] as? [String: Any],
+               let result = HistoryAnalysisResult.fromServerResponse(resultDict) {
+                NSLog("[ASRClient] History analysis complete: \(result.analyzedCount) entries, \(result.keywords.count) keywords")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onHistoryAnalysisResult?(result)
+                }
+            } else {
+                NSLog("[ASRClient] History analysis failed or empty result")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onHistoryAnalysisResult?(nil)
+                }
+            }
+
+        default:
+            NSLog("[ASRClient] Unknown message type: \(typeString)")
         }
     }
 
@@ -319,6 +365,92 @@ final class ASRClient {
                 NSLog("[ASRClient] Voice language changed to: \(language)")
             }
         }
+
+        // Sync LLM settings when changed
+        if category == "llm" && key == "settings" {
+            configureLLM(settingsManager.llmSettings)
+        }
+    }
+
+    // MARK: - LLM Methods
+
+    /// Configure LLM settings on server
+    func configureLLM(_ settings: LLMSettings) {
+        let configDict: [String: Any] = [
+            "type": "config_llm",
+            "config": settings.toDictionary()
+        ]
+        sendJSONObject(configDict)
+        NSLog("[ASRClient] Sent LLM config: model=\(settings.model)")
+    }
+
+    /// Test LLM connection
+    func testLLMConnection() {
+        let message: [String: Any] = ["type": "test_llm_connection"]
+        sendJSONObject(message)
+        NSLog("[ASRClient] Testing LLM connection...")
+    }
+
+    /// Analyze recording history for an application
+    func analyzeHistory(entries: [RecordingEntry], appName: String, existingTerms: [String] = []) {
+        let entriesData = entries.map { entry -> [String: Any] in
+            return [
+                "text": entry.text,
+                "timestamp": entry.timestamp.timeIntervalSince1970,
+                "app_name": entry.appName ?? "",
+                "bundle_id": entry.bundleID ?? ""
+            ]
+        }
+
+        let message: [String: Any] = [
+            "type": "analyze_history",
+            "entries": entriesData,
+            "app_name": appName,
+            "existing_terms": existingTerms
+        ]
+        sendJSONObject(message)
+        NSLog("[ASRClient] Sent history analysis request: \(entries.count) entries for \(appName)")
+    }
+
+    /// Send start with LLM polish option
+    func sendStartWithLLM(useLLMPolish: Bool) {
+        let profile = SceneManager.shared.getEffectiveProfile()
+        let modelId = settingsManager.modelSize.modelId
+
+        // Determine if LLM should be used (profile override or global setting)
+        let shouldUseLLM = profile.useLLMPolish ?? (settingsManager.llmSettings.isEnabled && useLLMPolish)
+
+        var message: [String: Any] = [
+            "type": "start",
+            "enable_polish": profile.enablePolish ? "true" : "false",
+            "use_llm_polish": shouldUseLLM,
+            "model_id": modelId,
+            "language": profile.language.rawValue
+        ]
+
+        var sceneInfo: [String: Any] = [
+            "type": profile.sceneType.rawValue,
+            "polish_style": profile.polishStyle.rawValue
+        ]
+        if let customPrompt = profile.customPrompt, !customPrompt.isEmpty {
+            sceneInfo["custom_prompt"] = customPrompt
+        } else if let defaultPrompt = profile.getEffectivePrompt() {
+            sceneInfo["custom_prompt"] = defaultPrompt
+        }
+
+        if !profile.glossary.isEmpty {
+            let glossaryData = profile.glossary.map { entry -> [String: Any] in
+                return [
+                    "term": entry.term,
+                    "replacement": entry.replacement,
+                    "case_sensitive": entry.caseSensitive
+                ]
+            }
+            sceneInfo["glossary"] = glossaryData
+        }
+
+        message["scene"] = sceneInfo
+        sendJSONObject(message)
     }
 
     deinit {
