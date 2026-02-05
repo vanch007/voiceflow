@@ -44,7 +44,24 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
 
     /// Call once at app startup
     func prepare() {
+        checkMicrophonePermission()
         setupSession()
+    }
+
+    private func checkMicrophonePermission() {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        switch status {
+        case .authorized:
+            NSLog("[AudioRecorder] Microphone permission: Authorized")
+        case .notDetermined:
+            NSLog("[AudioRecorder] Microphone permission: Not Determined")
+        case .denied:
+            NSLog("[AudioRecorder] Microphone permission: Denied")
+        case .restricted:
+            NSLog("[AudioRecorder] Microphone permission: Restricted")
+        @unknown default:
+            NSLog("[AudioRecorder] Microphone permission: Unknown status")
+        }
     }
 
     func startRecording() {

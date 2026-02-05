@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var replacementStorage: ReplacementStorage!
     private var replacementEngine: TextReplacementEngine!
     private var pluginManager: PluginManager!
+    private var permissionAlertWindow: PermissionAlertWindow!
     private var sceneManager: SceneManager!
     private var isRecording = false
     private var asrServerProcess: Process?
@@ -123,6 +124,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Setup signal handlers to terminate Python subprocess on Ctrl+C
         setupSignalHandlers()
+
+        // Check permissions before initializing managers
+        let permissionStatus = PermissionManager.shared.checkAllPermissions()
+        NSLog("[AppDelegate] Permission check - Accessibility: %@, Microphone: %@",
+              permissionStatus.isAccessibilityGranted ? "granted" : "not granted",
+              permissionStatus.isMicrophoneGranted ? "granted" : "not granted")
+
+        // Show permission alert if any permission is missing
+        permissionAlertWindow = PermissionAlertWindow()
+        if !permissionStatus.isAccessibilityGranted || !permissionStatus.isMicrophoneGranted {
+            NSLog("[AppDelegate] Missing permissions detected, showing alert window")
+            permissionAlertWindow.show()
+        }
 
         // Launch ASR server
         startASRServer()

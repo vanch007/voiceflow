@@ -32,6 +32,7 @@ final class StatusBarController {
     private let errorDebounceInterval: TimeInterval = 3.0
     private var lastCheckTime: Date = Date()
     private var sceneObserver: Any?
+    private var permissionAlertWindow: PermissionAlertWindow!
 
     private var iconStyle: IconStyle {
         get {
@@ -47,6 +48,7 @@ final class StatusBarController {
 
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        permissionAlertWindow = PermissionAlertWindow()
         updateIcon()
         buildMenu()
         updateTooltip()
@@ -195,6 +197,11 @@ final class StatusBarController {
                 "ko": "장면 설정...",
                 "en": "Scene Settings...",
                 "zh": "场景设置..."
+            ],
+            "check_permissions": [
+                "ko": "권한 확인...",
+                "en": "Check Permissions...",
+                "zh": "权限检查..."
             ]
         ]
 
@@ -525,6 +532,13 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        let permissionsItem = NSMenuItem(title: localized("check_permissions"), action: #selector(checkPermissionsAction), keyEquivalent: "")
+        permissionsItem.target = self
+        permissionsItem.image = NSImage(systemSymbolName: "checkmark.shield", accessibilityDescription: nil)
+        menu.addItem(permissionsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(title: localized("quit"), action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -587,6 +601,10 @@ final class StatusBarController {
     @objc private func selectMonochromeStyle() {
         iconStyle = .monochrome
         buildMenu()  // Refresh checkmarks
+    }
+
+    @objc private func checkPermissionsAction() {
+        permissionAlertWindow.show()
     }
 
     @objc private func quitAction() {

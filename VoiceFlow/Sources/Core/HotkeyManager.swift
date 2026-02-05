@@ -60,6 +60,15 @@ final class HotkeyManager {
     }
 
     func start() {
+        // Check Accessibility permissions first
+        let isTrusted = AXIsProcessTrusted()
+        NSLog("[HotkeyManager] Accessibility permission status: \(isTrusted)")
+
+        guard isTrusted else {
+            NSLog("[HotkeyManager] FAILED to start: Accessibility permission not granted!")
+            return
+        }
+
         NSLog("[HotkeyManager] 正在创建事件监听器 (\(currentConfig.displayString))...")
 
         // Monitor for modifier key changes (for modifier-based triggers)

@@ -35,6 +35,8 @@
 		C2000003 /* SceneRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000003 /* SceneRule.swift */; };
 		C2000004 /* SceneManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000004 /* SceneManager.swift */; };
 		C2000005 /* SceneSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000005 /* SceneSettingsView.swift */; };
+		P2000001 /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1000001 /* PermissionManager.swift */; };
+		P2000002 /* PermissionAlertWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1000002 /* PermissionAlertWindow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -69,6 +71,8 @@
 		D2000003 /* SceneRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneRule.swift; sourceTree = "<group>"; };
 		D2000004 /* SceneManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneManager.swift; sourceTree = "<group>"; };
 		D2000005 /* SceneSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneSettingsView.swift; sourceTree = "<group>"; };
+		P1000001 /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
+		P1000002 /* PermissionAlertWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionAlertWindow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -130,6 +134,7 @@
 				B1000013 /* PluginAPI.swift */,
 				B1000014 /* PluginLoader.swift */,
 				B1000015 /* PluginManager.swift */,
+				P1000001 /* PermissionManager.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -171,6 +176,7 @@
 				B1000008 /* StatusBarController.swift */,
 				B1000012 /* HistoryWindowController.swift */,
 				D2000005 /* SceneSettingsView.swift */,
+				P1000002 /* PermissionAlertWindow.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -260,6 +266,8 @@
 				C2000003 /* SceneRule.swift in Sources */,
 				C2000004 /* SceneManager.swift in Sources */,
 				C2000005 /* SceneSettingsView.swift in Sources */,
+				P2000001 /* PermissionManager.swift in Sources */,
+				P2000002 /* PermissionAlertWindow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
