@@ -20,12 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return (projectRoot as NSString).appendingPathComponent("server/main.py")
     }
 
+    private var settingsManager: SettingsManager!
     private var statusBarController: StatusBarController!
     private var hotkeyManager: HotkeyManager!
     private var audioRecorder: AudioRecorder!
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var onboardingWindow: OnboardingWindow?
     private var isRecording = false
     private var asrServerProcess: Process?
 
@@ -36,6 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[AppDelegate] applicationDidFinishLaunching called!")
         // Hide dock icon
         NSApp.setActivationPolicy(.accessory)
+
+        // Initialize settings manager first to check onboarding status
+        settingsManager = SettingsManager()
 
         // Launch ASR server
         startASRServer()
@@ -98,6 +103,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             self?.asrClient.connect()
         }
+
+        // Show onboarding wizard on first launch
+        if !settingsManager.hasCompletedOnboarding {
+            showOnboarding()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -158,6 +168,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         AudioServicesPlaySystemSound(soundID)
         NSLog("[Audio] %@ played via AudioServices", name)
+    }
+
+    // MARK: - Onboarding
+
+    private func showOnboarding() {
+        NSLog("[Onboarding] Showing onboarding wizard (first launch)")
+        onboardingWindow = OnboardingWindow()
+        onboardingWindow?.show { [weak self] in
+            guard let self = self else { return }
+            NSLog("[Onboarding] Wizard completed, marking onboarding as complete")
+            self.settingsManager.hasCompletedOnboarding = true
+            self.onboardingWindow = nil
+        }
     }
 
     // MARK: - Recording
