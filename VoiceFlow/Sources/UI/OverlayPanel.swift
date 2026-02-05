@@ -6,6 +6,33 @@ final class OverlayPanel {
     private var recordingTimer: Timer?
     private var recordingDuration: TimeInterval = 0
     private var currentVolume: Double = 0.0
+    private var isFreeSpeakMode: Bool = false
+    private var silenceCountdown: TimeInterval = 0
+    private var silenceThreshold: TimeInterval = 2.0
+    private var currentSNR: Float = 0.0
+    private var signalQuality: SignalQualityLevel = .good
+
+    enum SignalQualityLevel {
+        case excellent  // SNR >= 20dB - 绿色
+        case good       // SNR >= 10dB - 黄色
+        case poor       // SNR < 10dB - 红色
+
+        var color: Color {
+            switch self {
+            case .excellent: return .green
+            case .good: return .yellow
+            case .poor: return .red
+            }
+        }
+
+        var description: String {
+            switch self {
+            case .excellent: return "信号优秀"
+            case .good: return "信号良好"
+            case .poor: return "信号较弱"
+            }
+        }
+    }
 
     enum State {
         case recording(text: String)  // 录音中，显示实时文字
@@ -23,6 +50,33 @@ final class OverlayPanel {
         if case .recording = currentState {
             updateContent()
         }
+    }
+
+    func updateSNR(_ snr: Float) {
+        currentSNR = snr
+        if snr >= 20 {
+            signalQuality = .excellent
+        } else if snr >= 10 {
+            signalQuality = .good
+        } else {
+            signalQuality = .poor
+        }
+        if case .recording = currentState {
+            updateContent()
+        }
+    }
+
+    func updateSilenceCountdown(_ current: TimeInterval, threshold: TimeInterval) {
+        silenceCountdown = current
+        silenceThreshold = threshold
+        if case .recording = currentState, isFreeSpeakMode {
+            updateContent()
+        }
+    }
+
+    func setFreeSpeakMode(_ enabled: Bool) {
+        isFreeSpeakMode = enabled
+        silenceCountdown = 0
     }
 
     func showRecording(partialText: String = "") {
@@ -227,7 +281,12 @@ final class OverlayPanel {
                 duration: durationText,
                 volume: currentVolume,
                 sceneType: currentScene,
-                sceneAutoDetected: isAutoDetected
+                sceneAutoDetected: isAutoDetected,
+                isFreeSpeakMode: isFreeSpeakMode,
+                silenceCountdown: silenceCountdown,
+                silenceThreshold: silenceThreshold,
+                signalQuality: signalQuality,
+                snrValue: currentSNR
             ))
         case .processing:
             view = NSHostingView(rootView: OverlayContentView(
@@ -281,6 +340,11 @@ private struct EnhancedOverlayContentView: View {
     let volume: Double
     let sceneType: SceneType
     let sceneAutoDetected: Bool
+    let isFreeSpeakMode: Bool
+    let silenceCountdown: TimeInterval
+    let silenceThreshold: TimeInterval
+    let signalQuality: OverlayPanel.SignalQualityLevel
+    let snrValue: Float
 
     private var showLowVolumeWarning: Bool {
         volume < 0.15
@@ -293,9 +357,27 @@ private struct EnhancedOverlayContentView: View {
                 Image(systemName: icon)
                     .foregroundColor(iconColor)
                     .font(.system(size: 16))
-                Text("录音中")
+                Text(isFreeSpeakMode ? "自由说话" : "录音中")
                     .foregroundColor(.white)
                     .font(.system(size: 14, weight: .medium))
+
+                // 自由说话模式：显示静音倒计时
+                if isFreeSpeakMode && silenceCountdown > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "speaker.slash.fill")
+                            .font(.system(size: 10))
+                        Text(String(format: "%.1f/%.1fs", silenceCountdown, silenceThreshold))
+                            .font(.system(size: 11, weight: .medium))
+                            .monospacedDigit()
+                    }
+                    .foregroundColor(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(Color.orange.opacity(0.3))
+                    )
+                }
 
                 // 场景标签
                 HStack(spacing: 4) {
@@ -313,6 +395,18 @@ private struct EnhancedOverlayContentView: View {
                 )
 
                 Spacer()
+
+                // 信号质量指示器
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(signalQuality.color)
+                        .frame(width: 8, height: 8)
+                    Text(String(format: "%.0fdB", snrValue))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.white.opacity(0.7))
+                        .monospacedDigit()
+                }
+
                 Text(duration)
                     .foregroundColor(.white.opacity(0.8))
                     .font(.system(size: 18, weight: .semibold))
