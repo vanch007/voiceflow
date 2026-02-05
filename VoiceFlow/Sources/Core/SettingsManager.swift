@@ -58,10 +58,20 @@ enum ASRLanguage: String, Codable, CaseIterable {
     case filipino = "fil"
     case persian = "fa"
 
+    // 中国方言（Qwen3-ASR 独占优势）
+    case sichuanese = "zh-sichuan"      // 四川话
+    case northeastern = "zh-dongbei"    // 东北话
+    case shanghainese = "zh-shanghai"   // 上海话
+    case hokkien = "zh-minnan"          // 闽南语
+    case hakka = "zh-hakka"             // 客家话
+    case wenzhou = "zh-wenzhou"         // 温州话
+    case changsha = "zh-changsha"       // 长沙话
+    case nanchang = "zh-nanchang"       // 南昌话
+
     var displayName: String {
         switch self {
         case .auto: return "自动检测"
-        case .chinese: return "中文"
+        case .chinese: return "中文（普通话）"
         case .english: return "英语"
         case .cantonese: return "粤语"
         case .japanese: return "日语"
@@ -91,6 +101,25 @@ enum ASRLanguage: String, Codable, CaseIterable {
         case .malay: return "马来语"
         case .filipino: return "菲律宾语"
         case .persian: return "波斯语"
+        // 中国方言
+        case .sichuanese: return "🇨🇳 四川话"
+        case .northeastern: return "🇨🇳 东北话"
+        case .shanghainese: return "🇨🇳 上海话"
+        case .hokkien: return "🇨🇳 闽南语"
+        case .hakka: return "🇨🇳 客家话"
+        case .wenzhou: return "🇨🇳 温州话"
+        case .changsha: return "🇨🇳 长沙话"
+        case .nanchang: return "🇨🇳 南昌话"
+        }
+    }
+
+    /// 是否为中国方言
+    var isChineseDialect: Bool {
+        switch self {
+        case .sichuanese, .northeastern, .shanghainese, .hokkien, .hakka, .wenzhou, .changsha, .nanchang:
+            return true
+        default:
+            return false
         }
     }
 }
