@@ -7,16 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #685 | 8:37 PM | 🟣 | Python Plugin State-Only Enablement and Plugin URL Path Fix | ~627 |
-| #684 | " | 🔵 | Swift PluginLoader Bundle Loading with Principal Class Instantiation | ~706 |
-| #683 | 8:36 PM | ✅ | Default Language Changed from Korean to Chinese | ~475 |
-| #682 | " | ✅ | Removed Platform Filter from Deprecated loadPluginManifest Method | ~445 |
-| #681 | " | 🔵 | SettingsManager Default Language Configuration | ~449 |
-| #680 | " | ✅ | Swift PluginManager Platform Filter Removed to Display All Plugins | ~580 |
-| #673 | 8:34 PM | 🔵 | Swift Plugin API Protocol with Synchronous Lifecycle Hooks | ~719 |
-| #648 | 8:23 PM | 🔵 | Swift PluginManager with Hot-Reload and Thread-Safe Plugin Lifecycle | ~841 |
-| #626 | 8:21 PM | 🔵 | SettingsManager Localization System | ~462 |
-| #568 | 7:47 PM | 🔄 | Extracted HotkeyConfig to Separate File | ~412 |
-| #550 | 7:46 PM | 🔵 | Custom Dictionary Manager | ~409 |
-| #526 | 7:45 PM | 🔵 | Hotkey Manager Implementation | ~394 |
+| #629 | 8:22 PM | ✅ | Staged all resolved merge conflicts in main repository | ~303 |
 </claude-mem-context>
