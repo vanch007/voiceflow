@@ -252,7 +252,7 @@ cmd_test() {
   fi
 }
 
-# Package command (placeholder)
+# Package command
 cmd_package() {
   local plugin_path="$1"
 
@@ -262,9 +262,66 @@ cmd_package() {
     exit 1
   fi
 
-  print_warning "Package command not yet implemented"
-  echo "This command will package plugins for distribution in the future"
-  exit 0
+  # Resolve to absolute path if relative
+  if [[ "$plugin_path" != /* ]]; then
+    plugin_path="$PROJECT_DIR/$plugin_path"
+  fi
+
+  if [ ! -d "$plugin_path" ]; then
+    print_error "Plugin directory not found: $plugin_path"
+    exit 1
+  fi
+
+  local manifest_path="$plugin_path/manifest.json"
+
+  if [ ! -f "$manifest_path" ]; then
+    print_error "manifest.json not found in $plugin_path"
+    exit 1
+  fi
+
+  # Check if Python is available
+  PYTHON_CMD=""
+  for cmd in python3 python; do
+    if command -v "$cmd" &>/dev/null; then
+      PYTHON_CMD="$cmd"
+      break
+    fi
+  done
+
+  if [ -z "$PYTHON_CMD" ]; then
+    print_error "Python not found. Install Python 3.x to package plugins."
+    exit 1
+  fi
+
+  # Extract plugin info from manifest
+  plugin_id=$("$PYTHON_CMD" -c "import json; print(json.load(open('$manifest_path'))['id'])" 2>/dev/null)
+  plugin_version=$("$PYTHON_CMD" -c "import json; print(json.load(open('$manifest_path'))['version'])" 2>/dev/null)
+
+  if [ -z "$plugin_id" ]; then
+    print_error "Could not read plugin ID from manifest"
+    exit 1
+  fi
+
+  # Get plugin directory name
+  local plugin_dir_name=$(basename "$plugin_path")
+  local archive_name="${plugin_dir_name}.tar.gz"
+
+  print_info "Packaging plugin: $plugin_id (v$plugin_version)"
+  print_info "Creating archive: $archive_name"
+
+  # Create tar.gz archive
+  # Use -C to change to parent directory, then archive the plugin directory
+  local parent_dir=$(dirname "$plugin_path")
+
+  if tar -czf "$archive_name" -C "$parent_dir" "$plugin_dir_name" 2>&1; then
+    print_success "Plugin packaged successfully"
+    echo ""
+    echo "Archive created: $archive_name"
+    echo "Size: $(du -h "$archive_name" | cut -f1)"
+  else
+    print_error "Failed to create archive"
+    exit 1
+  fi
 }
 
 # Install command (placeholder)
