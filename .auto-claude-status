@@ -1,0 +1,25 @@
+{
+  "active": true,
+  "spec": "005-",
+  "state": "building",
+  "subtasks": {
+    "completed": 11,
+    "total": 17,
+    "in_progress": 1,
+    "failed": 0
+  },
+  "phase": {
+    "current": "CLI Development Toolkit",
+    "id": null,
+    "total": 4
+  },
+  "workers": {
+    "active": 0,
+    "max": 1
+  },
+  "session": {
+    "number": 16,
+    "started_at": "2026-02-05T12:11:22.084685"
+  },
+  "last_update": "2026-02-05T14:07:12.991398"
+}
