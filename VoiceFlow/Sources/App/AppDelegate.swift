@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
+    private var permissionAlertWindow: PermissionAlertWindow!
     private var isRecording = false
     private var asrServerProcess: Process?
 
@@ -36,6 +37,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[AppDelegate] applicationDidFinishLaunching called!")
         // Hide dock icon
         NSApp.setActivationPolicy(.accessory)
+
+        // Check permissions before initializing managers
+        let permissionStatus = PermissionManager.shared.checkAllPermissions()
+        NSLog("[AppDelegate] Permission check - Accessibility: %@, Microphone: %@",
+              permissionStatus.isAccessibilityGranted ? "granted" : "not granted",
+              permissionStatus.isMicrophoneGranted ? "granted" : "not granted")
+
+        // Show permission alert if any permission is missing
+        permissionAlertWindow = PermissionAlertWindow()
+        if !permissionStatus.isAccessibilityGranted || !permissionStatus.isMicrophoneGranted {
+            NSLog("[AppDelegate] Missing permissions detected, showing alert window")
+            permissionAlertWindow.show()
+        }
 
         // Launch ASR server
         startASRServer()
