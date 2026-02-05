@@ -6,10 +6,12 @@ final class DictionaryWindow {
     private var window: NSWindow?
     private let dictionaryManager: DictionaryManager
     private let termLearner: TermLearner
+    private let replacementStorage: ReplacementStorage
 
-    init(dictionaryManager: DictionaryManager, termLearner: TermLearner) {
+    init(dictionaryManager: DictionaryManager, termLearner: TermLearner, replacementStorage: ReplacementStorage) {
         self.dictionaryManager = dictionaryManager
         self.termLearner = termLearner
+        self.replacementStorage = replacementStorage
     }
 
     func show() {
@@ -45,7 +47,8 @@ final class DictionaryWindow {
         // Create SwiftUI content view
         let contentView = DictionaryContentView(
             dictionaryManager: dictionaryManager,
-            termLearner: termLearner
+            termLearner: termLearner,
+            replacementStorage: replacementStorage
         )
 
         w.contentView = NSHostingView(rootView: contentView)
@@ -59,6 +62,7 @@ final class DictionaryWindow {
 private struct DictionaryContentView: View {
     let dictionaryManager: DictionaryManager
     let termLearner: TermLearner
+    let replacementStorage: ReplacementStorage
 
     @State private var selectedTab = 0
     @State private var dictionaryWords: [String] = []
@@ -82,7 +86,8 @@ private struct DictionaryContentView: View {
             SuggestionsTabView(
                 suggestions: $suggestions,
                 dictionaryManager: dictionaryManager,
-                termLearner: termLearner
+                termLearner: termLearner,
+                replacementStorage: replacementStorage
             )
             .tabItem {
                 Label("Suggestions", systemImage: "lightbulb")
@@ -198,6 +203,11 @@ private struct SuggestionsTabView: View {
     @Binding var suggestions: [LearnedTerm]
     let dictionaryManager: DictionaryManager
     let termLearner: TermLearner
+    let replacementStorage: ReplacementStorage
+
+    @State private var showCorrectionDialog = false
+    @State private var correctionFrom = ""
+    @State private var correctionTo = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -207,6 +217,28 @@ private struct SuggestionsTabView: View {
             Text("These terms were frequently used in your transcriptions")
                 .font(.caption)
                 .foregroundColor(.secondary)
+
+            // Manual Correction Section
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Manual Correction")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+
+                    Spacer()
+
+                    Button(action: {
+                        showCorrectionDialog = true
+                    }) {
+                        Label("Create Correction Rule", systemImage: "arrow.left.arrow.right")
+                    }
+                }
+
+                Text("Create replacement rules for commonly misrecognized terms")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 4)
 
             Divider()
 
@@ -244,6 +276,20 @@ private struct SuggestionsTabView: View {
                 }
             }
         }
+        .sheet(isPresented: $showCorrectionDialog) {
+            CorrectionDialog(
+                from: $correctionFrom,
+                to: $correctionTo,
+                onSave: {
+                    saveCorrectionRule()
+                },
+                onCancel: {
+                    showCorrectionDialog = false
+                    correctionFrom = ""
+                    correctionTo = ""
+                }
+            )
+        }
     }
 
     private func approveSuggestion(_ suggestion: LearnedTerm) {
@@ -259,6 +305,85 @@ private struct SuggestionsTabView: View {
     private func rejectSuggestion(_ suggestion: LearnedTerm) {
         termLearner.rejectSuggestion(id: suggestion.id)
         NSLog("[DictionaryWindow] Rejected suggestion: \(suggestion.term)")
+    }
+
+    private func saveCorrectionRule() {
+        let fromTrimmed = correctionFrom.trimmingCharacters(in: .whitespaces)
+        let toTrimmed = correctionTo.trimmingCharacters(in: .whitespaces)
+
+        guard !fromTrimmed.isEmpty && !toTrimmed.isEmpty else {
+            showCorrectionDialog = false
+            return
+        }
+
+        // Create replacement rule in ReplacementStorage
+        replacementStorage.addRule(from: fromTrimmed, to: toTrimmed)
+
+        // Track in TermLearner as manual correction
+        termLearner.addManualCorrection(term: toTrimmed, frequency: 1)
+
+        NSLog("[DictionaryWindow] Created correction rule: '\(fromTrimmed)' → '\(toTrimmed)'")
+
+        // Reset and close dialog
+        showCorrectionDialog = false
+        correctionFrom = ""
+        correctionTo = ""
+    }
+}
+
+// MARK: - Correction Dialog View
+
+private struct CorrectionDialog: View {
+    @Binding var from: String
+    @Binding var to: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Create Correction Rule")
+                .font(.headline)
+
+            Text("Create a replacement rule to automatically correct misrecognized terms")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("From (misrecognized):")
+                    .font(.subheadline)
+                TextField("e.g., max server", text: $from)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("To (correct term):")
+                    .font(.subheadline)
+                TextField("e.g., MLX server", text: $to)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+
+                Button("Cancel") {
+                    onCancel()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Save Rule") {
+                    onSave()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(from.trimmingCharacters(in: .whitespaces).isEmpty ||
+                         to.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .padding()
+        .frame(width: 400)
     }
 }
 
