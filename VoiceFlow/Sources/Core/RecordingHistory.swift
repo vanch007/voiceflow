@@ -10,7 +10,13 @@ struct RecordingEntry: Codable, Identifiable, Hashable {
     let appName: String?
     let bundleID: String?
 
-    init(id: UUID = UUID(), timestamp: Date = Date(), text: String, duration: TimeInterval, audioPath: String? = nil, appName: String? = nil, bundleID: String? = nil) {
+    // 性能指标（阶段4.1）
+    var asrLatencyMs: Int?       // ASR 转录延迟（毫秒）
+    var polishLatencyMs: Int?    // 润色延迟（毫秒）
+    var polishMethod: String?    // 润色方法: "llm", "rules", "none"
+    var characterCount: Int?     // 转录字符数
+
+    init(id: UUID = UUID(), timestamp: Date = Date(), text: String, duration: TimeInterval, audioPath: String? = nil, appName: String? = nil, bundleID: String? = nil, asrLatencyMs: Int? = nil, polishLatencyMs: Int? = nil, polishMethod: String? = nil) {
         self.id = id
         self.timestamp = timestamp
         self.text = text
@@ -18,6 +24,10 @@ struct RecordingEntry: Codable, Identifiable, Hashable {
         self.audioPath = audioPath
         self.appName = appName
         self.bundleID = bundleID
+        self.asrLatencyMs = asrLatencyMs
+        self.polishLatencyMs = polishLatencyMs
+        self.polishMethod = polishMethod
+        self.characterCount = text.count
     }
 
     func hash(into hasher: inout Hasher) {
@@ -130,6 +140,76 @@ final class RecordingHistory {
         let snapshot: [RecordingEntry] = queue.sync { entries }
         let names = snapshot.compactMap { $0.appName }
         return Array(Set(names)).sorted()
+    }
+
+    // MARK: - Usage Statistics (阶段4.1)
+
+    /// 使用统计数据结构
+    struct UsageStatistics {
+        let totalRecordings: Int
+        let totalDurationSeconds: Double
+        let totalCharacters: Int
+        let averageASRLatencyMs: Double
+        let averagePolishLatencyMs: Double
+        let llmPolishCount: Int
+        let rulesPolishCount: Int
+        let noPolishCount: Int
+        let topApps: [(name: String, count: Int)]
+        let recordingsToday: Int
+        let recordingsThisWeek: Int
+    }
+
+    /// 计算使用统计
+    func calculateStatistics() -> UsageStatistics {
+        let snapshot: [RecordingEntry] = queue.sync { entries }
+
+        let totalRecordings = snapshot.count
+        let totalDuration = snapshot.reduce(0.0) { $0 + $1.duration }
+        let totalChars = snapshot.reduce(0) { $0 + ($1.characterCount ?? $1.text.count) }
+
+        // 延迟统计
+        let asrLatencies = snapshot.compactMap { $0.asrLatencyMs }
+        let avgASR = asrLatencies.isEmpty ? 0.0 : Double(asrLatencies.reduce(0, +)) / Double(asrLatencies.count)
+
+        let polishLatencies = snapshot.compactMap { $0.polishLatencyMs }
+        let avgPolish = polishLatencies.isEmpty ? 0.0 : Double(polishLatencies.reduce(0, +)) / Double(polishLatencies.count)
+
+        // 润色方法统计
+        let llmCount = snapshot.filter { $0.polishMethod == "llm" }.count
+        let rulesCount = snapshot.filter { $0.polishMethod == "rules" }.count
+        let noneCount = snapshot.filter { $0.polishMethod == "none" || $0.polishMethod == nil }.count
+
+        // 应用使用排行
+        var appCounts: [String: Int] = [:]
+        for entry in snapshot {
+            if let appName = entry.appName {
+                appCounts[appName, default: 0] += 1
+            }
+        }
+        let topApps = appCounts.sorted { $0.value > $1.value }.prefix(5).map { ($0.key, $0.value) }
+
+        // 时间范围统计
+        let now = Date()
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: now)
+        let startOfWeek = calendar.date(byAdding: .day, value: -7, to: now) ?? now
+
+        let todayCount = snapshot.filter { $0.timestamp >= startOfToday }.count
+        let weekCount = snapshot.filter { $0.timestamp >= startOfWeek }.count
+
+        return UsageStatistics(
+            totalRecordings: totalRecordings,
+            totalDurationSeconds: totalDuration,
+            totalCharacters: totalChars,
+            averageASRLatencyMs: avgASR,
+            averagePolishLatencyMs: avgPolish,
+            llmPolishCount: llmCount,
+            rulesPolishCount: rulesCount,
+            noPolishCount: noneCount,
+            topApps: topApps,
+            recordingsToday: todayCount,
+            recordingsThisWeek: weekCount
+        )
     }
 
     func getAudioData(for entry: RecordingEntry) -> Data? {
