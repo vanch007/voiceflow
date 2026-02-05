@@ -7,6 +7,7 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
     var onAudioChunk: ((Data) -> Void)?
     var onVolumeLevel: ((Float) -> Void)?
     var onDeviceChanged: ((String) -> Void)?
+    var onSilenceDetected: (() -> Void)?  // 静音检测回调（自由说话模式）
 
     private var captureSession: AVCaptureSession?
     private var audioOutput: AVCaptureAudioDataOutput?
@@ -16,6 +17,83 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
     private var currentDeviceID: String?
     private var selectedDeviceID: String?  // User-selected device (nil = system default)
     private var savedOutputVolume: Float32?
+
+    // 静音检测相关
+    private var silenceThreshold: Float = 0.005  // RMS 阈值
+    private var silenceDuration: TimeInterval = 2.0  // 需要持续静音的时间（秒）
+    private var silenceStartTime: Date?
+    private var isSilenceDetectionEnabled = false
+
+    // VAD 预筛和音频压缩配置
+    private var vadEnabled = true  // 是否启用 VAD 预筛（跳过纯静音块）
+    private var vadThreshold: Float = 0.005  // VAD 静音阈值
+    private var useInt16Compression = true  // 是否使用 Int16 压缩传输
+
+    // 噪声环境自适应
+    private var noiseFloorWindow: [Float] = []  // 滑动窗口追踪噪声底线
+    private let noiseFloorWindowSize = 50  // 约5秒（每100ms一个采样）
+    private var currentNoiseFloor: Float = 0.0
+    private var currentSNR: Float = 0.0
+    var onSNRUpdated: ((Float, Float) -> Void)?  // (snr, noiseFloor) 回调
+
+    /// 配置 VAD 预筛和音频压缩
+    func configureVAD(enabled: Bool, threshold: Float = 0.005, useCompression: Bool = true) {
+        vadEnabled = enabled
+        vadThreshold = threshold
+        useInt16Compression = useCompression
+        NSLog("[AudioRecorder] VAD configured: enabled=\(enabled), threshold=\(threshold), compression=\(useCompression)")
+    }
+
+    /// 更新噪声底线和 SNR
+    private func updateNoiseFloor(rms: Float) {
+        // 添加到滑动窗口
+        noiseFloorWindow.append(rms)
+        if noiseFloorWindow.count > noiseFloorWindowSize {
+            noiseFloorWindow.removeFirst()
+        }
+
+        // 计算噪声底线（窗口中的最小值）
+        if let minRMS = noiseFloorWindow.min(), minRMS > 0 {
+            currentNoiseFloor = minRMS
+
+            // 计算 SNR: 20 * log10(signal_rms / noise_floor_rms)
+            if rms > currentNoiseFloor {
+                currentSNR = 20 * log10(rms / currentNoiseFloor)
+            } else {
+                currentSNR = 0
+            }
+
+            // 每秒更新一次 SNR 回调（避免过于频繁）
+            if noiseFloorWindow.count % 10 == 0 {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self = self else { return }
+                    self.onSNRUpdated?(self.currentSNR, self.currentNoiseFloor)
+                }
+            }
+        }
+    }
+
+    /// 获取当前 SNR（信噪比）
+    func getCurrentSNR() -> Float {
+        return currentSNR
+    }
+
+    /// 获取信号质量等级（用于 UI 显示）
+    func getSignalQuality() -> SignalQuality {
+        if currentSNR >= 20 {
+            return .excellent  // 绿色
+        } else if currentSNR >= 10 {
+            return .good  // 黄色
+        } else {
+            return .poor  // 红色
+        }
+    }
+
+    enum SignalQuality {
+        case excellent  // SNR >= 20dB
+        case good       // SNR >= 10dB
+        case poor       // SNR < 10dB
+    }
 
     /// Returns list of available audio input devices as (uniqueID, localizedName)
     static func availableDevices() -> [(id: String, name: String)] {
@@ -76,13 +154,37 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         }
         sessionQueue.async { [weak self] in
             self?.isRecording = true
+            self?.silenceStartTime = nil  // 重置静音计时
         }
         NSLog("[AudioRecorder] Recording started.")
+    }
+
+    /// 启用自由说话模式的静音检测
+    func enableSilenceDetection(threshold: Float = 0.005, duration: TimeInterval = 2.0) {
+        silenceThreshold = threshold
+        silenceDuration = duration
+        isSilenceDetectionEnabled = true
+        silenceStartTime = nil
+        NSLog("[AudioRecorder] Silence detection enabled: threshold=\(threshold), duration=\(duration)s")
+    }
+
+    /// 禁用静音检测
+    func disableSilenceDetection() {
+        isSilenceDetectionEnabled = false
+        silenceStartTime = nil
+        NSLog("[AudioRecorder] Silence detection disabled")
+    }
+
+    /// 获取当前静音持续时间（用于UI显示）
+    func getCurrentSilenceDuration() -> TimeInterval? {
+        guard let startTime = silenceStartTime else { return nil }
+        return Date().timeIntervalSince(startTime)
     }
 
     func stopRecording() {
         sessionQueue.async { [weak self] in
             self?.isRecording = false
+            self?.silenceStartTime = nil
         }
         // Restore output volume that macOS ducked
         if let volume = savedOutputVolume {
@@ -388,15 +490,65 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         guard outFrameLength > 0, let outPtr = outputBuffer.floatChannelData?.pointee else { return }
         let outputArray = Array(UnsafeBufferPointer(start: outPtr, count: outFrameLength))
 
-        let data = outputArray.withUnsafeBufferPointer { ptr in
-            Data(bytes: ptr.baseAddress!, count: ptr.count * MemoryLayout<Float>.size)
-        }
-        onAudioChunk?(data)
-
         // Calculate volume level (RMS) using Accelerate
         let rms = vDSP.rootMeanSquare(outputArray)
-        DispatchQueue.main.async { [weak self] in
-            self?.onVolumeLevel?(rms)
+
+        // 噪声环境自适应：更新噪声底线和 SNR
+        updateNoiseFloor(rms: rms)
+
+        // VAD 预筛：如果 RMS 低于阈值，跳过发送（减少传输量）
+        if vadEnabled && rms < vadThreshold {
+            // 静音块，不发送音频数据，但仍更新音量显示
+            DispatchQueue.main.async { [weak self] in
+                self?.onVolumeLevel?(rms)
+            }
+        } else {
+            // 非静音块，发送音频数据
+            let data: Data
+            if useInt16Compression {
+                // 使用 Int16 压缩（数据量减半）
+                // 格式标识: 0x02 = Int16
+                var compressedData = Data([0x02])
+                let int16Array = outputArray.map { Int16(max(-1.0, min(1.0, $0)) * 32767) }
+                int16Array.withUnsafeBufferPointer { ptr in
+                    compressedData.append(UnsafeBufferPointer(start: ptr.baseAddress, count: ptr.count))
+                }
+                data = compressedData
+            } else {
+                // 原始 Float32 格式
+                // 格式标识: 0x01 = Float32
+                var rawData = Data([0x01])
+                outputArray.withUnsafeBufferPointer { ptr in
+                    rawData.append(UnsafeBufferPointer(start: ptr.baseAddress, count: ptr.count))
+                }
+                data = rawData
+            }
+            onAudioChunk?(data)
+
+            DispatchQueue.main.async { [weak self] in
+                self?.onVolumeLevel?(rms)
+            }
+        }
+
+        // 静音检测逻辑（自由说话模式）
+        if isSilenceDetectionEnabled && isRecording {
+            if rms < silenceThreshold {
+                // 低于阈值，开始或继续计时
+                if silenceStartTime == nil {
+                    silenceStartTime = Date()
+                } else if let startTime = silenceStartTime,
+                          Date().timeIntervalSince(startTime) >= silenceDuration {
+                    // 静音持续时间超过阈值，触发回调
+                    NSLog("[AudioRecorder] Silence detected for \(silenceDuration)s, triggering callback")
+                    silenceStartTime = nil  // 重置，防止重复触发
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onSilenceDetected?()
+                    }
+                }
+            } else {
+                // 高于阈值，重置计时
+                silenceStartTime = nil
+            }
         }
     }
 
