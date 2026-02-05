@@ -98,6 +98,13 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        let permissionsItem = NSMenuItem(title: "권한 확인...", action: #selector(checkPermissionsAction), keyEquivalent: "")
+        permissionsItem.target = self
+        permissionsItem.image = NSImage(systemSymbolName: "checkmark.shield", accessibilityDescription: nil)
+        menu.addItem(permissionsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(title: "종료", action: #selector(quitAction), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -116,6 +123,10 @@ final class StatusBarController {
         UserDefaults.standard.set(deviceID, forKey: "selectedAudioDevice")
         onDeviceSelected?(deviceID)
         buildMenu()
+    }
+
+    @objc private func checkPermissionsAction() {
+        PermissionAlertWindow.show()
     }
 
     @objc private func quitAction() {
