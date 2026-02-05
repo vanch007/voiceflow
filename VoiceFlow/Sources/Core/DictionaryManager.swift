@@ -1,168 +1,242 @@
 import Foundation
 
+/// Manages custom dictionary words and learned term metadata
 final class DictionaryManager {
     var onDictionaryChanged: (([String]) -> Void)?
 
-    private var words: Set<String> = []
-    private let fileManager = FileManager.default
+    private(set) var words: Set<String> = []
+    private(set) var learnedTerms: [LearnedTerm] = []
 
-    /// Path to Application Support directory for VoiceFlow
-    private var appSupportPath: String {
-        let paths = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-        guard let appSupport = paths.first else {
-            NSLog("[DictionaryManager] ERROR: Cannot access Application Support directory")
-            return ""
-        }
-        let voiceflowDir = appSupport.appendingPathComponent("VoiceFlow")
-
-        // Create directory if it doesn't exist
-        if !fileManager.fileExists(atPath: voiceflowDir.path) {
-            do {
-                try fileManager.createDirectory(at: voiceflowDir, withIntermediateDirectories: true)
-                NSLog("[DictionaryManager] Created directory: \(voiceflowDir.path)")
-            } catch {
-                NSLog("[DictionaryManager] ERROR: Failed to create directory: \(error)")
-            }
-        }
-
-        return voiceflowDir.path
-    }
-
-    private var dictionaryFilePath: String {
-        return (appSupportPath as NSString).appendingPathComponent("custom_dictionary.json")
-    }
+    private let queue = DispatchQueue(label: "com.voiceflow.dictionarymanager")
+    private let fileURL: URL
+    private let learnedTermsFileURL: URL
 
     init() {
+        let fileManager = FileManager.default
+        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let appDirectory = appSupport.appendingPathComponent("VoiceFlow", isDirectory: true)
+
+        // Create directory if needed
+        try? fileManager.createDirectory(at: appDirectory, withIntermediateDirectories: true)
+
+        self.fileURL = appDirectory.appendingPathComponent("custom_dictionary.json")
+        self.learnedTermsFileURL = appDirectory.appendingPathComponent("learned_terms_metadata.json")
+
         loadDictionary()
     }
 
     // MARK: - Public API
 
-    /// Returns the current dictionary words as a sorted array
-    func getWords() -> [String] {
-        return Array(words).sorted()
+    /// Add a word to the dictionary
+    func addWord(_ word: String, metadata: LearnedTerm? = nil) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+
+            let normalized = word.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !normalized.isEmpty else { return }
+
+            self.words.insert(normalized)
+
+            // If metadata provided, store it as learned term
+            if let metadata = metadata {
+                // Remove existing metadata for this term if any
+                self.learnedTerms.removeAll { $0.term.lowercased() == normalized.lowercased() }
+                self.learnedTerms.append(metadata)
+            }
+
+            self.saveDictionary()
+            self.notifyChange()
+
+            NSLog("[DictionaryManager] Added word: \(normalized)")
+        }
     }
 
-    /// Adds a new word to the dictionary
-    func addWord(_ word: String) {
-        let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            NSLog("[DictionaryManager] Cannot add empty word")
-            return
-        }
-
-        let previousCount = words.count
-        words.insert(trimmed)
-
-        if words.count > previousCount {
-            NSLog("[DictionaryManager] Added word: \(trimmed)")
-            saveDictionary()
-            notifyChange()
-        } else {
-            NSLog("[DictionaryManager] Word already exists: \(trimmed)")
-        }
-    }
-
-    /// Removes a word from the dictionary
+    /// Remove a word from the dictionary
     func removeWord(_ word: String) {
-        if words.remove(word) != nil {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+
+            self.words.remove(word)
+
+            // Also remove associated metadata
+            self.learnedTerms.removeAll { $0.term.lowercased() == word.lowercased() }
+
+            self.saveDictionary()
+            self.notifyChange()
+
             NSLog("[DictionaryManager] Removed word: \(word)")
-            saveDictionary()
-            notifyChange()
-        } else {
-            NSLog("[DictionaryManager] Word not found: \(word)")
         }
     }
 
-    /// Removes all words from the dictionary
+    /// Get all dictionary words as sorted array
+    func getWords() -> [String] {
+        var result: [String] = []
+        queue.sync {
+            result = Array(words).sorted()
+        }
+        return result
+    }
+
+    /// Get learned term metadata for a specific word
+    func getMetadata(for word: String) -> LearnedTerm? {
+        var result: LearnedTerm?
+        queue.sync {
+            result = learnedTerms.first { $0.term.lowercased() == word.lowercased() }
+        }
+        return result
+    }
+
+    /// Get all learned terms with metadata
+    func getLearnedTerms() -> [LearnedTerm] {
+        var result: [LearnedTerm] = []
+        queue.sync {
+            result = learnedTerms
+        }
+        return result
+    }
+
+    /// Clear all dictionary words
     func clearDictionary() {
-        words.removeAll()
-        NSLog("[DictionaryManager] Dictionary cleared")
-        saveDictionary()
-        notifyChange()
-    }
+        queue.async { [weak self] in
+            guard let self = self else { return }
 
-    /// Exports dictionary to a specified file path
-    func exportToFile(path: String) -> Bool {
-        let wordsArray = getWords()
+            self.words.removeAll()
+            self.learnedTerms.removeAll()
+            self.saveDictionary()
+            self.notifyChange()
 
-        guard let data = try? JSONSerialization.data(withJSONObject: wordsArray, options: .prettyPrinted) else {
-            NSLog("[DictionaryManager] ERROR: Failed to serialize dictionary for export")
-            return false
-        }
-
-        do {
-            try data.write(to: URL(fileURLWithPath: path))
-            NSLog("[DictionaryManager] Exported \(wordsArray.count) words to: \(path)")
-            return true
-        } catch {
-            NSLog("[DictionaryManager] ERROR: Failed to export dictionary: \(error)")
-            return false
+            NSLog("[DictionaryManager] Dictionary cleared")
         }
     }
 
-    /// Imports dictionary from a specified file path (replaces current dictionary)
-    func importFromFile(path: String) -> Bool {
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
-            NSLog("[DictionaryManager] ERROR: Failed to read file: \(path)")
-            return false
-        }
+    /// Export dictionary words as JSON data
+    func exportDictionary() -> Data? {
+        var result: Data?
+        queue.sync {
+            let exportData = ExportFormat(
+                words: Array(words).sorted(),
+                learned_terms: learnedTerms
+            )
 
-        guard let wordsArray = try? JSONSerialization.jsonObject(with: data) as? [String] else {
-            NSLog("[DictionaryManager] ERROR: Invalid JSON format in file: \(path)")
-            return false
-        }
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            result = try? encoder.encode(exportData)
 
-        words = Set(wordsArray.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })
-        NSLog("[DictionaryManager] Imported \(words.count) words from: \(path)")
-        saveDictionary()
-        notifyChange()
-        return true
+            NSLog("[DictionaryManager] Exported \(words.count) words and \(learnedTerms.count) learned terms")
+        }
+        return result
+    }
+
+    /// Import dictionary words from JSON data
+    func importDictionary(from data: Data) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+
+            do {
+                let decoder = JSONDecoder()
+
+                // Try new format first (with learned terms)
+                if let exportData = try? decoder.decode(ExportFormat.self, from: data) {
+                    // Merge words
+                    for word in exportData.words {
+                        self.words.insert(word)
+                    }
+
+                    // Merge learned terms without duplicates
+                    let existingTermsLower = Set(self.learnedTerms.map { $0.term.lowercased() })
+                    let newTerms = exportData.learned_terms.filter { !existingTermsLower.contains($0.term.lowercased()) }
+                    self.learnedTerms.append(contentsOf: newTerms)
+
+                    NSLog("[DictionaryManager] Imported \(exportData.words.count) words and \(newTerms.count) learned terms")
+                }
+                // Fall back to simple word array format
+                else if let wordArray = try? decoder.decode([String].self, from: data) {
+                    for word in wordArray {
+                        self.words.insert(word)
+                    }
+                    NSLog("[DictionaryManager] Imported \(wordArray.count) words (legacy format)")
+                }
+                else {
+                    NSLog("[DictionaryManager] Import failed: unrecognized format")
+                    return
+                }
+
+                self.saveDictionary()
+                self.notifyChange()
+            }
+        }
     }
 
     // MARK: - Private Methods
 
+    private func notifyChange() {
+        let wordsArray = Array(words).sorted()
+        DispatchQueue.main.async { [weak self] in
+            self?.onDictionaryChanged?(wordsArray)
+        }
+    }
+
     private func loadDictionary() {
-        let path = dictionaryFilePath
+        queue.async { [weak self] in
+            guard let self = self else { return }
 
-        guard fileManager.fileExists(atPath: path) else {
-            NSLog("[DictionaryManager] No existing dictionary file, starting fresh")
-            return
+            // Load basic words
+            if FileManager.default.fileExists(atPath: self.fileURL.path) {
+                do {
+                    let data = try Data(contentsOf: self.fileURL)
+                    let decoder = JSONDecoder()
+
+                    // Try to decode as array of strings
+                    if let wordArray = try? decoder.decode([String].self, from: data) {
+                        self.words = Set(wordArray)
+                        NSLog("[DictionaryManager] Loaded \(self.words.count) words")
+                    }
+                } catch {
+                    NSLog("[DictionaryManager] Failed to load dictionary: \(error)")
+                }
+            } else {
+                NSLog("[DictionaryManager] No existing dictionary file")
+            }
+
+            // Load learned terms metadata
+            if FileManager.default.fileExists(atPath: self.learnedTermsFileURL.path) {
+                do {
+                    let data = try Data(contentsOf: self.learnedTermsFileURL)
+                    let decoder = JSONDecoder()
+                    self.learnedTerms = try decoder.decode([LearnedTerm].self, from: data)
+                    NSLog("[DictionaryManager] Loaded \(self.learnedTerms.count) learned terms with metadata")
+                } catch {
+                    NSLog("[DictionaryManager] Failed to load learned terms metadata: \(error)")
+                }
+            } else {
+                NSLog("[DictionaryManager] No existing learned terms metadata file")
+            }
         }
-
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
-            NSLog("[DictionaryManager] ERROR: Failed to read dictionary file")
-            return
-        }
-
-        guard let wordsArray = try? JSONSerialization.jsonObject(with: data) as? [String] else {
-            NSLog("[DictionaryManager] ERROR: Invalid dictionary file format")
-            return
-        }
-
-        words = Set(wordsArray)
-        NSLog("[DictionaryManager] Loaded \(words.count) words from: \(path)")
     }
 
     private func saveDictionary() {
-        let path = dictionaryFilePath
-        let wordsArray = getWords()
-
-        guard let data = try? JSONSerialization.data(withJSONObject: wordsArray, options: .prettyPrinted) else {
-            NSLog("[DictionaryManager] ERROR: Failed to serialize dictionary")
-            return
-        }
-
         do {
-            try data.write(to: URL(fileURLWithPath: path))
-            NSLog("[DictionaryManager] Saved \(wordsArray.count) words to: \(path)")
+            // Save basic words
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let wordArray = Array(words).sorted()
+            let data = try encoder.encode(wordArray)
+            try data.write(to: fileURL, options: .atomic)
+            NSLog("[DictionaryManager] Saved \(words.count) words")
+
+            // Save learned terms metadata
+            let metadataData = try encoder.encode(learnedTerms)
+            try metadataData.write(to: learnedTermsFileURL, options: .atomic)
+            NSLog("[DictionaryManager] Saved \(learnedTerms.count) learned terms with metadata")
         } catch {
-            NSLog("[DictionaryManager] ERROR: Failed to save dictionary: \(error)")
+            NSLog("[DictionaryManager] Failed to save dictionary: \(error)")
         }
     }
 
-    private func notifyChange() {
-        let wordsArray = getWords()
-        onDictionaryChanged?(wordsArray)
+    // MARK: - Data Models
+
+    private struct ExportFormat: Codable {
+        let words: [String]
+        let learned_terms: [LearnedTerm]
     }
 }

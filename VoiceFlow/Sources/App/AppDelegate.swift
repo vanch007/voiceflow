@@ -106,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pluginManager: PluginManager!
     private var permissionAlertWindow: PermissionAlertWindow!
     private var sceneManager: SceneManager!
+    private var termLearner: TermLearner!
     private var isRecording = false
     private var asrServerProcess: Process?
     private var recordingStartTime: Date?
@@ -174,7 +175,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         asrClient = ASRClient()
         recordingHistory = RecordingHistory()
+        termLearner = TermLearner()
         historyWindowController = HistoryWindowController(recordingHistory: recordingHistory)
+        // Connect RecordingHistory changes to TermLearner auto-refresh
+        recordingHistory.onEntriesChanged = { [weak self] in
+            guard let self = self else { return }
+            self.termLearner.analyzeAndRefresh(from: self.recordingHistory)
+        }
         dictionaryManager = DictionaryManager()
         audioRecorder = AudioRecorder()
         audioRecorder.onAudioChunk = { [weak self] data in

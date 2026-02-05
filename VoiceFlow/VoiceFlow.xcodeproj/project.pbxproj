@@ -37,6 +37,9 @@
 		C2000005 /* SceneSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000005 /* SceneSettingsView.swift */; };
 		P2000001 /* PermissionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1000001 /* PermissionManager.swift */; };
 		P2000002 /* PermissionAlertWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1000002 /* PermissionAlertWindow.swift */; };
+		T1000001 /* LearnedTerm.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001 /* LearnedTerm.swift */; };
+		T1000002 /* TermLearner.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000002 /* TermLearner.swift */; };
+		T1000003 /* DictionaryWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000003 /* DictionaryWindow.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -73,6 +76,9 @@
 		D2000005 /* SceneSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneSettingsView.swift; sourceTree = "<group>"; };
 		P1000001 /* PermissionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionManager.swift; sourceTree = "<group>"; };
 		P1000002 /* PermissionAlertWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionAlertWindow.swift; sourceTree = "<group>"; };
+		T2000001 /* LearnedTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnedTerm.swift; sourceTree = "<group>"; };
+		T2000002 /* TermLearner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermLearner.swift; sourceTree = "<group>"; };
+		T2000003 /* DictionaryWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryWindow.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -135,6 +141,8 @@
 				B1000014 /* PluginLoader.swift */,
 				B1000015 /* PluginManager.swift */,
 				P1000001 /* PermissionManager.swift */,
+				T2000001 /* LearnedTerm.swift */,
+				T2000002 /* TermLearner.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -177,6 +185,7 @@
 				B1000012 /* HistoryWindowController.swift */,
 				D2000005 /* SceneSettingsView.swift */,
 				P1000002 /* PermissionAlertWindow.swift */,
+				T2000003 /* DictionaryWindow.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -268,6 +277,9 @@
 				C2000005 /* SceneSettingsView.swift in Sources */,
 				P2000001 /* PermissionManager.swift in Sources */,
 				P2000002 /* PermissionAlertWindow.swift in Sources */,
+				T1000001 /* LearnedTerm.swift in Sources */,
+				T1000002 /* TermLearner.swift in Sources */,
+				T1000003 /* DictionaryWindow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

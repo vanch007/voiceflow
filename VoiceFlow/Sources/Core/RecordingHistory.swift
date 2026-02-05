@@ -104,6 +104,40 @@ final class RecordingHistory {
         return try? Data(contentsOf: URL(fileURLWithPath: path))
     }
 
+
+    // MARK: - Word Frequency Analysis
+
+    /// Analyze word frequency across all entries
+    func analyzeWordFrequency(completion: @escaping ([String: Int]) -> Void) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+
+            var frequencyMap: [String: Int] = [:]
+
+            for entry in self.entries {
+                let words = self.tokenizeText(entry.text)
+                for word in words {
+                    let normalized = word.lowercased()
+                    frequencyMap[normalized, default: 0] += 1
+                }
+            }
+
+            NSLog("[RecordingHistory] Analyzed \(self.entries.count) entries, found \(frequencyMap.count) unique words")
+
+            DispatchQueue.main.async {
+                completion(frequencyMap)
+            }
+        }
+    }
+
+    private func tokenizeText(_ text: String) -> [String] {
+        let components = text.components(separatedBy: .whitespacesAndNewlines)
+        return components.compactMap { component in
+            let cleaned = component.trimmingCharacters(in: .punctuationCharacters)
+            return cleaned.isEmpty ? nil : cleaned
+        }
+    }
+
     // MARK: - Private Persistence
 
     private func saveEntries() {

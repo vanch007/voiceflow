@@ -1,19 +1,23 @@
 import AppKit
 import SwiftUI
 
+/// Window controller for dictionary and terminology learning UI
 final class DictionaryWindow {
     private var window: NSWindow?
     private let dictionaryManager: DictionaryManager
+    private let termLearner: TermLearner
+    private let replacementStorage: ReplacementStorage
 
-    init(dictionaryManager: DictionaryManager) {
+    init(dictionaryManager: DictionaryManager, termLearner: TermLearner, replacementStorage: ReplacementStorage) {
         self.dictionaryManager = dictionaryManager
+        self.termLearner = termLearner
+        self.replacementStorage = replacementStorage
     }
 
     func show() {
         if window == nil {
             createWindow()
         }
-
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -23,67 +27,232 @@ final class DictionaryWindow {
     }
 
     private func createWindow() {
-        let windowWidth: CGFloat = 500
-        let windowHeight: CGFloat = 400
+        let windowWidth: CGFloat = 600
+        let windowHeight: CGFloat = 500
 
-        guard let screen = NSScreen.main else { return }
-        let screenFrame = screen.visibleFrame
-        let x = screenFrame.midX - windowWidth / 2
-        let y = screenFrame.midY - windowHeight / 2
-
-        let frame = NSRect(x: x, y: y, width: windowWidth, height: windowHeight)
+        let contentRect = NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight)
 
         let w = NSWindow(
-            contentRect: frame,
-            styleMask: [.titled, .closable, .resizable],
+            contentRect: contentRect,
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        w.title = "Custom Dictionary"
-        w.level = .normal
-        w.isReleasedWhenClosed = false
-        w.center()
 
-        let contentView = DictionaryContentView(dictionaryManager: dictionaryManager)
+        w.title = "Dictionary & Suggestions"
+        w.center()
+        w.isReleasedWhenClosed = false
+        w.setFrameAutosaveName("DictionaryWindow")
+
+        // Create SwiftUI content view
+        let contentView = DictionaryContentView(
+            dictionaryManager: dictionaryManager,
+            termLearner: termLearner,
+            replacementStorage: replacementStorage
+        )
+
         w.contentView = NSHostingView(rootView: contentView)
 
-        window = w
+        self.window = w
     }
 }
 
-private struct DictionaryContentView: View {
-    @ObservedObject private var viewModel: DictionaryViewModel
+// MARK: - SwiftUI Content View
 
-    init(dictionaryManager: DictionaryManager) {
-        self.viewModel = DictionaryViewModel(dictionaryManager: dictionaryManager)
-    }
+private struct DictionaryContentView: View {
+    let dictionaryManager: DictionaryManager
+    let termLearner: TermLearner
+    let replacementStorage: ReplacementStorage
+
+    @State private var selectedTab = 0
+    @State private var dictionaryWords: [String] = []
+    @State private var suggestions: [LearnedTerm] = []
+    @State private var newWord: String = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("Custom Dictionary")
-                    .font(.system(size: 16, weight: .semibold))
-                Spacer()
-                Text("\(viewModel.words.count) words")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+        TabView(selection: $selectedTab) {
+            // Dictionary Tab
+            DictionaryTabView(
+                dictionaryWords: $dictionaryWords,
+                newWord: $newWord,
+                dictionaryManager: dictionaryManager
+            )
+            .tabItem {
+                Label("Dictionary", systemImage: "book.closed")
             }
-            .padding()
+            .tag(0)
+
+            // Suggestions Tab
+            SuggestionsTabView(
+                suggestions: $suggestions,
+                dictionaryManager: dictionaryManager,
+                termLearner: termLearner,
+                replacementStorage: replacementStorage
+            )
+            .tabItem {
+                Label("Suggestions", systemImage: "lightbulb")
+            }
+            .tag(1)
+        }
+        .padding()
+        .frame(minWidth: 500, minHeight: 400)
+        .onAppear {
+            loadData()
+            setupCallbacks()
+        }
+    }
+
+    private func loadData() {
+        dictionaryWords = dictionaryManager.getWords()
+        suggestions = termLearner.suggestions
+    }
+
+    private func setupCallbacks() {
+        dictionaryManager.onDictionaryChanged = { [weak dictionaryManager] words in
+            DispatchQueue.main.async {
+                self.dictionaryWords = dictionaryManager?.getWords() ?? []
+            }
+        }
+
+        termLearner.onSuggestionsChanged = { [weak termLearner] in
+            DispatchQueue.main.async {
+                self.suggestions = termLearner?.suggestions ?? []
+            }
+        }
+    }
+}
+
+// MARK: - Dictionary Tab View
+
+private struct DictionaryTabView: View {
+    @Binding var dictionaryWords: [String]
+    @Binding var newWord: String
+    let dictionaryManager: DictionaryManager
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Custom Dictionary")
+                .font(.headline)
+
+            // Add new word section
+            HStack {
+                TextField("Add new word", text: $newWord)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit {
+                        addWord()
+                    }
+
+                Button("Add") {
+                    addWord()
+                }
+                .disabled(newWord.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
 
             Divider()
 
-            // Word List
-            if viewModel.words.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "text.book.closed")
+            // Word list
+            if dictionaryWords.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "book.closed")
                         .font(.system(size: 48))
                         .foregroundColor(.secondary)
                     Text("No custom words yet")
-                        .font(.system(size: 14))
+                        .font(.body)
                         .foregroundColor(.secondary)
-                    Text("Add technical terms, names, or domain-specific words to improve recognition accuracy")
-                        .font(.system(size: 12))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(dictionaryWords, id: \.self) { word in
+                            HStack {
+                                Text(word)
+                                    .font(.body)
+
+                                Spacer()
+
+                                Button(action: {
+                                    dictionaryManager.removeWord(word)
+                                }) {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func addWord() {
+        let trimmed = newWord.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+
+        dictionaryManager.addWord(trimmed)
+        newWord = ""
+    }
+}
+
+// MARK: - Suggestions Tab View
+
+private struct SuggestionsTabView: View {
+    @Binding var suggestions: [LearnedTerm]
+    let dictionaryManager: DictionaryManager
+    let termLearner: TermLearner
+    let replacementStorage: ReplacementStorage
+
+    @State private var showCorrectionDialog = false
+    @State private var correctionFrom = ""
+    @State private var correctionTo = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Term Suggestions")
+                .font(.headline)
+
+            Text("These terms were frequently used in your transcriptions")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            // Manual Correction Section
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Manual Correction")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+
+                    Spacer()
+
+                    Button(action: {
+                        showCorrectionDialog = true
+                    }) {
+                        Label("Create Correction Rule", systemImage: "arrow.left.arrow.right")
+                    }
+                }
+
+                Text("Create replacement rules for commonly misrecognized terms")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 4)
+
+            Divider()
+
+            // Suggestions list
+            if suggestions.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "lightbulb")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("No suggestions available")
+                        .font(.body)
+                        .foregroundColor(.secondary)
+                    Text("Suggestions appear when terms are used frequently in transcriptions")
+                        .font(.caption)
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 40)
@@ -91,194 +260,180 @@ private struct DictionaryContentView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(viewModel.words, id: \.self) { word in
-                            HStack {
-                                Text(word)
-                                    .font(.system(size: 13))
-                                Spacer()
-                                Button(action: {
-                                    viewModel.removeWord(word)
-                                }) {
-                                    Image(systemName: "trash")
-                                        .foregroundColor(.red)
-                                        .font(.system(size: 12))
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(suggestions) { suggestion in
+                            SuggestionRow(
+                                suggestion: suggestion,
+                                onApprove: {
+                                    approveSuggestion(suggestion)
+                                },
+                                onReject: {
+                                    rejectSuggestion(suggestion)
                                 }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(
-                                viewModel.selectedWord == word ? Color.accentColor.opacity(0.1) : Color.clear
                             )
-                            .onTapGesture {
-                                viewModel.selectedWord = word
-                            }
-
-                            if word != viewModel.words.last {
-                                Divider()
-                                    .padding(.leading, 16)
-                            }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .controlBackgroundColor))
             }
-
-            Divider()
-
-            // Add Word Section
-            HStack(spacing: 8) {
-                TextField("Enter a word...", text: $viewModel.newWord, onCommit: {
-                    viewModel.addWord()
-                })
-                .textFieldStyle(.roundedBorder)
-                .font(.system(size: 13))
-
-                Button(action: {
-                    viewModel.addWord()
-                }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 20))
-                }
-                .buttonStyle(.plain)
-                .disabled(viewModel.newWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding()
-
-            Divider()
-
-            // Action Buttons
-            HStack {
-                Button(action: {
-                    viewModel.importDictionary()
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 11))
-                        Text("Import")
-                            .font(.system(size: 12))
-                    }
-                }
-                .buttonStyle(.plain)
-
-                Button(action: {
-                    viewModel.exportDictionary()
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 11))
-                        Text("Export")
-                            .font(.system(size: 12))
-                    }
-                }
-                .buttonStyle(.plain)
-                .disabled(viewModel.words.isEmpty)
-
-                Spacer()
-
-                Button(action: {
-                    viewModel.clearDictionary()
-                }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 11))
-                        Text("Clear All")
-                            .font(.system(size: 12))
-                    }
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.red)
-                .disabled(viewModel.words.isEmpty)
-            }
-            .padding()
         }
-        .frame(minWidth: 400, minHeight: 300)
+        .sheet(isPresented: $showCorrectionDialog) {
+            CorrectionDialog(
+                from: $correctionFrom,
+                to: $correctionTo,
+                onSave: {
+                    saveCorrectionRule()
+                },
+                onCancel: {
+                    showCorrectionDialog = false
+                    correctionFrom = ""
+                    correctionTo = ""
+                }
+            )
+        }
+    }
+
+    private func approveSuggestion(_ suggestion: LearnedTerm) {
+        // Add to dictionary with metadata
+        dictionaryManager.addWord(suggestion.term, metadata: suggestion)
+
+        // Mark as approved in term learner
+        termLearner.approveSuggestion(id: suggestion.id)
+
+        NSLog("[DictionaryWindow] Approved suggestion: \(suggestion.term)")
+    }
+
+    private func rejectSuggestion(_ suggestion: LearnedTerm) {
+        termLearner.rejectSuggestion(id: suggestion.id)
+        NSLog("[DictionaryWindow] Rejected suggestion: \(suggestion.term)")
+    }
+
+    private func saveCorrectionRule() {
+        let fromTrimmed = correctionFrom.trimmingCharacters(in: .whitespaces)
+        let toTrimmed = correctionTo.trimmingCharacters(in: .whitespaces)
+
+        guard !fromTrimmed.isEmpty && !toTrimmed.isEmpty else {
+            showCorrectionDialog = false
+            return
+        }
+
+        // Create replacement rule in ReplacementStorage
+        replacementStorage.addRule(from: fromTrimmed, to: toTrimmed)
+
+        // Track in TermLearner as manual correction
+        termLearner.addManualCorrection(term: toTrimmed, frequency: 1)
+
+        NSLog("[DictionaryWindow] Created correction rule: '\(fromTrimmed)' → '\(toTrimmed)'")
+
+        // Reset and close dialog
+        showCorrectionDialog = false
+        correctionFrom = ""
+        correctionTo = ""
     }
 }
 
-private class DictionaryViewModel: ObservableObject {
-    @Published var words: [String] = []
-    @Published var newWord: String = ""
-    @Published var selectedWord: String?
+// MARK: - Correction Dialog View
 
-    private let dictionaryManager: DictionaryManager
+private struct CorrectionDialog: View {
+    @Binding var from: String
+    @Binding var to: String
+    let onSave: () -> Void
+    let onCancel: () -> Void
 
-    init(dictionaryManager: DictionaryManager) {
-        self.dictionaryManager = dictionaryManager
-        self.words = dictionaryManager.getWords()
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Create Correction Rule")
+                .font(.headline)
 
-        // Listen for dictionary changes
-        dictionaryManager.onDictionaryChanged = { [weak self] updatedWords in
-            DispatchQueue.main.async {
-                self?.words = updatedWords
+            Text("Create a replacement rule to automatically correct misrecognized terms")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("From (misrecognized):")
+                    .font(.subheadline)
+                TextField("e.g., max server", text: $from)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("To (correct term):")
+                    .font(.subheadline)
+                TextField("e.g., MLX server", text: $to)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Divider()
+
+            HStack {
+                Spacer()
+
+                Button("Cancel") {
+                    onCancel()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Save Rule") {
+                    onSave()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(from.trimmingCharacters(in: .whitespaces).isEmpty ||
+                         to.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
+        .padding()
+        .frame(width: 400)
     }
+}
 
-    func addWord() {
-        let trimmed = newWord.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+// MARK: - Suggestion Row View
 
-        dictionaryManager.addWord(trimmed)
-        newWord = ""
-    }
+private struct SuggestionRow: View {
+    let suggestion: LearnedTerm
+    let onApprove: () -> Void
+    let onReject: () -> Void
 
-    func removeWord(_ word: String) {
-        dictionaryManager.removeWord(word)
-    }
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(suggestion.term)
+                    .font(.body)
+                    .fontWeight(.medium)
 
-    func clearDictionary() {
-        let alert = NSAlert()
-        alert.messageText = "Clear All Words?"
-        alert.informativeText = "This will remove all custom words from your dictionary. This action cannot be undone."
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "Clear All")
-        alert.addButton(withTitle: "Cancel")
+                HStack(spacing: 4) {
+                    Image(systemName: "chart.bar.fill")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text("Used \(suggestion.frequency) times")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
 
-        if alert.runModal() == .alertFirstButtonReturn {
-            dictionaryManager.clearDictionary()
-        }
-    }
+            Spacer()
 
-    func importDictionary() {
-        let panel = NSOpenPanel()
-        panel.title = "Import Dictionary"
-        panel.message = "Select a JSON file containing custom words"
-        panel.allowedContentTypes = [.json]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
+            HStack(spacing: 8) {
+                Button(action: onReject) {
+                    Image(systemName: "xmark.circle")
+                        .foregroundColor(.red)
+                }
+                .buttonStyle(.plain)
+                .help("Reject this suggestion")
 
-        if panel.runModal() == .OK, let url = panel.url {
-            let success = dictionaryManager.importFromFile(path: url.path)
-            if !success {
-                showErrorAlert(message: "Failed to import dictionary. Please ensure the file is a valid JSON array of strings.")
+                Button(action: onApprove) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                }
+                .buttonStyle(.plain)
+                .help("Add to dictionary")
             }
         }
-    }
-
-    func exportDictionary() {
-        let panel = NSSavePanel()
-        panel.title = "Export Dictionary"
-        panel.message = "Save custom dictionary as JSON file"
-        panel.allowedContentTypes = [.json]
-        panel.nameFieldStringValue = "custom_dictionary.json"
-
-        if panel.runModal() == .OK, let url = panel.url {
-            let success = dictionaryManager.exportToFile(path: url.path)
-            if !success {
-                showErrorAlert(message: "Failed to export dictionary. Please try again.")
-            }
-        }
-    }
-
-    private func showErrorAlert(message: String) {
-        let alert = NSAlert()
-        alert.messageText = "Error"
-        alert.informativeText = message
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color.secondary.opacity(0.1))
+        )
     }
 }

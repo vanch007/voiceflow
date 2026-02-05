@@ -65,6 +65,35 @@ final class ReplacementStorage: ObservableObject {
         NSLog("[ReplacementStorage] Deleted rule: \(deletedRule.trigger)")
     }
 
+
+    /// Convenience method: add or update a replacement rule by from/to strings
+    func addRule(from: String, to: String) {
+        let fromNormalized = from.trimmingCharacters(in: .whitespacesAndNewlines)
+        let toNormalized = to.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !fromNormalized.isEmpty && !toNormalized.isEmpty else { return }
+
+        if let existingIndex = rules.firstIndex(where: { $0.trigger.lowercased() == fromNormalized.lowercased() }) {
+            // Update existing rule
+            rules[existingIndex].replacement = toNormalized
+            save()
+            NSLog("[ReplacementStorage] Updated rule: '\(fromNormalized)' → '\(toNormalized)'")
+        } else {
+            let newRule = ReplacementRule(trigger: fromNormalized, replacement: toNormalized)
+            add(newRule)
+            NSLog("[ReplacementStorage] Added rule via addRule: '\(fromNormalized)' → '\(toNormalized)'")
+        }
+    }
+
+    /// Apply replacement rules to text
+    func applyReplacements(to text: String) -> String {
+        var result = text
+        for rule in rules where rule.isEnabled {
+            result = result.replacingOccurrences(of: rule.trigger, with: rule.replacement, options: .caseInsensitive)
+        }
+        return result
+    }
+
+
     /// Import rules from JSON data (replaces all existing rules)
     func importRules(from data: Data) -> Bool {
         do {

@@ -13,6 +13,11 @@ let package = Package(
             resources: [
                 .copy("../Resources/Info.plist")
             ]
+        ),
+        .testTarget(
+            name: "VoiceFlowTests",
+            dependencies: ["VoiceFlow"],
+            path: "Tests/VoiceFlowTests"
         )
     ]
 )
