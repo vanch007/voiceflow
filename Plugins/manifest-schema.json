@@ -1,0 +1,204 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://voiceflow.dev/schemas/plugin-manifest.json",
+  "title": "VoiceFlow Plugin Manifest",
+  "description": "Schema for VoiceFlow plugin manifest files",
+  "type": "object",
+  "required": [
+    "id",
+    "name",
+    "version",
+    "author",
+    "description",
+    "entrypoint",
+    "platform"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Unique identifier for the plugin (reverse domain notation recommended)",
+      "pattern": "^[a-z0-9.-]+$",
+      "minLength": 3,
+      "maxLength": 100,
+      "examples": [
+        "com.example.my-plugin",
+        "dev.voiceflow.uppercase-plugin"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable plugin name",
+      "minLength": 1,
+      "maxLength": 100,
+      "examples": [
+        "Uppercase Transform",
+        "Smart Punctuation"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "description": "Plugin version (semantic versioning recommended)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9.-]+)?$",
+      "examples": [
+        "1.0.0",
+        "2.1.3-beta"
+      ]
+    },
+    "author": {
+      "type": "string",
+      "description": "Plugin author name or organization",
+      "minLength": 1,
+      "maxLength": 100,
+      "examples": [
+        "John Doe",
+        "Acme Corporation"
+      ]
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of plugin functionality",
+      "minLength": 10,
+      "maxLength": 500,
+      "examples": [
+        "Transforms transcribed text to uppercase for emphasis",
+        "Adds smart punctuation based on speech patterns"
+      ]
+    },
+    "entrypoint": {
+      "type": "string",
+      "description": "Entry point file for the plugin (relative path from plugin directory)",
+      "minLength": 1,
+      "maxLength": 255,
+      "examples": [
+        "UppercasePlugin.swift",
+        "plugin.py",
+        "src/main.swift"
+      ]
+    },
+    "permissions": {
+      "type": "array",
+      "description": "List of permissions required by the plugin",
+      "items": {
+        "type": "string",
+        "enum": [
+          "text.read",
+          "text.modify",
+          "network.http",
+          "network.websocket",
+          "filesystem.read",
+          "filesystem.write",
+          "clipboard.read",
+          "clipboard.write",
+          "system.notifications"
+        ]
+      },
+      "uniqueItems": true,
+      "default": [],
+      "examples": [
+        ["text.read", "text.modify"],
+        ["text.read", "text.modify", "network.http"]
+      ]
+    },
+    "platform": {
+      "type": "string",
+      "description": "Target platform for the plugin",
+      "enum": [
+        "swift",
+        "python",
+        "both"
+      ],
+      "examples": [
+        "swift",
+        "python"
+      ]
+    },
+    "minVoiceFlowVersion": {
+      "type": "string",
+      "description": "Minimum VoiceFlow version required (optional)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": [
+        "1.0.0",
+        "2.1.0"
+      ]
+    },
+    "maxVoiceFlowVersion": {
+      "type": "string",
+      "description": "Maximum VoiceFlow version supported (optional)",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": [
+        "3.0.0"
+      ]
+    },
+    "homepage": {
+      "type": "string",
+      "description": "Plugin homepage or repository URL (optional)",
+      "format": "uri",
+      "examples": [
+        "https://github.com/user/plugin",
+        "https://example.com/plugins/my-plugin"
+      ]
+    },
+    "license": {
+      "type": "string",
+      "description": "Plugin license (SPDX identifier recommended, optional)",
+      "examples": [
+        "MIT",
+        "Apache-2.0",
+        "GPL-3.0"
+      ]
+    },
+    "dependencies": {
+      "type": "object",
+      "description": "Plugin dependencies (optional)",
+      "properties": {
+        "swift": {
+          "type": "array",
+          "description": "Swift package dependencies",
+          "items": {
+            "type": "object",
+            "required": ["name", "url", "version"],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "version": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "python": {
+          "type": "array",
+          "description": "Python package dependencies (pip)",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            ["requests>=2.28.0", "numpy>=1.24.0"]
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "configuration": {
+      "type": "object",
+      "description": "Plugin configuration schema (optional)",
+      "properties": {
+        "schema": {
+          "type": "object",
+          "description": "JSON Schema for plugin settings"
+        },
+        "defaults": {
+          "type": "object",
+          "description": "Default configuration values"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
