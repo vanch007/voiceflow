@@ -158,6 +158,15 @@ LANGUAGE_MAP = {
     "ms": "Malay",
     "fil": "Filipino",
     "fa": "Persian",
+    # 中国方言（Qwen3-ASR 独占优势）
+    "zh-sichuan": "Sichuanese",      # 四川话
+    "zh-dongbei": "Northeastern",    # 东北话
+    "zh-shanghai": "Shanghainese",   # 上海话
+    "zh-minnan": "Hokkien",          # 闽南语
+    "zh-hakka": "Hakka",             # 客家话
+    "zh-wenzhou": "Wenzhou",         # 温州话
+    "zh-changsha": "Changsha",       # 长沙话
+    "zh-nanchang": "Nanchang",       # 南昌话
 }
 
 
@@ -436,8 +445,13 @@ async def handle_client(websocket):
                     lang_code = data.get("language", "auto")
                     session_language = LANGUAGE_MAP.get(lang_code, None)
                     session_scene = data.get("scene", {})  # 解析场景信息
+                    active_app = data.get("active_app", {})  # 解析活跃应用信息
 
-                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, LLM: {use_llm_polish}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene}")
+                    # 将 active_app 信息合并到 session_scene
+                    if active_app:
+                        session_scene["active_app"] = active_app
+
+                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, LLM: {use_llm_polish}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}")
 
                     # 确保模型已加载
                     if session_model_id:
@@ -488,10 +502,28 @@ async def handle_client(websocket):
                     model = get_model(session_model_id)
                     language = session_language  # None 表示自动检测
 
+                    # ASR 转录（带超时保护）
                     t0 = time.perf_counter()
-                    # 使用锁保护模型访问，防止并发崩溃
-                    with model_lock:
-                        result = model.transcribe(audio=(samples, 16000), language=language)
+                    try:
+                        # 使用锁保护模型访问，防止并发崩溃
+                        def transcribe_with_lock():
+                            with model_lock:
+                                return model.transcribe(audio=(samples, 16000), language=language)
+
+                        result = await asyncio.wait_for(
+                            asyncio.to_thread(transcribe_with_lock),
+                            timeout=30.0
+                        )
+                    except asyncio.TimeoutError:
+                        logger.error("❌ ASR 转录超时 (30s)")
+                        await websocket.send(json.dumps({
+                            "type": "final",
+                            "text": "",
+                            "original_text": "",
+                            "polish_method": "none"
+                        }))
+                        continue
+
                     elapsed = time.perf_counter() - t0
 
                     # 提取文本
@@ -504,37 +536,72 @@ async def handle_client(websocket):
                     else:
                         original_text = str(result)
 
-                    # Polish the transcribed text only if enabled
-                    polish_method = "none"
+                    logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text}")
+
+                    # 两步响应策略
                     if enable_polish:
+                        # 第一步：立即用规则润色返回 (快速响应)
+                        rule_polished_text = scene_polisher.polish(original_text, session_scene)
+                        rule_polished_text = run_plugins(rule_polished_text)
+
+                        await websocket.send(json.dumps({
+                            "type": "final",
+                            "text": rule_polished_text,
+                            "original_text": original_text,
+                            "polish_method": "rules"
+                        }))
+                        logger.info(f"⚡ 快速响应 (rules): {rule_polished_text}")
+
+                        # 第二步：后台 LLM 润色（如果启用）
                         llm_pol = get_llm_polisher()
                         if llm_pol and use_llm_polish:
-                            # 使用 LLM 润色器（带回退）
-                            polished_text, polish_method = await llm_pol.polish_async(
-                                original_text, session_scene, use_llm=True
-                            )
-                        else:
-                            # 使用场景感知润色器（规则）
-                            polished_text = scene_polisher.polish(original_text, session_scene)
-                            polish_method = "rules"
-                        logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text}")
-                        logger.info(f"✨ 润色后文本 (method={polish_method}, scene={session_scene.get('type', 'general')}): {polished_text}")
+                            async def llm_polish_background():
+                                try:
+                                    polished_text, polish_method = await llm_pol.polish_async(
+                                        original_text, session_scene, use_llm=True
+                                    )
+                                    if polish_method == "llm":
+                                        # LLM 润色成功，发送更新
+                                        polished_text = run_plugins(polished_text)
+                                        await websocket.send(json.dumps({
+                                            "type": "polish_update",
+                                            "text": polished_text
+                                        }))
+                                        logger.info(f"✨ LLM 润色完成: {polished_text}")
+                                except Exception as e:
+                                    logger.warning(f"⚠️ 后台 LLM 润色失败: {e}")
+
+                            # 启动后台任务
+                            asyncio.create_task(llm_polish_background())
                     else:
-                        polished_text = original_text
-                        logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text} (polish disabled)")
-
-                    # Run plugin hooks on transcribed text
-                    polished_text = run_plugins(polished_text)
-
-                    await websocket.send(json.dumps({
-                        "type": "final",
-                        "text": polished_text,
-                        "original_text": original_text,
-                        "polish_method": polish_method
-                    }))
+                        # 不启用润色，直接返回原文
+                        polished_text = run_plugins(original_text)
+                        await websocket.send(json.dumps({
+                            "type": "final",
+                            "text": polished_text,
+                            "original_text": original_text,
+                            "polish_method": "none"
+                        }))
 
             elif isinstance(message, bytes) and recording:
-                audio_chunks.append(message)
+                # 解码音频数据（支持格式标识）
+                if len(message) > 1:
+                    format_id = message[0]
+                    audio_data = message[1:]
+
+                    if format_id == 0x02:
+                        # Int16 格式：转换为 Float32
+                        samples = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32767.0
+                        audio_chunks.append(samples.tobytes())
+                    elif format_id == 0x01:
+                        # Float32 格式：直接使用
+                        audio_chunks.append(audio_data)
+                    else:
+                        # 兼容旧格式（无标识，直接是 Float32）
+                        audio_chunks.append(message)
+                else:
+                    # 空数据或单字节，忽略
+                    pass
 
     except websockets.exceptions.ConnectionClosed:
         logger.info("客户端断开连接")

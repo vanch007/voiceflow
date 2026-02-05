@@ -17,6 +17,7 @@ DEFAULT_POLISH_PROMPTS = {
 2. 删除口语化的语气词（嗯、啊、那个等）
 3. 添加适当的标点符号
 4. 保持原意，不要添加或删除实质内容
+5. 如果用户使用纠正语（如"不对"、"应该是"），移除被纠正部分，只保留纠正后内容
 
 直接输出润色后的文本，不要任何解释。""",
 
@@ -25,6 +26,7 @@ DEFAULT_POLISH_PROMPTS = {
 2. 修正常见的编程术语识别错误
 3. 删除口语化表达
 4. 保持技术准确性
+5. 如果用户使用纠正语，移除被纠正部分
 
 直接输出润色后的文本，不要任何解释。""",
 
@@ -33,6 +35,7 @@ DEFAULT_POLISH_PROMPTS = {
 2. 优化句子结构，使其更加书面化
 3. 添加适当的标点符号
 4. 保持原意和风格
+5. 如果用户使用纠正语，移除被纠正部分
 
 直接输出润色后的文本，不要任何解释。""",
 
@@ -41,8 +44,64 @@ DEFAULT_POLISH_PROMPTS = {
 2. 修正明显的识别错误
 3. 适当保留一些表达情感的语气词
 4. 添加适当的标点和表情提示
+5. 如果用户使用纠正语，移除被纠正部分
 
 直接输出润色后的文本，不要任何解释。""",
+}
+
+# 应用 Bundle ID 到场景类型的映射
+APP_SCENE_MAPPING = {
+    # 邮件应用 -> 正式风格
+    "com.apple.mail": "formal",
+    "com.readdle.smartemail": "formal",
+    "com.microsoft.Outlook": "formal",
+    "com.sparkmailapp.Spark": "formal",
+
+    # 聊天应用 -> 社交风格
+    "com.tencent.xinWeChat": "social",
+    "com.apple.MobileSMS": "social",
+    "com.slack.Slack": "social",
+    "com.discord.Discord": "social",
+    "com.telegram.desktop": "social",
+    "com.whatsapp.WhatsApp": "social",
+
+    # IDE/编辑器 -> 技术风格
+    "com.microsoft.VSCode": "coding",
+    "com.apple.dt.Xcode": "coding",
+    "com.jetbrains.intellij": "coding",
+    "com.sublimehq.Sublime-Text": "coding",
+    "com.googlecode.iterm2": "coding",
+    "com.apple.Terminal": "coding",
+
+    # 文档应用 -> 写作风格
+    "com.apple.iWork.Pages": "writing",
+    "com.microsoft.Word": "writing",
+    "notion.id": "writing",
+    "com.google.Chrome": "writing",  # 可能是文档编辑
+}
+
+# 应用名称到场景类型的映射（备用）
+APP_NAME_SCENE_MAPPING = {
+    "mail": "formal",
+    "outlook": "formal",
+    "spark": "formal",
+    "微信": "social",
+    "wechat": "social",
+    "slack": "social",
+    "discord": "social",
+    "telegram": "social",
+    "whatsapp": "social",
+    "messages": "social",
+    "信息": "social",
+    "vscode": "coding",
+    "visual studio code": "coding",
+    "xcode": "coding",
+    "terminal": "coding",
+    "终端": "coding",
+    "iterm": "coding",
+    "pages": "writing",
+    "word": "writing",
+    "notion": "writing",
 }
 
 
@@ -116,6 +175,24 @@ class LLMPolisher:
         custom_prompt = scene.get("custom_prompt")
         if custom_prompt:
             return custom_prompt
+
+        # Check for active app context (for automatic style adaptation)
+        active_app = scene.get("active_app", {})
+        if active_app:
+            bundle_id = active_app.get("bundle_id", "")
+            app_name = active_app.get("name", "").lower()
+
+            # Try bundle ID mapping first
+            if bundle_id in APP_SCENE_MAPPING:
+                scene_type = APP_SCENE_MAPPING[bundle_id]
+                logger.info(f"Auto-detected scene from bundle_id: {bundle_id} -> {scene_type}")
+                return DEFAULT_POLISH_PROMPTS.get(scene_type, DEFAULT_POLISH_PROMPTS["general"])
+
+            # Try app name mapping
+            for name_pattern, mapped_scene in APP_NAME_SCENE_MAPPING.items():
+                if name_pattern in app_name:
+                    logger.info(f"Auto-detected scene from app_name: {app_name} -> {mapped_scene}")
+                    return DEFAULT_POLISH_PROMPTS.get(mapped_scene, DEFAULT_POLISH_PROMPTS["general"])
 
         # Fall back to scene type default
         scene_type = scene.get("type", "general")

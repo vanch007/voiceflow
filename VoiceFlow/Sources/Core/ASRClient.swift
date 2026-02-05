@@ -1,8 +1,10 @@
 import Foundation
+import AppKit
 
 private enum ASRMessageType: String, Decodable {
     case final
     case partial
+    case polish_update  // LLM 润色完成后的更新
     case config_llm_ack
     case test_llm_connection_result
     case analysis_result
@@ -20,6 +22,7 @@ final class ASRClient {
     var onPartialResult: ((String) -> Void)?  // 实时部分结果回调
     var onOriginalTextReceived: ((String) -> Void)?  // 原始文本回调
     var onPolishMethodReceived: ((String) -> Void)?  // 润色方法回调
+    var onPolishUpdate: ((String) -> Void)?  // LLM 润色更新回调
     var onConnectionStatusChanged: ((Bool) -> Void)?
     var onErrorStateChanged: ((Bool, String?) -> Void)?
     var onLLMConnectionTestResult: ((Bool, Int?) -> Void)?  // LLM 连接测试结果
@@ -112,12 +115,20 @@ final class ASRClient {
         let profile = SceneManager.shared.getEffectiveProfile()
         let modelId = settingsManager.modelSize.modelId
 
+        // 获取当前活跃应用信息（用于上下文语调适配）
+        let frontmostApp = NSWorkspace.shared.frontmostApplication
+        let activeAppInfo: [String: String] = [
+            "name": frontmostApp?.localizedName ?? "",
+            "bundle_id": frontmostApp?.bundleIdentifier ?? ""
+        ]
+
         // 构建基础消息
         var message: [String: Any] = [
             "type": "start",
             "enable_polish": profile.enablePolish ? "true" : "false",
             "model_id": modelId,
-            "language": profile.language.rawValue
+            "language": profile.language.rawValue,
+            "active_app": activeAppInfo
         ]
 
         // 添加场景信息
@@ -248,6 +259,13 @@ final class ASRClient {
             let text = json["text"] as? String ?? ""
             DispatchQueue.main.async { [weak self] in
                 self?.onPartialResult?(text)
+            }
+
+        case "polish_update":
+            let text = json["text"] as? String ?? ""
+            NSLog("[ASRClient] Received polish_update: text=%@", text)
+            DispatchQueue.main.async { [weak self] in
+                self?.onPolishUpdate?(text)
             }
 
         case "config_llm_ack":
@@ -417,6 +435,13 @@ final class ASRClient {
         let profile = SceneManager.shared.getEffectiveProfile()
         let modelId = settingsManager.modelSize.modelId
 
+        // 获取当前活跃应用信息
+        let frontmostApp = NSWorkspace.shared.frontmostApplication
+        let activeAppInfo: [String: String] = [
+            "name": frontmostApp?.localizedName ?? "",
+            "bundle_id": frontmostApp?.bundleIdentifier ?? ""
+        ]
+
         // Determine if LLM should be used (profile override or global setting)
         let shouldUseLLM = profile.useLLMPolish ?? (settingsManager.llmSettings.isEnabled && useLLMPolish)
 
@@ -425,7 +450,8 @@ final class ASRClient {
             "enable_polish": profile.enablePolish ? "true" : "false",
             "use_llm_polish": shouldUseLLM,
             "model_id": modelId,
-            "language": profile.language.rawValue
+            "language": profile.language.rawValue,
+            "active_app": activeAppInfo
         ]
 
         var sceneInfo: [String: Any] = [
