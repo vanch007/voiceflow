@@ -92,19 +92,35 @@ private struct SceneProfileEditor: View {
     @ObservedObject var sceneManager: SceneManager
     @Binding var showingAddRuleSheet: Bool
 
+    // 使用统一的 ReplacementStorage
+    @ObservedObject private var replacementStorage = ReplacementStorage()
+
+    // 提示词管理器
+    @ObservedObject private var promptManager = PromptManager.shared
+
     @State private var language: ASRLanguage? = nil  // nil 表示跟随全局设置
     @State private var enablePolish: Bool = false
     @State private var polishStyle: PolishStyle = .neutral
     @State private var customPrompt: String = ""
-    @State private var glossary: [GlossaryEntry] = []
     @State private var showingAddGlossarySheet: Bool = false
-    @State private var editingGlossaryEntry: GlossaryEntry? = nil
+    @State private var editingRule: ReplacementRule? = nil
+
+    // 提示词编辑状态
+    @State private var useCustomPrompt: Bool = false
+    @State private var editablePrompt: String = ""
 
     // Import/Export 状态
     @State private var showExportSuccess = false
     @State private var showExportError = false
     @State private var showImportError = false
     @State private var importErrorMessage = ""
+
+    /// 获取当前场景的术语规则
+    private var sceneGlossaryRules: [ReplacementRule] {
+        replacementStorage.rules.filter { rule in
+            rule.applicableScenes.contains(sceneType)
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -153,9 +169,9 @@ private struct SceneProfileEditor: View {
 
                 Divider()
 
-                // 润色设置
+                // AI 纠错设置
                 VStack(alignment: .leading, spacing: 8) {
-                    Toggle("启用 AI 文本润色", isOn: $enablePolish)
+                    Toggle("启用 AI 纠错", isOn: $enablePolish)
 
                     if enablePolish {
                         VStack(alignment: .leading, spacing: 8) {
@@ -179,20 +195,83 @@ private struct SceneProfileEditor: View {
                         .padding(.leading, 20)
 
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("自定义提示词（可选）")
-                                .fontWeight(.medium)
+                            HStack {
+                                Text("提示词设置")
+                                    .fontWeight(.medium)
 
-                            TextEditor(text: $customPrompt)
-                                .font(.system(.body, design: .monospaced))
-                                .frame(height: 80)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                                )
+                                Spacer()
 
-                            Text("留空使用默认提示词，或输入自定义提示词覆盖")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                if promptManager.isLoading {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                }
+                            }
+
+                            Picker("", selection: $useCustomPrompt) {
+                                Text("使用默认提示词").tag(false)
+                                Text("使用自定义提示词").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+
+                            if !useCustomPrompt {
+                                // 默认提示词显示区（只读）
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("默认提示词")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+
+                                    ScrollView {
+                                        Text(promptManager.defaultPrompts[sceneType.rawValue] ?? "加载中...")
+                                            .font(.system(.body, design: .monospaced))
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(8)
+                                    }
+                                    .frame(height: 100)
+                                    .background(Color(NSColor.controlBackgroundColor))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                    )
+                                }
+                            } else {
+                                // 自定义提示词编辑区
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        Text("自定义提示词")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+
+                                        Spacer()
+
+                                        Button(action: {
+                                            // 从默认提示词复制
+                                            if let defaultPrompt = promptManager.defaultPrompts[sceneType.rawValue] {
+                                                editablePrompt = defaultPrompt
+                                            }
+                                        }) {
+                                            HStack(spacing: 4) {
+                                                Image(systemName: "doc.on.doc")
+                                                Text("从默认复制")
+                                            }
+                                            .font(.caption)
+                                        }
+                                        .buttonStyle(.borderless)
+                                    }
+
+                                    TextEditor(text: $editablePrompt)
+                                        .font(.system(.body, design: .monospaced))
+                                        .frame(height: 100)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 4)
+                                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                        )
+
+                                    Text("自定义提示词将在润色时替代默认提示词使用")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
                         }
                         .padding(.leading, 20)
                     }
@@ -200,7 +279,7 @@ private struct SceneProfileEditor: View {
 
                 Divider()
 
-                // 术语字典
+                // 术语字典（从 ReplacementStorage 读取）
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Text("术语字典")
@@ -208,34 +287,37 @@ private struct SceneProfileEditor: View {
 
                         Spacer()
 
-                        Button(action: { showingAddGlossarySheet = true }) {
+                        Button(action: {
+                            editingRule = nil
+                            showingAddGlossarySheet = true
+                        }) {
                             Image(systemName: "plus")
                         }
                         .help("添加术语")
                     }
 
-                    Text("将 ASR 可能误识别的词汇自动替换为正确写法")
+                    Text("将 ASR 可能误识别的词汇自动替换为正确写法（存储在文本替换规则中）")
                         .font(.caption)
                         .foregroundColor(.secondary)
 
-                    if glossary.isEmpty {
+                    if sceneGlossaryRules.isEmpty {
                         Text("暂无术语")
                             .foregroundColor(.secondary)
                             .padding(.vertical, 8)
                     } else {
                         ScrollView {
                             LazyVStack(spacing: 4) {
-                                ForEach(glossary) { entry in
+                                ForEach(sceneGlossaryRules) { rule in
                                     HStack {
-                                        Text(entry.term)
+                                        Text(rule.trigger)
                                             .foregroundColor(.secondary)
                                         Image(systemName: "arrow.right")
                                             .font(.caption)
                                             .foregroundColor(.secondary)
-                                        Text(entry.replacement)
+                                        Text(rule.replacement)
                                             .fontWeight(.medium)
 
-                                        if entry.caseSensitive {
+                                        if rule.caseSensitive {
                                             Text("Aa")
                                                 .font(.caption2)
                                                 .padding(.horizontal, 4)
@@ -245,10 +327,30 @@ private struct SceneProfileEditor: View {
                                                 .help("区分大小写")
                                         }
 
+                                        if rule.source == .preset {
+                                            Text("预设")
+                                                .font(.caption2)
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 2)
+                                                .background(Color.gray.opacity(0.2))
+                                                .cornerRadius(3)
+                                                .help("预设规则")
+                                        }
+
+                                        // 显示是否启用
+                                        if !rule.isEnabled {
+                                            Text("已禁用")
+                                                .font(.caption2)
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 2)
+                                                .background(Color.red.opacity(0.2))
+                                                .cornerRadius(3)
+                                        }
+
                                         Spacer()
 
                                         Button(action: {
-                                            editingGlossaryEntry = entry
+                                            editingRule = rule
                                             showingAddGlossarySheet = true
                                         }) {
                                             Image(systemName: "pencil")
@@ -258,7 +360,7 @@ private struct SceneProfileEditor: View {
                                         .help("编辑")
 
                                         Button(action: {
-                                            glossary.removeAll { $0.id == entry.id }
+                                            replacementStorage.delete(id: rule.id)
                                         }) {
                                             Image(systemName: "trash")
                                                 .foregroundColor(.red)
@@ -377,16 +479,25 @@ private struct SceneProfileEditor: View {
         }
         .onAppear {
             loadCurrentProfile()
+            promptManager.loadPrompts()
         }
         .onChange(of: sceneType) { _ in
             loadCurrentProfile()
         }
+        .onChange(of: promptManager.customPrompts) { _ in
+            // 提示词加载完成后刷新状态
+            useCustomPrompt = promptManager.isUsingCustomPrompt(for: sceneType.rawValue)
+            if useCustomPrompt {
+                editablePrompt = promptManager.customPrompts[sceneType.rawValue] ?? ""
+            }
+        }
         .sheet(isPresented: $showingAddGlossarySheet, onDismiss: {
-            editingGlossaryEntry = nil
+            editingRule = nil
         }) {
-            AddGlossaryEntrySheet(
-                glossary: $glossary,
-                editingEntry: editingGlossaryEntry,
+            AddSceneGlossarySheet(
+                replacementStorage: replacementStorage,
+                sceneType: sceneType,
+                editingRule: editingRule,
                 isPresented: $showingAddGlossarySheet
             )
         }
@@ -417,18 +528,32 @@ private struct SceneProfileEditor: View {
         enablePolish = profile.enablePolish
         polishStyle = profile.polishStyle
         customPrompt = profile.customPrompt ?? ""
-        glossary = profile.glossary
+
+        // 加载提示词状态
+        useCustomPrompt = promptManager.isUsingCustomPrompt(for: sceneType.rawValue)
+        if useCustomPrompt {
+            editablePrompt = promptManager.customPrompts[sceneType.rawValue] ?? ""
+        } else {
+            editablePrompt = ""
+        }
     }
 
     private func saveProfile() {
+        // 保存提示词到服务器
+        if useCustomPrompt && !editablePrompt.isEmpty {
+            promptManager.saveCustomPrompt(for: sceneType.rawValue, prompt: editablePrompt)
+        } else if !useCustomPrompt && promptManager.isUsingCustomPrompt(for: sceneType.rawValue) {
+            // 从自定义切换回默认
+            promptManager.resetToDefault(for: sceneType.rawValue)
+        }
+
         let profile = SceneProfile(
             sceneType: sceneType,
             language: language,
             enablePolish: enablePolish,
             polishStyle: polishStyle,
             enabledPluginIDs: [],
-            customPrompt: customPrompt.isEmpty ? nil : customPrompt,
-            glossary: glossary
+            customPrompt: useCustomPrompt ? editablePrompt : nil
         )
         sceneManager.updateProfile(profile)
     }
@@ -483,17 +608,19 @@ private struct SceneProfileEditor: View {
     }
 }
 
-/// 添加/编辑术语条目的 Sheet
-private struct AddGlossaryEntrySheet: View {
-    @Binding var glossary: [GlossaryEntry]
-    let editingEntry: GlossaryEntry?
+/// 添加/编辑术语条目的 Sheet（使用 ReplacementStorage）
+private struct AddSceneGlossarySheet: View {
+    @ObservedObject var replacementStorage: ReplacementStorage
+    let sceneType: SceneType
+    let editingRule: ReplacementRule?
     @Binding var isPresented: Bool
 
     @State private var term: String = ""
     @State private var replacement: String = ""
     @State private var caseSensitive: Bool = false
+    @State private var isEnabled: Bool = true
 
-    private var isEditing: Bool { editingEntry != nil }
+    private var isEditing: Bool { editingRule != nil }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -517,6 +644,9 @@ private struct AddGlossaryEntrySheet: View {
                 }
 
                 Toggle("区分大小写", isOn: $caseSensitive)
+                    .toggleStyle(.checkbox)
+
+                Toggle("启用此规则", isOn: $isEnabled)
                     .toggleStyle(.checkbox)
 
                 Text("术语替换会在 ASR 转录后、AI 润色前执行")
@@ -543,33 +673,37 @@ private struct AddGlossaryEntrySheet: View {
             }
         }
         .padding()
-        .frame(width: 350, height: 280)
+        .frame(width: 350, height: 320)
         .onAppear {
-            if let entry = editingEntry {
-                term = entry.term
-                replacement = entry.replacement
-                caseSensitive = entry.caseSensitive
+            if let rule = editingRule {
+                term = rule.trigger
+                replacement = rule.replacement
+                caseSensitive = rule.caseSensitive
+                isEnabled = rule.isEnabled
             }
         }
     }
 
     private func saveEntry() {
-        if let existing = editingEntry {
-            if let index = glossary.firstIndex(where: { $0.id == existing.id }) {
-                glossary[index] = GlossaryEntry(
-                    id: existing.id,
-                    term: term,
-                    replacement: replacement,
-                    caseSensitive: caseSensitive
-                )
-            }
+        if let existing = editingRule {
+            // Update existing rule
+            var updatedRule = existing
+            updatedRule.trigger = term
+            updatedRule.replacement = replacement
+            updatedRule.caseSensitive = caseSensitive
+            updatedRule.isEnabled = isEnabled
+            replacementStorage.update(updatedRule)
         } else {
-            let entry = GlossaryEntry(
-                term: term,
+            // Add new rule for this scene
+            let rule = ReplacementRule(
+                trigger: term,
                 replacement: replacement,
-                caseSensitive: caseSensitive
+                isEnabled: isEnabled,
+                caseSensitive: caseSensitive,
+                applicableScenes: [sceneType],
+                source: .user
             )
-            glossary.append(entry)
+            replacementStorage.add(rule)
         }
         isPresented = false
     }

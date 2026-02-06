@@ -159,109 +159,767 @@ private struct GeneralSettingsTab: View {
     }
 }
 
-// 文本替换标签页（新增）
-private struct TextReplacementTab: View {
-    @ObservedObject var replacementStorage: ReplacementStorage
-    @State private var selectedRule: ReplacementRule?
-    @State private var isEditing = false
+// MARK: - 文本替换标签页（按替换词分组 + 场景筛选）
 
-    var body: some View {
-        HSplitView {
-            // 左侧：规则列表
-            VStack {
-                List(selection: $selectedRule) {
-                    ForEach(replacementStorage.rules) { rule in
-                        HStack {
-                            Toggle("", isOn: binding(for: rule))
-                                .labelsHidden()
-                            VStack(alignment: .leading) {
-                                Text(rule.trigger)
-                                    .font(.headline)
-                                Text(rule.replacement.prefix(30))
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .tag(rule)
-                    }
-                }
+/// 替换词分组模型
+private struct ReplacementGroup: Identifiable, Hashable {
+    let id: String  // replacement 作为唯一标识
+    let replacement: String
+    var triggers: [ReplacementRule]
+    var scenes: Set<SceneType>
+    var isEnabled: Bool  // 组内是否有启用的规则
 
-                HStack {
-                    Button(action: addRule) {
-                        Image(systemName: "plus")
-                    }
-                    Button(action: deleteRule) {
-                        Image(systemName: "minus")
-                    }
-                    .disabled(selectedRule == nil)
-                }
-                .padding(8)
-            }
-            .frame(minWidth: 250)
-
-            // 右侧：规则编辑器
-            if let rule = selectedRule {
-                RuleEditorView(rule: rule, storage: replacementStorage)
-            } else {
-                Text("选择一个规则进行编辑")
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
+    static func == (lhs: ReplacementGroup, rhs: ReplacementGroup) -> Bool {
+        lhs.id == rhs.id
     }
 
-    private func binding(for rule: ReplacementRule) -> Binding<Bool> {
-        Binding(
-            get: { rule.isEnabled },
-            set: { newValue in
-                var updated = rule
-                updated.isEnabled = newValue
-                replacementStorage.update(updated)
-            }
-        )
-    }
-
-    private func addRule() {
-        let newRule = ReplacementRule(trigger: "新触发词", replacement: "替换内容")
-        replacementStorage.add(newRule)
-        selectedRule = newRule
-    }
-
-    private func deleteRule() {
-        guard let rule = selectedRule else { return }
-        replacementStorage.delete(id: rule.id)
-        selectedRule = nil
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
     }
 }
 
-private struct RuleEditorView: View {
-    let rule: ReplacementRule
-    let storage: ReplacementStorage
+private struct TextReplacementTab: View {
+    @ObservedObject var replacementStorage: ReplacementStorage
+    @State private var selectedGroup: ReplacementGroup?
+    @State private var selectedSceneFilter: SceneType? = nil  // nil = 全部
+    @State private var showingAddGroupSheet = false
+    @State private var searchText = ""
 
-    @State private var trigger: String
-    @State private var replacement: String
+    /// 将规则按替换词分组
+    private var groupedRules: [ReplacementGroup] {
+        var groups: [String: ReplacementGroup] = [:]
 
-    init(rule: ReplacementRule, storage: ReplacementStorage) {
-        self.rule = rule
-        self.storage = storage
-        _trigger = State(initialValue: rule.trigger)
-        _replacement = State(initialValue: rule.replacement)
+        for rule in replacementStorage.rules {
+            let key = rule.replacement.lowercased()
+            if var existing = groups[key] {
+                existing.triggers.append(rule)
+                existing.scenes.formUnion(rule.applicableScenes)
+                if rule.isEnabled {
+                    existing.isEnabled = true
+                }
+                groups[key] = existing
+            } else {
+                groups[key] = ReplacementGroup(
+                    id: key,
+                    replacement: rule.replacement,
+                    triggers: [rule],
+                    scenes: Set(rule.applicableScenes),
+                    isEnabled: rule.isEnabled
+                )
+            }
+        }
+
+        var result = Array(groups.values)
+
+        // 场景筛选
+        if let scene = selectedSceneFilter {
+            result = result.filter { group in
+                group.scenes.contains(scene) || group.scenes.isEmpty
+            }
+        }
+
+        // 搜索筛选
+        if !searchText.isEmpty {
+            result = result.filter { group in
+                group.replacement.localizedCaseInsensitiveContains(searchText) ||
+                group.triggers.contains { $0.trigger.localizedCaseInsensitiveContains(searchText) }
+            }
+        }
+
+        // 按替换词排序
+        return result.sorted { $0.replacement.lowercased() < $1.replacement.lowercased() }
     }
 
     var body: some View {
-        Form {
-            TextField("触发词", text: $trigger)
-            TextEditor(text: $replacement)
-                .frame(minHeight: 100)
+        HSplitView {
+            // 左侧：场景筛选 + 分组列表
+            VStack(spacing: 0) {
+                // 搜索框
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    TextField("搜索...", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(8)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(6)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
 
-            Button("保存") {
-                var updated = rule
-                updated.trigger = trigger
-                updated.replacement = replacement
-                storage.update(updated)
+                // 场景筛选器
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        SceneFilterChip(
+                            title: "全部",
+                            icon: "square.grid.2x2",
+                            isSelected: selectedSceneFilter == nil,
+                            action: { selectedSceneFilter = nil }
+                        )
+
+                        ForEach(SceneType.allCases, id: \.self) { scene in
+                            SceneFilterChip(
+                                title: scene.displayName,
+                                icon: scene.icon,
+                                isSelected: selectedSceneFilter == scene,
+                                action: { selectedSceneFilter = scene }
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
+
+                Divider()
+
+                // 分组列表
+                List(groupedRules, selection: $selectedGroup) { group in
+                    ReplacementGroupRow(group: group, storage: replacementStorage)
+                        .tag(group)
+                }
+                .listStyle(.plain)
+
+                Divider()
+
+                // 底部工具栏
+                HStack {
+                    Button(action: { showingAddGroupSheet = true }) {
+                        Image(systemName: "plus")
+                    }
+                    .help("添加替换词")
+
+                    Spacer()
+
+                    Text("\(groupedRules.count) 个替换词")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding(8)
+            }
+            .frame(minWidth: 280)
+
+            // 右侧：分组编辑器
+            if let group = selectedGroup {
+                GroupEditorView(
+                    group: group,
+                    storage: replacementStorage,
+                    onGroupDeleted: { selectedGroup = nil }
+                )
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "textformat.alt")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("选择一个替换词进行编辑")
+                        .foregroundColor(.secondary)
+                    Text("或点击 + 添加新的替换词")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .sheet(isPresented: $showingAddGroupSheet) {
+            AddReplacementGroupSheet(
+                storage: replacementStorage,
+                isPresented: $showingAddGroupSheet,
+                onAdded: { newGroup in
+                    selectedGroup = newGroup
+                }
+            )
+        }
+    }
+}
+
+// MARK: - 场景筛选芯片
+
+private struct SceneFilterChip: View {
+    let title: String
+    let icon: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.caption)
+                Text(title)
+                    .font(.caption)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(isSelected ? Color.accentColor : Color(NSColor.controlBackgroundColor))
+            .foregroundColor(isSelected ? .white : .primary)
+            .cornerRadius(16)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 分组行视图
+
+private struct ReplacementGroupRow: View {
+    let group: ReplacementGroup
+    let storage: ReplacementStorage
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // 启用状态指示器
+            Circle()
+                .fill(group.isEnabled ? Color.green : Color.gray.opacity(0.5))
+                .frame(width: 8, height: 8)
+
+            VStack(alignment: .leading, spacing: 4) {
+                // 替换词（主标题）
+                Text(group.replacement)
+                    .font(.headline)
+                    .lineLimit(1)
+
+                // 触发词列表（副标题）
+                Text(group.triggers.map(\.trigger).joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // 触发词数量徽章
+            Text("\(group.triggers.count)")
+                .font(.caption2)
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(4)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - 分组编辑器
+
+private struct GroupEditorView: View {
+    let group: ReplacementGroup
+    let storage: ReplacementStorage
+    let onGroupDeleted: () -> Void
+
+    @State private var triggers: [ReplacementRule] = []
+    @State private var showingAddTriggerSheet = false
+    @State private var editingTrigger: ReplacementRule?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // 标题区域
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(group.replacement)
+                            .font(.title)
+                            .fontWeight(.bold)
+
+                        HStack(spacing: 8) {
+                            if !group.scenes.isEmpty {
+                                ForEach(Array(group.scenes), id: \.self) { scene in
+                                    HStack(spacing: 4) {
+                                        Image(systemName: scene.icon)
+                                            .font(.caption2)
+                                        Text(scene.displayName)
+                                            .font(.caption2)
+                                    }
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.accentColor.opacity(0.1))
+                                    .cornerRadius(4)
+                                }
+                            } else {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "globe")
+                                        .font(.caption2)
+                                    Text("全局")
+                                        .font(.caption2)
+                                }
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(4)
+                            }
+                        }
+                    }
+
+                    Spacer()
+                }
+
+                Divider()
+
+                // 触发词列表
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("触发词")
+                            .font(.headline)
+
+                        Text("(\(triggers.count)个)")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        Spacer()
+
+                        Button(action: { showingAddTriggerSheet = true }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "plus")
+                                Text("添加")
+                            }
+                            .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    Text("语音识别可能产生的各种写法")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    // 触发词卡片列表
+                    LazyVStack(spacing: 8) {
+                        ForEach(triggers) { trigger in
+                            TriggerCardView(
+                                trigger: trigger,
+                                onEdit: { editingTrigger = trigger },
+                                onDelete: { deleteTrigger(trigger) },
+                                onToggle: { toggleTrigger(trigger) }
+                            )
+                        }
+                    }
+                }
+
+                Divider()
+
+                // 删除整组按钮
+                HStack {
+                    Spacer()
+
+                    Button(role: .destructive, action: deleteGroup) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "trash")
+                            Text("删除此替换词及所有触发词")
+                        }
+                    }
+                    .foregroundColor(.red)
+                }
+            }
+            .padding()
+        }
+        .onAppear {
+            triggers = group.triggers
+        }
+        .onChange(of: group) { newGroup in
+            triggers = newGroup.triggers
+        }
+        .sheet(isPresented: $showingAddTriggerSheet) {
+            AddTriggerSheet(
+                replacement: group.replacement,
+                existingScenes: Array(group.scenes),
+                storage: storage,
+                isPresented: $showingAddTriggerSheet
+            )
+        }
+        .sheet(item: $editingTrigger) { trigger in
+            EditTriggerSheet(
+                trigger: trigger,
+                storage: storage,
+                isPresented: Binding(
+                    get: { editingTrigger != nil },
+                    set: { if !$0 { editingTrigger = nil } }
+                )
+            )
+        }
+    }
+
+    private func deleteTrigger(_ trigger: ReplacementRule) {
+        storage.delete(id: trigger.id)
+        triggers.removeAll { $0.id == trigger.id }
+
+        // 如果删除后没有触发词了，通知父视图
+        if triggers.isEmpty {
+            onGroupDeleted()
+        }
+    }
+
+    private func toggleTrigger(_ trigger: ReplacementRule) {
+        var updated = trigger
+        updated.isEnabled.toggle()
+        storage.update(updated)
+        if let index = triggers.firstIndex(where: { $0.id == trigger.id }) {
+            triggers[index] = updated
+        }
+    }
+
+    private func deleteGroup() {
+        for trigger in triggers {
+            storage.delete(id: trigger.id)
+        }
+        onGroupDeleted()
+    }
+}
+
+// MARK: - 触发词卡片
+
+private struct TriggerCardView: View {
+    let trigger: ReplacementRule
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onToggle: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // 启用开关
+            Toggle("", isOn: Binding(
+                get: { trigger.isEnabled },
+                set: { _ in onToggle() }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .scaleEffect(0.8)
+
+            // 触发词文本
+            Text(trigger.trigger)
+                .font(.body)
+                .foregroundColor(trigger.isEnabled ? .primary : .secondary)
+
+            Spacer()
+
+            // 标签
+            HStack(spacing: 6) {
+                if trigger.caseSensitive {
+                    Text("Aa")
+                        .font(.caption2)
+                        .fontWeight(.medium)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.blue.opacity(0.15))
+                        .foregroundColor(.blue)
+                        .cornerRadius(3)
+                }
+
+                if trigger.source == .preset {
+                    Text("预设")
+                        .font(.caption2)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.gray.opacity(0.15))
+                        .foregroundColor(.secondary)
+                        .cornerRadius(3)
+                }
+            }
+
+            // 操作按钮
+            Button(action: onEdit) {
+                Image(systemName: "pencil")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.accentColor)
+
+            Button(action: onDelete) {
+                Image(systemName: "xmark")
+                    .font(.caption)
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.red.opacity(0.8))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(8)
+    }
+}
+
+// MARK: - 添加替换词分组 Sheet
+
+private struct AddReplacementGroupSheet: View {
+    let storage: ReplacementStorage
+    @Binding var isPresented: Bool
+    let onAdded: (ReplacementGroup) -> Void
+
+    @State private var replacement = ""
+    @State private var firstTrigger = ""
+    @State private var selectedScenes: Set<SceneType> = []
+    @State private var caseSensitive = false
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("添加替换词")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("替换为")
+                        .fontWeight(.medium)
+                    TextField("正确写法，如 Python、JSON", text: $replacement)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("第一个触发词")
+                        .fontWeight(.medium)
+                    TextField("语音可能识别的写法，如「派森」", text: $firstTrigger)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("适用场景")
+                        .fontWeight(.medium)
+
+                    LazyVGrid(columns: [
+                        GridItem(.flexible()),
+                        GridItem(.flexible()),
+                        GridItem(.flexible())
+                    ], spacing: 8) {
+                        ForEach(SceneType.allCases, id: \.self) { scene in
+                            Toggle(isOn: Binding(
+                                get: { selectedScenes.contains(scene) },
+                                set: { isSelected in
+                                    if isSelected {
+                                        selectedScenes.insert(scene)
+                                    } else {
+                                        selectedScenes.remove(scene)
+                                    }
+                                }
+                            )) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: scene.icon)
+                                        .font(.caption)
+                                    Text(scene.displayName)
+                                        .font(.caption)
+                                }
+                            }
+                            .toggleStyle(.button)
+                        }
+                    }
+
+                    Text("不选择则为全局规则")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+
+                Toggle("区分大小写", isOn: $caseSensitive)
+            }
+
+            Spacer()
+
+            HStack {
+                Button("取消") {
+                    isPresented = false
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Spacer()
+
+                Button("添加") {
+                    addGroup()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(replacement.isEmpty || firstTrigger.isEmpty)
+                .keyboardShortcut(.defaultAction)
             }
         }
         .padding()
+        .frame(width: 400, height: 420)
+    }
+
+    private func addGroup() {
+        let rule = ReplacementRule(
+            trigger: firstTrigger,
+            replacement: replacement,
+            caseSensitive: caseSensitive,
+            applicableScenes: Array(selectedScenes),
+            source: .user
+        )
+        storage.add(rule)
+
+        let newGroup = ReplacementGroup(
+            id: replacement.lowercased(),
+            replacement: replacement,
+            triggers: [rule],
+            scenes: selectedScenes,
+            isEnabled: true
+        )
+        onAdded(newGroup)
+        isPresented = false
+    }
+}
+
+// MARK: - 添加触发词 Sheet
+
+private struct AddTriggerSheet: View {
+    let replacement: String
+    let existingScenes: [SceneType]
+    let storage: ReplacementStorage
+    @Binding var isPresented: Bool
+
+    @State private var trigger = ""
+    @State private var caseSensitive = false
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("添加触发词")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("替换为")
+                    .fontWeight(.medium)
+                Text(replacement)
+                    .font(.title3)
+                    .foregroundColor(.accentColor)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("新触发词")
+                    .fontWeight(.medium)
+                TextField("语音可能识别的写法", text: $trigger)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Toggle("区分大小写", isOn: $caseSensitive)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer()
+
+            HStack {
+                Button("取消") {
+                    isPresented = false
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Spacer()
+
+                Button("添加") {
+                    let rule = ReplacementRule(
+                        trigger: trigger,
+                        replacement: replacement,
+                        caseSensitive: caseSensitive,
+                        applicableScenes: existingScenes,
+                        source: .user
+                    )
+                    storage.add(rule)
+                    isPresented = false
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(trigger.isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+        .frame(width: 350, height: 280)
+    }
+}
+
+// MARK: - 编辑触发词 Sheet
+
+private struct EditTriggerSheet: View {
+    let trigger: ReplacementRule
+    let storage: ReplacementStorage
+    @Binding var isPresented: Bool
+
+    @State private var triggerText: String
+    @State private var caseSensitive: Bool
+    @State private var selectedScenes: Set<SceneType>
+
+    init(trigger: ReplacementRule, storage: ReplacementStorage, isPresented: Binding<Bool>) {
+        self.trigger = trigger
+        self.storage = storage
+        self._isPresented = isPresented
+        self._triggerText = State(initialValue: trigger.trigger)
+        self._caseSensitive = State(initialValue: trigger.caseSensitive)
+        self._selectedScenes = State(initialValue: Set(trigger.applicableScenes))
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("编辑触发词")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("替换为")
+                    .fontWeight(.medium)
+                Text(trigger.replacement)
+                    .font(.title3)
+                    .foregroundColor(.accentColor)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("触发词")
+                    .fontWeight(.medium)
+                TextField("语音可能识别的写法", text: $triggerText)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            Toggle("区分大小写", isOn: $caseSensitive)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("适用场景")
+                    .fontWeight(.medium)
+
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 8) {
+                    ForEach(SceneType.allCases, id: \.self) { scene in
+                        Toggle(isOn: Binding(
+                            get: { selectedScenes.contains(scene) },
+                            set: { isSelected in
+                                if isSelected {
+                                    selectedScenes.insert(scene)
+                                } else {
+                                    selectedScenes.remove(scene)
+                                }
+                            }
+                        )) {
+                            HStack(spacing: 4) {
+                                Image(systemName: scene.icon)
+                                    .font(.caption)
+                                Text(scene.displayName)
+                                    .font(.caption)
+                            }
+                        }
+                        .toggleStyle(.button)
+                    }
+                }
+            }
+
+            Spacer()
+
+            HStack {
+                Button("取消") {
+                    isPresented = false
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Spacer()
+
+                Button("保存") {
+                    var updated = trigger
+                    updated.trigger = triggerText
+                    updated.caseSensitive = caseSensitive
+                    updated.applicableScenes = Array(selectedScenes)
+                    storage.update(updated)
+                    isPresented = false
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(triggerText.isEmpty)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding()
+        .frame(width: 400, height: 400)
     }
 }
 

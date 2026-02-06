@@ -101,27 +101,14 @@ private struct SettingsContentView: View {
             }
 
             Section {
-                Toggle("启用 AI 文本润色", isOn: $settingsManager.textPolishEnabled)
-                Text("自动去除语气词（嗯、那个、然后等）并改善语法")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            } header: {
-                Text("文本处理")
-            } footer: {
-                Text("开启后将自动优化识别结果，使文本更加流畅")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-
-            Section {
-                Toggle("智能断句（基于停顿时长）", isOn: $settingsManager.useTimestamps)
-                Text("使用 AI 模型分析语音停顿，自动插入标点符号")
+                Toggle("时间戳断句", isOn: $settingsManager.useTimestamps)
+                Text("根据语音停顿时长自动插入标点符号")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } header: {
                 Text("断句优化")
             } footer: {
-                Text("开启后将根据说话停顿智能添加句号、逗号等标点，长文本断句更自然")
+                Text("长停顿插入句号，中停顿插入逗号，使文本断句更自然")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
