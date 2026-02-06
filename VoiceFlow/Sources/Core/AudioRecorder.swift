@@ -25,7 +25,9 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
     private var isSilenceDetectionEnabled = false
 
     // VAD 预筛和音频压缩配置
-    private var vadEnabled = true  // 是否启用 VAD 预筛（跳过纯静音块）
+    // 注意：VAD 预筛默认禁用，因为会导致音频不连续，ASR 识别质量下降
+    // 服务端有独立的 VAD 流式转录，负责停顿检测和实时预览
+    private var vadEnabled = false  // 是否启用 VAD 预筛（跳过纯静音块）
     private var vadThreshold: Float = 0.005  // VAD 静音阈值
     private var useInt16Compression = true  // 是否使用 Int16 压缩传输
 
