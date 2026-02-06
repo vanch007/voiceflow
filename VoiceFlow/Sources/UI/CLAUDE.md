@@ -7,5 +7,27 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #629 | 8:22 PM | ✅ | Staged all resolved merge conflicts in main repository | ~303 |
+| #702 | 10:57 PM | 🔵 | StatusBarController Has Dictionary Menu Integration Point | ~287 |
+| #700 | " | 🔵 | DictionaryWindow Implementation Complete with Two-Tab Interface | ~442 |
+| #674 | 8:34 PM | ✅ | Platform and Permissions Labels Translated | ~372 |
+| #669 | 8:26 PM | ✅ | Description Label Translated | ~337 |
+| #667 | " | ✅ | Author/Developer Label Translated | ~356 |
+| #664 | 8:25 PM | ✅ | Status Label Translated in Plugin Settings | ~350 |
+| #662 | " | ✅ | Plugin Settings Window Title Localized to Chinese | ~414 |
+| #636 | 8:22 PM | 🔵 | StatusBarController Menu Localization | ~520 |
+| #630 | " | 🔵 | Plugin Settings UI with Korean Labels | ~504 |
+| #539 | 7:46 PM | 🔵 | Hotkey Settings Window UI | ~494 |
+| #482 | 7:42 PM | 🔵 | Complete OverlayPanel Architecture Analysis | ~446 |
+| #477 | " | 🔵 | OverlayPanel Positioning Issue Confirmed | ~331 |
+
+### Feb 6, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #747 | 12:25 AM | ✅ | Staged Code Changes for Git Commit | ~304 |
+| #746 | 12:24 AM | 🔵 | Session Changes Summary Shows Multiple Modifications | ~364 |
+| #743 | 12:22 AM | ✅ | Added Minimum Width Constraint to Plugin Detail View | ~245 |
+| #742 | 12:21 AM | 🔵 | Plugin Detail View Includes Enable/Disable Toggle in Settings UI | ~315 |
+| #741 | " | 🔵 | Settings Window Uses Master-Detail Layout for Plugin Management | ~346 |
+| #739 | 12:19 AM | 🟣 | Added Plugin Description Display Below Toggle Switch in Settings | ~293 |
 </claude-mem-context>

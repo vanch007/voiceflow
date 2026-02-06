@@ -67,7 +67,8 @@ cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
 - `ASRClient.swift`: WebSocket client for ASR server communication
 - `TextInjector.swift`: CGEvent-based text injection into active apps
 - `SettingsManager.swift`: User preferences management
-- `ReplacementRule.swift` / `ReplacementStorage.swift`: Text replacement rules
+- `ReplacementRule.swift` / `ReplacementStorage.swift`: Text replacement rules with scene filtering
+- `PromptManager.swift`: Scene prompt management (fetches from server)
 - `LLMSettings.swift`: LLM configuration with Keychain storage for API keys
 - `HistoryAnalysisResult.swift`: Recording history analysis result model
 
@@ -85,6 +86,7 @@ cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
 - `text_polisher.py`: AI text enhancement using LLM
 - `llm_client.py`: OpenAI-compatible LLM client (supports Ollama, vLLM, OpenAI)
 - `llm_polisher.py`: LLM-based text polisher with rule fallback
+- `prompt_config.py`: User custom prompt persistence
 - `history_analyzer.py`: Recording history analysis for keyword extraction
 
 ### Plugin System (`Plugins/`)
@@ -151,11 +153,23 @@ TextInjector pastes text into active app
 - `server/main.py` 合并应用上下文到会话场景
 
 ### Scene Profiles (`Core/Scene/`)
-- `SceneProfile.swift`: 场景配置模型
+- `SceneProfile.swift`: 场景配置模型（已移除 glossary 字段，术语词典迁移到 ReplacementStorage）
 - 场景可配置：语言（支持跟随全局设置）、润色规则、LLM 提示词
 
+### Text Replacement System
+文本替换系统重构，支持场景感知和分组管理：
+- `ReplacementRule`: 支持 `applicableScenes` 场景筛选和 `caseSensitive` 大小写敏感
+- `ReplacementStorage`: 统一管理替换规则，支持预设导入和场景过滤
+- UI 按替换词分组展示，聚合相同替换目标的多个触发词
+
+### Prompt Management System
+提示词管理系统实现前后端同步：
+- `PromptManager.swift`: 从服务器获取和管理场景提示词
+- `prompt_config.py`: 用户自定义提示词持久化存储 (`~/Library/Application Support/VoiceFlow/user_prompts.json`)
+- `llm_polisher.py`: 优化后的默认提示词采用简洁示例格式
+
 ### Audio Processing Advanced Features
-- **VAD Pre-filtering**: 语音活动检测过滤静音段
+- **VAD-Only Transcription**: 仅基于停顿检测触发转录（300ms 静音阈值），移除周期触发机制
 - **Audio Compression**: Int16 压缩减少传输带宽
 - **Adaptive Noise Floor**: 自适应噪声底部追踪
 - **SNR Monitoring**: 实时信噪比监测，OverlayPanel 显示信号质量
