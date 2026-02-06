@@ -2,7 +2,6 @@ import AppKit
 import ApplicationServices
 
 /// 光标位置追踪器 - 通过 Accessibility API 获取当前输入光标的屏幕位置
-/// 当 Accessibility API 无法获取精确位置时，回退到鼠标点击位置
 final class CursorTracker {
 
     struct CursorPosition {
@@ -12,7 +11,6 @@ final class CursorTracker {
 
         enum PositionSource {
             case accessibility     // 从 Accessibility API 获取
-            case mouseClick        // 从鼠标点击位置回退
             case elementEstimate   // 从元素位置估算
         }
 
@@ -27,83 +25,7 @@ final class CursorTracker {
 
     static let shared = CursorTracker()
 
-    /// 记录最后一次鼠标点击位置
-    private var lastClickPosition: CGPoint?
-    private var lastClickTime: Date?
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-
     private init() {}
-
-    // MARK: - 鼠标点击监听
-
-    /// 开始监听鼠标点击事件
-    func startMonitoringClicks() {
-        guard eventTap == nil else {
-            NSLog("[CursorTracker] 鼠标监听已在运行")
-            return
-        }
-
-        // 使用 NSEvent 全局监听器作为替代方案（更可靠）
-        setupNSEventMonitor()
-    }
-
-    /// 使用 NSEvent 全局监听器（比 CGEvent tap 更可靠）
-    private var globalMonitor: Any?
-    private var localMonitor: Any?
-
-    private func setupNSEventMonitor() {
-        // 全局监听器：监听其他应用的鼠标点击
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            self?.recordClickPosition(event.locationInWindow, screenLocation: NSEvent.mouseLocation)
-        }
-
-        // 本地监听器：监听本应用的鼠标点击
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
-            self?.recordClickPosition(event.locationInWindow, screenLocation: NSEvent.mouseLocation)
-            return event
-        }
-
-        if globalMonitor != nil {
-            NSLog("[CursorTracker] 鼠标点击监听已启动 (NSEvent)")
-        } else {
-            NSLog("[CursorTracker] 无法创建全局鼠标监听器，请检查辅助功能权限")
-        }
-    }
-
-    private func recordClickPosition(_ windowLocation: CGPoint, screenLocation: CGPoint) {
-        // NSEvent.mouseLocation 返回的是 AppKit 坐标系（左下角为原点）
-        lastClickPosition = screenLocation
-        lastClickTime = Date()
-        NSLog("[CursorTracker] 记录鼠标点击位置: \(screenLocation)")
-    }
-
-    /// 停止监听鼠标点击事件
-    func stopMonitoringClicks() {
-        if let monitor = globalMonitor {
-            NSEvent.removeMonitor(monitor)
-            globalMonitor = nil
-        }
-        if let monitor = localMonitor {
-            NSEvent.removeMonitor(monitor)
-            localMonitor = nil
-        }
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            eventTap = nil
-        }
-        if let source = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
-            runLoopSource = nil
-        }
-        NSLog("[CursorTracker] 鼠标点击监听已停止")
-    }
-
-    private func handleMouseClick(_ event: CGEvent) {
-        lastClickPosition = event.location
-        lastClickTime = Date()
-        NSLog("[CursorTracker] 记录鼠标点击位置 (CGEvent): \(event.location)")
-    }
 
     // MARK: - 光标位置获取
 
@@ -123,8 +45,8 @@ final class CursorTracker {
 
         guard focusResult == .success,
               let element = focusedElement else {
-            NSLog("[CursorTracker] 无法获取焦点元素，尝试鼠标点击回退")
-            return getMouseClickFallback()
+            NSLog("[CursorTracker] 无法获取焦点元素")
+            return .invalid
         }
 
         let axElement = element as! AXUIElement
@@ -144,30 +66,7 @@ final class CursorTracker {
             return position
         }
 
-        // 尝试方法4：回退到鼠标点击位置
-        NSLog("[CursorTracker] Accessibility 方法均失败，使用鼠标点击回退")
-        return getMouseClickFallback()
-    }
-
-    /// 获取鼠标点击位置作为回退
-    private func getMouseClickFallback() -> CursorPosition {
-        // 检查是否有有效的点击位置（10秒内）
-        if let clickPos = lastClickPosition,
-           let clickTime = lastClickTime,
-           Date().timeIntervalSince(clickTime) < 10.0 {
-
-            // NSEvent.mouseLocation 已经是 AppKit 坐标系（左下角为原点）
-            let cursorRect = CGRect(
-                x: clickPos.x,
-                y: clickPos.y - 10, // 稍微向下偏移，让悬浮窗显示在点击位置上方
-                width: 2,
-                height: 20
-            )
-            NSLog("[CursorTracker] 使用鼠标点击位置: \(cursorRect)")
-            return CursorPosition(rect: cursorRect, isValid: true, source: .mouseClick)
-        }
-
-        NSLog("[CursorTracker] 无有效的鼠标点击位置")
+        NSLog("[CursorTracker] Accessibility 方法均失败")
         return .invalid
     }
 
