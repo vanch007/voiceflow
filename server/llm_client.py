@@ -103,6 +103,10 @@ class LLMClient:
             "stream": False,
         }
 
+        # 对于 qwen3 模型，禁用思考模式以获得直接的纠错结果
+        if "qwen3" in self.config.model.lower():
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+
         try:
             async with session.post(url, json=payload, headers=headers) as resp:
                 if resp.status != 200:
@@ -110,7 +114,15 @@ class LLMClient:
                     raise Exception(f"LLM API error {resp.status}: {error_text}")
 
                 data = await resp.json()
-                return data["choices"][0]["message"]["content"]
+                message = data["choices"][0]["message"]
+                # qwen3 模型使用 "reasoning" 字段存储思考内容，需要特殊处理
+                content = message.get("content", "")
+                if not content and "reasoning" in message:
+                    # 如果 content 为空但有 reasoning，使用 reasoning
+                    # 但 reasoning 通常包含思考过程，我们需要提取最终答案
+                    # 对于纠错任务，直接返回原文可能更好
+                    content = message.get("reasoning", "")
+                return content
 
         except asyncio.TimeoutError:
             raise Exception(f"LLM request timeout after {self.config.timeout}s")

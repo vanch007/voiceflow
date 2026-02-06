@@ -23,9 +23,9 @@ struct LLMSettingsView: View {
 
     var body: some View {
         Form {
-            Section("LLM 服务配置") {
+            Section("AI 纠错") {
                 // 启用开关
-                Toggle("启用 LLM 智能润色", isOn: Binding(
+                Toggle("启用 AI 纠错", isOn: Binding(
                     get: { settingsManager.llmSettings.isEnabled },
                     set: { newValue in
                         var settings = settingsManager.llmSettings
@@ -34,7 +34,7 @@ struct LLMSettingsView: View {
                     }
                 ))
 
-                Text("使用大语言模型进行智能文本润色，比规则润色更准确")
+                Text("使用 AI 自动纠正语音识别错误（同音字、语气词、断句等）")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }

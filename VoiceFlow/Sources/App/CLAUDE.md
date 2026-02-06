@@ -7,27 +7,5 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #717 | 11:14 PM | 🔴 | Corrected DictionaryWindow Initialization Order in AppDelegate | ~340 |
-| #716 | " | 🔵 | Identified Correct Insertion Point for DictionaryWindow | ~291 |
-| #715 | " | ✅ | Removed DictionaryWindow Initialization from Wrong Location | ~289 |
-| #714 | 11:13 PM | 🔵 | Initialization Order Bug Confirmed - DictionaryManager Created After DictionaryWindow | ~324 |
-| #712 | 10:59 PM | 🔴 | Fixed Custom Dictionary Unable to Open Bug | ~363 |
-| #711 | " | 🔵 | Located Callback Wiring Section for Status Bar Actions | ~266 |
-| #710 | 10:58 PM | ✅ | Initialized DictionaryWindow with Required Dependencies | ~299 |
-| #709 | " | 🔵 | Located Initialization Section for Window Controllers | ~293 |
-| #708 | " | ✅ | Added DictionaryWindow Property Declaration to AppDelegate | ~266 |
-| #707 | " | 🔵 | AppDelegate Property Declarations Confirm No DictionaryWindow Property | ~307 |
-| #706 | " | 🔵 | All Three DictionaryWindow Dependencies Present in AppDelegate | ~363 |
-| #705 | " | 🔵 | DictionaryManager and TermLearner Already Instantiated in AppDelegate | ~351 |
-| #704 | 10:57 PM | 🔵 | AppDelegate Wires Other Callbacks But Missing Dictionary Callback | ~356 |
-| #703 | " | 🔵 | Dictionary Callback Not Wired in AppDelegate | ~280 |
-| #657 | 8:25 PM | 🔵 | AppDelegate Application Lifecycle Orchestration with Text Processing Pipeline | ~1205 |
-| #619 | 8:21 PM | 🔵 | Multi-Language Localization in AppDelegate | ~459 |
-
-### Feb 6, 2026
-
-| ID | Time | T | Title | Read |
-|----|------|---|-------|------|
-| #747 | 12:25 AM | ✅ | Staged Code Changes for Git Commit | ~304 |
-| #746 | 12:24 AM | 🔵 | Session Changes Summary Shows Multiple Modifications | ~364 |
+| #629 | 8:22 PM | ✅ | Staged all resolved merge conflicts in main repository | ~303 |
 </claude-mem-context>

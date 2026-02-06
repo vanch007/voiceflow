@@ -95,7 +95,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeySettingsWindow: HotkeySettingsWindow!
     private var audioRecorder: AudioRecorder!
     private var asrClient: ASRClient!
-    private var dictionaryManager: DictionaryManager!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
     private var settingsManager: SettingsManager!
@@ -108,7 +107,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var onboardingWindow: OnboardingWindow?
     private var sceneManager: SceneManager!
     private var termLearner: TermLearner!
-    private var dictionaryWindow: DictionaryWindow!
     private var isRecording = false
     private var asrServerProcess: Process?
     private var recordingStartTime: Date?
@@ -116,6 +114,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var startSoundID: SystemSoundID = 0
     private var stopSoundID: SystemSoundID = 0
     private var cancellables = Set<AnyCancellable>()
+
+    /// PID file path for tracking ASR server process
+    private static var pidFilePath: String {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let voiceflowDir = appSupport.appendingPathComponent("VoiceFlow")
+        try? FileManager.default.createDirectory(at: voiceflowDir, withIntermediateDirectories: true)
+        return voiceflowDir.appendingPathComponent("asr_server.pid").path
+    }
 
     /// Store the last original (unpolished) transcription for potential future comparison UI
     private var lastOriginalText: String?
@@ -150,6 +156,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Initialize settings manager and text replacement engine
         settingsManager = SettingsManager.shared
         replacementStorage = ReplacementStorage()
+
+        // Migrate existing glossaries and import default presets
+        replacementStorage.migrateExistingGlossaries(from: SceneManager.shared)
+        replacementStorage.importDefaultGlossariesIfNeeded()
+
         replacementEngine = TextReplacementEngine(storage: replacementStorage)
         recordingHistory = RecordingHistory()
         settingsWindowController = SettingsWindowController(
@@ -178,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         textInjector = TextInjector()
 
         asrClient = ASRClient()
+        PromptManager.shared.configure(with: asrClient)
         termLearner = TermLearner()
         historyWindowController = HistoryWindowController(recordingHistory: recordingHistory)
         // Connect RecordingHistory changes to TermLearner auto-refresh
@@ -185,12 +197,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
             self.termLearner.analyzeAndRefresh(from: self.recordingHistory)
         }
-        dictionaryManager = DictionaryManager()
-        dictionaryWindow = DictionaryWindow(
-            dictionaryManager: dictionaryManager,
-            termLearner: termLearner,
-            replacementStorage: replacementStorage
-        )
         audioRecorder = AudioRecorder()
         audioRecorder.onAudioChunk = { [weak self] data in
             self?.asrClient.sendAudioChunk(data)
@@ -218,11 +224,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self.overlayPanel.updateSNR(snr)
             }
-        }
-
-        // Wire DictionaryManager to ASRClient for real-time updates
-        dictionaryManager.onDictionaryChanged = { [weak self] words in
-            self?.asrClient.sendDictionaryUpdate(words)
         }
 
         asrClient.onTranscriptionResult = { [weak self] text in
@@ -280,27 +281,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 var processedText = self.replacementEngine.applyReplacements(to: updatedText)
                 processedText = self.pluginManager.processText(processedText)
 
-                // 更新剪贴板（如果用户还没有进行其他操作）
-                let pasteboard = NSPasteboard.general
-                let currentChangeCount = pasteboard.changeCount
-
-                // 检查剪贴板是否被用户修改过
-                if let lastInjectedChangeCount = UserDefaults.standard.object(forKey: "lastInjectedChangeCount") as? Int,
-                   currentChangeCount == lastInjectedChangeCount {
-                    // 剪贴板未被修改，可以安全更新
-                    pasteboard.clearContents()
-                    pasteboard.setString(processedText, forType: .string)
-                    UserDefaults.standard.set(pasteboard.changeCount, forKey: "lastInjectedChangeCount")
-                    NSLog("[AppDelegate] Clipboard updated with LLM polished text")
-                } else {
-                    NSLog("[AppDelegate] Clipboard modified by user, skipping update")
-                }
+                // 使用全选+粘贴替换已输入的文本
+                self.textInjector.replaceLastInjectedText(with: processedText)
             }
         }
 
         asrClient.onConnectionStatusChanged = { [weak self] connected in
             DispatchQueue.main.async {
                 self?.statusBarController.updateConnectionStatus(connected: connected)
+                // 连接成功后自动同步 LLM 配置到服务器
+                if connected, let self = self {
+                    let llmSettings = self.settingsManager.llmSettings
+                    if llmSettings.isEnabled {
+                        self.asrClient.configureLLM(llmSettings)
+                        NSLog("[AppDelegate] Auto-synced LLM config on connect: model=%@", llmSettings.model)
+                    }
+                }
             }
         }
 
@@ -362,11 +358,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
         }
 
-        // Setup dictionary window action
-        statusBarController.onDictionaryOpen = { [weak self] in
-            self?.dictionaryWindow.show()
-        }
-
         // Observe hotkey enabled setting
         settingsManager.$hotkeyEnabled
             .sink { [weak self] enabled in
@@ -389,14 +380,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self else { return }
             self.asrClient.connect()
-            // Send initial dictionary to server after connection
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                let words = self.dictionaryManager.getWords()
-                if !words.isEmpty {
-                    self.asrClient.sendDictionaryUpdate(words)
-                    NSLog("[AppDelegate] Sent initial dictionary with \(words.count) words to ASR server")
-                }
-            }
         }
 
         // Show onboarding wizard on first launch
@@ -425,11 +408,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSLog("[Settings] Sound effects %@", enabled ? "enabled" : "disabled")
             }
         }
+
+        // Sync LLM settings to ASR server
+        if category == "llm" && key == "settings" {
+            asrClient.configureLLM(settingsManager.llmSettings)
+            NSLog("[Settings] LLM config synced to server: model=%@", settingsManager.llmSettings.model)
+        }
     }
 
     // MARK: - ASR Server Management
 
+    /// Kill any orphan ASR server process from previous sessions
+    private func cleanupOrphanASRServer() {
+        let pidFile = Self.pidFilePath
+        guard FileManager.default.fileExists(atPath: pidFile),
+              let pidString = try? String(contentsOfFile: pidFile, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+              let pid = Int32(pidString) else {
+            return
+        }
+
+        // Check if process is still running
+        if kill(pid, 0) == 0 {
+            NSLog("[ASRServer] Found orphan process (PID: %d), terminating...", pid)
+            kill(pid, SIGTERM)
+            // Give it a moment to terminate gracefully
+            usleep(500_000) // 500ms
+            // Force kill if still running
+            if kill(pid, 0) == 0 {
+                kill(pid, SIGKILL)
+                NSLog("[ASRServer] Force killed orphan process (PID: %d)", pid)
+            }
+        }
+
+        // Clean up PID file
+        try? FileManager.default.removeItem(atPath: pidFile)
+    }
+
+    /// Write current ASR server PID to file for cleanup on next launch
+    private func writeASRServerPID(_ pid: Int32) {
+        do {
+            try String(pid).write(toFile: Self.pidFilePath, atomically: true, encoding: .utf8)
+            NSLog("[ASRServer] PID file written: %@", Self.pidFilePath)
+        } catch {
+            NSLog("[ASRServer] Failed to write PID file: %@", error.localizedDescription)
+        }
+    }
+
+    /// Remove PID file after server stops
+    private func removeASRServerPIDFile() {
+        try? FileManager.default.removeItem(atPath: Self.pidFilePath)
+    }
+
     private func startASRServer() {
+        // Clean up any orphan server from previous crash/force quit
+        cleanupOrphanASRServer()
+
         // TODO: Pass selected model size (settingsManager.modelSize) to ASR server
         // This will be implemented in a future task when server supports model selection
 
@@ -468,6 +501,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             asrServerProcess = process
             NSLog("[ASRServer] Started (PID: %d)", process.processIdentifier)
 
+            // Write PID file for cleanup on next launch if crash occurs
+            writeASRServerPID(process.processIdentifier)
+
             // Monitor process termination
             process.terminationHandler = { proc in
                 NSLog("[ASRServer] Process terminated with code: %d", proc.terminationStatus)
@@ -478,11 +514,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func stopASRServer() {
-        guard let process = asrServerProcess, process.isRunning else { return }
+        guard let process = asrServerProcess, process.isRunning else {
+            removeASRServerPIDFile()
+            return
+        }
         process.terminate()
         process.waitUntilExit()
         NSLog("[ASRServer] Stopped")
         asrServerProcess = nil
+        removeASRServerPIDFile()
     }
 
     private func setupSignalHandlers() {

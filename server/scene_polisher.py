@@ -54,49 +54,6 @@ class ScenePolisher:
         self.base_polisher = base_polisher or TextPolisher()
         logger.info("ScenePolisher initialized")
 
-    def apply_glossary(self, text: str, glossary: list) -> str:
-        """Apply glossary term replacements to text.
-
-        Args:
-            text: The text to process
-            glossary: List of glossary entries, each with:
-                      - term: The term to find
-                      - replacement: The replacement text
-                      - case_sensitive: Whether matching is case-sensitive
-
-        Returns:
-            Text with glossary terms replaced
-        """
-        if not text or not glossary:
-            return text
-
-        result = text
-        for entry in glossary:
-            term = entry.get("term", "")
-            replacement = entry.get("replacement", "")
-            case_sensitive = entry.get("case_sensitive", False)
-
-            if not term or not replacement:
-                continue
-
-            try:
-                if case_sensitive:
-                    # 区分大小写的简单替换
-                    result = result.replace(term, replacement)
-                else:
-                    # 不区分大小写的替换
-                    pattern = re.compile(re.escape(term), re.IGNORECASE)
-                    result = pattern.sub(replacement, result)
-
-                if term in text or (not case_sensitive and term.lower() in text.lower()):
-                    logger.debug(f"Glossary: '{term}' -> '{replacement}'")
-
-            except Exception as e:
-                logger.warning(f"Glossary replacement failed for '{term}': {e}")
-                continue
-
-        return result
-
     def polish(self, text: str, scene: dict = None) -> str:
         """Polish text based on scene context.
 
@@ -106,7 +63,6 @@ class ScenePolisher:
                    - type: Scene type (social/coding/writing/general)
                    - polish_style: Polish style (casual/formal/technical/neutral)
                    - custom_prompt: Custom prompt to use instead of default
-                   - glossary: List of term replacement entries
 
         Returns:
             The polished text
@@ -121,16 +77,12 @@ class ScenePolisher:
         scene_type = scene.get("type", "general")
         polish_style = scene.get("polish_style")
         custom_prompt = scene.get("custom_prompt")
-        glossary = scene.get("glossary", [])
 
         # 如果没有指定风格，使用场景默认风格
         if not polish_style:
             polish_style = self.SCENE_DEFAULT_STYLES.get(scene_type, "neutral")
 
-        logger.info(f"Polishing with scene={scene_type}, style={polish_style}, glossary_count={len(glossary)}")
-
-        # 第一步：应用术语字典替换
-        text = self.apply_glossary(text, glossary)
+        logger.info(f"Polishing with scene={scene_type}, style={polish_style}")
 
         # 如果有自定义提示词，使用它
         if custom_prompt:

@@ -136,14 +136,14 @@ class SelfCorrectionDetector:
     """Detects and handles self-correction phrases in transcribed text."""
 
     # 中文纠正词模式
+    # 注意：只包含明确表示"纠正"意图的词，避免误伤常见词汇
     CHINESE_CORRECTION_PATTERNS = [
         r'不对[，,\s]*',  # "不对，"
         r'我说错了[，,\s]*',  # "我说错了，"
         r'改一下[，,\s]*',  # "改一下，"
-        r'应该是[，,\s]*',  # "应该是，" - 保留后面的内容
         r'纠正一下[，,\s]*',  # "纠正一下，"
         r'错了[，,\s]*',  # "错了，"
-        r'不是[，,\s]*',  # "不是，" - 需要上下文判断
+        # 注意："不是" 和 "应该是" 在日常语句中太常见，移除以避免误删
     ]
 
     # 英文纠正词模式
@@ -344,8 +344,9 @@ class TextPolisher:
         original_text = text
         logger.debug(f"Polishing text: {text[:50]}...")
 
-        # Step 1: Apply self-correction detection
-        polished = self.self_correction.detect_and_correct(text)
+        # Step 1: Skip self-correction detection (disabled - too aggressive, causes false positives)
+        # polished = self.self_correction.detect_and_correct(text)
+        polished = text
 
         # Step 2: Remove filler words
         polished = self.filler_pattern.sub(' ', polished)

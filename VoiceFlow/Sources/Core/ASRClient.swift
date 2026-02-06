@@ -27,6 +27,9 @@ final class ASRClient {
     var onErrorStateChanged: ((Bool, String?) -> Void)?
     var onLLMConnectionTestResult: ((Bool, Int?) -> Void)?  // LLM 连接测试结果
     var onHistoryAnalysisResult: ((HistoryAnalysisResult?) -> Void)?  // 历史分析结果
+    var onDefaultPromptsReceived: (([String: String]) -> Void)?  // 默认提示词回调
+    var onCustomPromptsReceived: (([String: String]) -> Void)?  // 自定义提示词回调
+    var onPromptSaved: ((String, Bool) -> Void)?  // 提示词保存结果 (sceneType, success)
 
     private var webSocketTask: URLSessionWebSocketTask?
     private let session: URLSession = URLSession(configuration: .default)
@@ -122,10 +125,14 @@ final class ASRClient {
             "bundle_id": frontmostApp?.bundleIdentifier ?? ""
         ]
 
+        // 判断是否启用 LLM 纠错（全局是总开关，场景可在全局开启时禁用）
+        let shouldUseLLM = settingsManager.llmSettings.isEnabled && (profile.useLLMPolish ?? true)
+
         // 构建基础消息
         var message: [String: Any] = [
             "type": "start",
             "enable_polish": profile.enablePolish ? "true" : "false",
+            "use_llm_polish": shouldUseLLM,
             "use_timestamps": settingsManager.useTimestamps,
             "model_id": modelId,
             "language": profile.getEffectiveLanguage().rawValue,
@@ -141,18 +148,6 @@ final class ASRClient {
             sceneInfo["custom_prompt"] = customPrompt
         } else if let defaultPrompt = profile.getEffectivePrompt() {
             sceneInfo["custom_prompt"] = defaultPrompt
-        }
-
-        // 添加术语字典
-        if !profile.glossary.isEmpty {
-            let glossaryData = profile.glossary.map { entry -> [String: Any] in
-                return [
-                    "term": entry.term,
-                    "replacement": entry.replacement,
-                    "case_sensitive": entry.caseSensitive
-                ]
-            }
-            sceneInfo["glossary"] = glossaryData
         }
 
         message["scene"] = sceneInfo
@@ -173,22 +168,6 @@ final class ASRClient {
 
     func sendStop() {
         sendJSON(["type": "stop"])
-    }
-
-    func sendDictionaryUpdate(_ words: [String]) {
-        guard let data = try? JSONSerialization.data(withJSONObject: ["type": "update_dictionary", "words": words]),
-              let str = String(data: data, encoding: .utf8) else {
-            print("[ASRClient] Failed to serialize dictionary update")
-            return
-        }
-        let message = URLSessionWebSocketTask.Message.string(str)
-        webSocketTask?.send(message) { error in
-            if let error {
-                print("[ASRClient] Send dictionary update error: \(error)")
-            } else {
-                print("[ASRClient] Dictionary updated with \(words.count) words")
-            }
-        }
     }
 
     func sendAudioChunk(_ data: Data) {
@@ -293,6 +272,30 @@ final class ASRClient {
                 DispatchQueue.main.async { [weak self] in
                     self?.onHistoryAnalysisResult?(nil)
                 }
+            }
+
+        case "default_prompts":
+            if let prompts = json["prompts"] as? [String: String] {
+                NSLog("[ASRClient] Received default prompts: \(prompts.count) scenes")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onDefaultPromptsReceived?(prompts)
+                }
+            }
+
+        case "custom_prompts":
+            if let prompts = json["prompts"] as? [String: String] {
+                NSLog("[ASRClient] Received custom prompts: \(prompts.count) scenes")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onCustomPromptsReceived?(prompts)
+                }
+            }
+
+        case "save_custom_prompt_ack":
+            let success = json["success"] as? Bool ?? false
+            let sceneType = json["scene_type"] as? String ?? ""
+            NSLog("[ASRClient] Save prompt ack: scene=%@, success=%@", sceneType, success ? "true" : "false")
+            DispatchQueue.main.async { [weak self] in
+                self?.onPromptSaved?(sceneType, success)
             }
 
         default:
@@ -431,6 +434,36 @@ final class ASRClient {
         NSLog("[ASRClient] Sent history analysis request: \(entries.count) entries for \(appName)")
     }
 
+    // MARK: - Prompt Management Methods
+
+    /// Request default prompts from server
+    func requestDefaultPrompts() {
+        let message: [String: Any] = ["type": "get_default_prompts"]
+        sendJSONObject(message)
+        NSLog("[ASRClient] Requesting default prompts...")
+    }
+
+    /// Request custom prompts from server
+    func requestCustomPrompts() {
+        let message: [String: Any] = ["type": "get_custom_prompts"]
+        sendJSONObject(message)
+        NSLog("[ASRClient] Requesting custom prompts...")
+    }
+
+    /// Save custom prompt for a scene type
+    func saveCustomPrompt(sceneType: String, prompt: String?, useDefault: Bool) {
+        var message: [String: Any] = [
+            "type": "save_custom_prompt",
+            "scene_type": sceneType,
+            "use_default": useDefault
+        ]
+        if let prompt = prompt {
+            message["prompt"] = prompt
+        }
+        sendJSONObject(message)
+        NSLog("[ASRClient] Saving custom prompt for scene: %@, useDefault: %@", sceneType, useDefault ? "true" : "false")
+    }
+
     /// Send start with LLM polish option
     func sendStartWithLLM(useLLMPolish: Bool) {
         let profile = SceneManager.shared.getEffectiveProfile()
@@ -443,8 +476,8 @@ final class ASRClient {
             "bundle_id": frontmostApp?.bundleIdentifier ?? ""
         ]
 
-        // Determine if LLM should be used (profile override or global setting)
-        let shouldUseLLM = profile.useLLMPolish ?? (settingsManager.llmSettings.isEnabled && useLLMPolish)
+        // 判断是否启用 LLM 纠错（全局是总开关，场景可在全局开启时禁用）
+        let shouldUseLLM = settingsManager.llmSettings.isEnabled && (profile.useLLMPolish ?? true)
 
         var message: [String: Any] = [
             "type": "start",
@@ -463,17 +496,6 @@ final class ASRClient {
             sceneInfo["custom_prompt"] = customPrompt
         } else if let defaultPrompt = profile.getEffectivePrompt() {
             sceneInfo["custom_prompt"] = defaultPrompt
-        }
-
-        if !profile.glossary.isEmpty {
-            let glossaryData = profile.glossary.map { entry -> [String: Any] in
-                return [
-                    "term": entry.term,
-                    "replacement": entry.replacement,
-                    "case_sensitive": entry.caseSensitive
-                ]
-            }
-            sceneInfo["glossary"] = glossaryData
         }
 
         message["scene"] = sceneInfo

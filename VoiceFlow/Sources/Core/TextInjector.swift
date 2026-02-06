@@ -111,4 +111,74 @@ final class TextInjector {
         keyUp.post(tap: .cgSessionEventTap)
         NSLog("[TextInjector] 📤 Posted keyUp event")
     }
+
+    /// 替换已输入的文本（用于 LLM 纠错后更新）
+    /// 通过模拟 Cmd+A 全选 + Cmd+V 粘贴实现替换
+    func replaceLastInjectedText(with newText: String) {
+        NSLog("[TextInjector] 🔄 Replacing with LLM corrected text: \(newText.prefix(50))")
+
+        // Check Accessibility permissions
+        guard AXIsProcessTrusted() else {
+            NSLog("[TextInjector] ❌ No Accessibility permission for replacement")
+            return
+        }
+
+        // Process text through enabled plugins
+        let processedText = PluginManager.shared.processText(newText)
+
+        // Save current clipboard
+        let pasteboard = NSPasteboard.general
+        let previousContents = pasteboard.string(forType: .string)
+
+        // Set new text to clipboard
+        pasteboard.clearContents()
+        pasteboard.setString(processedText, forType: .string)
+        UserDefaults.standard.set(pasteboard.changeCount, forKey: "lastInjectedChangeCount")
+
+        // Simulate Cmd+A (Select All) then Cmd+V (Paste)
+        simulateSelectAllAndPaste()
+
+        // Restore clipboard after delay
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + maxPasteWaitTime) {
+            DispatchQueue.main.async {
+                pasteboard.clearContents()
+                if let previous = previousContents {
+                    pasteboard.setString(previous, forType: .string)
+                }
+                NSLog("[TextInjector] 📋 Clipboard restored after replacement")
+            }
+        }
+
+        NSLog("[TextInjector] ✅ Replacement initiated")
+    }
+
+    private func simulateSelectAllAndPaste() {
+        usleep(50000)  // 50ms delay
+
+        let source = CGEventSource(stateID: .hidSystemState)
+
+        // Cmd+A (Select All)
+        if let keyDownA = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_A), keyDown: true),
+           let keyUpA = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_A), keyDown: false) {
+            keyDownA.flags = .maskCommand
+            keyUpA.flags = .maskCommand
+            keyDownA.post(tap: .cgSessionEventTap)
+            usleep(10000)
+            keyUpA.post(tap: .cgSessionEventTap)
+            NSLog("[TextInjector] ⌨️ Cmd+A sent (Select All)")
+        }
+
+        usleep(50000)  // 50ms delay between select and paste
+
+        // Cmd+V (Paste)
+        if let keyDownV = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
+           let keyUpV = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false) {
+            keyDownV.flags = .maskCommand
+            keyUpV.flags = .maskCommand
+            keyDownV.post(tap: .cgSessionEventTap)
+            usleep(10000)
+            keyUpV.post(tap: .cgSessionEventTap)
+            NSLog("[TextInjector] ⌨️ Cmd+V sent (Paste)")
+        }
+    }
 }

@@ -129,6 +129,40 @@ TextInjector pastes text into active app
 - `{"type": "test_llm_connection"}` - Test LLM service availability (Client → Server)
 - `{"type": "analyze_history", "entries": [...], "app_name": "..."}` - Analyze recording history (Client → Server)
 
+## Recent Features
+
+### Two-Phase Polish Strategy
+文本润色采用两阶段响应策略减少感知延迟：
+1. 第一阶段：快速返回基础润色结果
+2. 第二阶段：通过 `polish_update` 消息推送 LLM 增强结果
+
+相关文件：`ASRClient.swift` (onPolishUpdate)、`server/main.py`、`TextInjector.swift`
+
+### FreeSpeak Mode
+切换式录音模式（区别于按住触发），支持：
+- `HotkeyConfig.swift` 中的 `freeSpeak` 触发类型
+- 静音检测自动停止录音（`AudioRecorder.swift` 中的 silence detection）
+- `OverlayPanel` 显示静音倒计时
+
+### Context-Aware Polishing
+根据活跃应用自动选择润色场景：
+- `ASRClient` 在 start 消息中发送 `active_app` 上下文
+- `LLMPolisher` 根据应用名称映射到对应场景
+- `server/main.py` 合并应用上下文到会话场景
+
+### Scene Profiles (`Core/Scene/`)
+- `SceneProfile.swift`: 场景配置模型
+- 场景可配置：语言（支持跟随全局设置）、润色规则、LLM 提示词
+
+### Audio Processing Advanced Features
+- **VAD Pre-filtering**: 语音活动检测过滤静音段
+- **Audio Compression**: Int16 压缩减少传输带宽
+- **Adaptive Noise Floor**: 自适应噪声底部追踪
+- **SNR Monitoring**: 实时信噪比监测，OverlayPanel 显示信号质量
+
+### Chinese Dialect Support
+`server/main.py` 的 `LANGUAGE_MAP` 支持中文方言选项传递给 Qwen3-ASR。
+
 ## Key Files for Common Tasks
 
 | Task | Files |

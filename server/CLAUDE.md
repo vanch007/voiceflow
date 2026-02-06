@@ -11,4 +11,15 @@
 | #668 | 8:26 PM | ✅ | Added shutil Import to ASR Server | ~178 |
 | #665 | " | 🔵 | Python ASR Server with VAD Streaming, Model Caching, and Plugin Pipeline | ~1062 |
 | #651 | 8:24 PM | 🔵 | Python PluginLoader with Dynamic Module Loading via importlib | ~807 |
+
+### Feb 6, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #928 | 4:01 PM | 🔵 | VoiceFlow macOS Voice-to-Text Application Startup and ASR Processing | ~626 |
+| #891 | 3:29 PM | 🔵 | LLM Polisher with App-Aware Context and Scene Detection | ~464 |
+| #890 | 3:28 PM | 🔵 | WebSocket LLM Configuration Message Handler | ~236 |
+| #889 | " | 🔵 | Two-Stage Text Polishing Pipeline with Rule-Based and LLM Refinement | ~528 |
+| #888 | " | 🔵 | LLM Polisher Integration Architecture | ~438 |
+| #887 | 3:26 PM | 🔵 | VoiceFlow WebSocket Server Recording Configuration | ~500 |
 </claude-mem-context>

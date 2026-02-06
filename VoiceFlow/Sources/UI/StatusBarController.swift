@@ -18,7 +18,6 @@ final class StatusBarController {
     var onShowHistory: (() -> Void)?
     var onTextReplacement: (() -> Void)?
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
-    var onDictionaryOpen: (() -> Void)?
     var onHotkeySettings: (() -> Void)?
     var onSceneSettings: (() -> Void)?
 
@@ -128,11 +127,6 @@ final class StatusBarController {
                 "en": "No Plugins",
                 "zh": "无插件"
             ],
-            "dictionary": [
-                "ko": "사용자 사전",
-                "en": "Custom Dictionary",
-                "zh": "自定义词典"
-            ],
             "model_info": [
                 "ko": "모델: Qwen3-ASR-0.6B (MLX)",
                 "en": "Model: Qwen3-ASR-0.6B (MLX)",
@@ -204,9 +198,9 @@ final class StatusBarController {
                 "zh": "权限检查..."
             ],
             "text_polish": [
-                "ko": "텍스트 다듬기",
-                "en": "Text Polish",
-                "zh": "文本润色"
+                "ko": "AI 교정",
+                "en": "AI Correction",
+                "zh": "AI 纠错"
             ],
             "timestamps": [
                 "ko": "타임스탬프 분할",
@@ -392,10 +386,10 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Text Polish Toggle
+        // AI 纠错 Toggle (使用 llmSettings.isEnabled)
         let polishItem = NSMenuItem(title: localized("text_polish"), action: #selector(toggleTextPolish), keyEquivalent: "")
         polishItem.target = self
-        polishItem.state = SettingsManager.shared.textPolishEnabled ? .on : .off
+        polishItem.state = SettingsManager.shared.llmSettings.isEnabled ? .on : .off
         polishItem.image = NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: nil)
         menu.addItem(polishItem)
 
@@ -542,14 +536,6 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Custom Dictionary menu item
-        let dictItem = NSMenuItem(title: localized("dictionary"), action: #selector(openDictionary), keyEquivalent: "")
-        dictItem.target = self
-        dictItem.image = NSImage(systemSymbolName: "book.closed", accessibilityDescription: nil)
-        menu.addItem(dictItem)
-
-        menu.addItem(NSMenuItem.separator())
-
         let historyItem = NSMenuItem(title: localized("recording_history"), action: #selector(showHistoryAction), keyEquivalent: "h")
         historyItem.target = self
         historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
@@ -610,10 +596,6 @@ final class StatusBarController {
         }
 
         buildMenu()
-    }
-
-    @objc private func openDictionary() {
-        onDictionaryOpen?()
     }
 
     @objc private func selectColoredStyle() {
@@ -689,7 +671,9 @@ final class StatusBarController {
     // MARK: - Toggle Actions
 
     @objc private func toggleTextPolish() {
-        SettingsManager.shared.textPolishEnabled.toggle()
+        var settings = SettingsManager.shared.llmSettings
+        settings.isEnabled.toggle()
+        SettingsManager.shared.llmSettings = settings
         buildMenu()
     }
 
