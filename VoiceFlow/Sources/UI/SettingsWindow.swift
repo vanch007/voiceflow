@@ -114,6 +114,19 @@ private struct SettingsContentView: View {
             }
 
             Section {
+                Toggle("实时降噪", isOn: $settingsManager.enableDenoise)
+                Text("使用频谱门控算法消除环境噪音")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } header: {
+                Text("音频处理")
+            } footer: {
+                Text("在嘈杂环境下可提升识别准确率，延迟仅约 2ms")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section {
                 Toggle("开机自动启动", isOn: $settingsManager.autoLaunchEnabled)
                 Text("启用后，应用将在您登录 macOS 时自动启动")
                     .font(.caption)

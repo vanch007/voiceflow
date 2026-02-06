@@ -4,3 +4,4 @@ mlx-audio>=0.1.0
 numpy
 websockets
 openai  # for text polisher
+noisereduce>=3.0.0  # Real-time noise suppression (TorchGate)

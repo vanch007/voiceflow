@@ -169,6 +169,13 @@ final class SettingsManager: ObservableObject {
         }
     }
 
+    @Published var enableDenoise: Bool {
+        didSet {
+            UserDefaults.standard.set(enableDenoise, forKey: Keys.enableDenoise)
+            NSLog("[SettingsManager] Enable denoise changed to: \(enableDenoise)")
+        }
+    }
+
     @Published var llmSettings: LLMSettings {
         didSet {
             saveLLMSettings()
@@ -302,6 +309,7 @@ final class SettingsManager: ObservableObject {
         static let asrLanguage = "asrLanguage"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
         static let useTimestamps = "useTimestamps"
+        static let enableDenoise = "enableDenoise"
         // General settings keys
         static let language = "settings.general.language"
         static let soundEffectsEnabled = "settings.general.soundEffectsEnabled"
@@ -340,6 +348,9 @@ final class SettingsManager: ObservableObject {
 
         // Load use timestamps (default: false)
         self.useTimestamps = UserDefaults.standard.object(forKey: Keys.useTimestamps) as? Bool ?? false
+
+        // Load enable denoise (default: false)
+        self.enableDenoise = UserDefaults.standard.object(forKey: Keys.enableDenoise) as? Bool ?? false
 
         // Load LLM settings
         self.llmSettings = Self.loadLLMSettingsStatic()

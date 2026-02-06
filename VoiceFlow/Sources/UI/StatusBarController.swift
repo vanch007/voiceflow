@@ -207,6 +207,11 @@ final class StatusBarController {
                 "en": "Timestamp Segmentation",
                 "zh": "时间戳断句"
             ],
+            "denoise": [
+                "ko": "실시간 노이즈 제거",
+                "en": "Real-time Denoise",
+                "zh": "实时降噪"
+            ],
             "language": [
                 "ko": "언어",
                 "en": "Language",
@@ -399,6 +404,13 @@ final class StatusBarController {
         timestampItem.state = SettingsManager.shared.useTimestamps ? .on : .off
         timestampItem.image = NSImage(systemSymbolName: "clock", accessibilityDescription: nil)
         menu.addItem(timestampItem)
+
+        // Denoise Toggle
+        let denoiseItem = NSMenuItem(title: localized("denoise"), action: #selector(toggleDenoise), keyEquivalent: "")
+        denoiseItem.target = self
+        denoiseItem.state = SettingsManager.shared.enableDenoise ? .on : .off
+        denoiseItem.image = NSImage(systemSymbolName: "waveform.path.ecg", accessibilityDescription: nil)
+        menu.addItem(denoiseItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -679,6 +691,11 @@ final class StatusBarController {
 
     @objc private func toggleTimestamps() {
         SettingsManager.shared.useTimestamps.toggle()
+        buildMenu()
+    }
+
+    @objc private func toggleDenoise() {
+        SettingsManager.shared.enableDenoise.toggle()
         buildMenu()
     }
 

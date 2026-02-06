@@ -17,6 +17,7 @@ from llm_client import LLMClient, LLMConfig, init_llm_client, get_llm_client, sh
 from llm_polisher import LLMPolisher, init_llm_polisher, get_llm_polisher, DEFAULT_POLISH_PROMPTS
 from prompt_config import get_prompt_config
 from history_analyzer import HistoryAnalyzer, init_history_analyzer, get_history_analyzer
+from audio_denoiser import get_denoiser, init_denoiser
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -368,6 +369,15 @@ def warmup_model():
     except Exception as e:
         logger.warning(f"⚠️ Warmup failed: {e}")
 
+    # Warmup denoiser to avoid first-call latency
+    logger.info("Warming up denoiser...")
+    try:
+        denoiser = get_denoiser()
+        _ = denoiser.denoise(silent_audio, sample_rate=16000)
+        logger.info("✅ Denoiser warmup completed.")
+    except Exception as e:
+        logger.warning(f"⚠️ Denoiser warmup failed: {e}")
+
     logger.info("Initializing text polisher...")
     polisher = TextPolisher()
     scene_polisher = ScenePolisher(polisher)
@@ -392,6 +402,7 @@ async def handle_client(websocket):
     session_model_id = None
     session_language = None
     session_scene = None  # 场景信息
+    session_denoise = False  # 降噪开关
     transcription_task: asyncio.Task = None
 
     try:
@@ -516,12 +527,13 @@ async def handle_client(websocket):
                     session_language = LANGUAGE_MAP.get(lang_code, None)
                     session_scene = data.get("scene", {})  # 解析场景信息
                     active_app = data.get("active_app", {})  # 解析活跃应用信息
+                    session_denoise = data.get("enable_denoise", False)  # 解析降噪开关
 
                     # 将 active_app 信息合并到 session_scene
                     if active_app:
                         session_scene["active_app"] = active_app
 
-                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, LLM: {use_llm_polish}, Timestamps: {use_timestamps}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}")
+                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, LLM: {use_llm_polish}, Timestamps: {use_timestamps}, Denoise: {session_denoise}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}")
 
                     # 确保模型已加载
                     if session_model_id:
@@ -559,6 +571,9 @@ async def handle_client(websocket):
 
                     raw = b"".join(audio_chunks)
                     samples = np.frombuffer(raw, dtype=np.float32)
+
+                    # 注意：降噪已在音频接收时实时处理，此处无需再次降噪
+
                     duration = len(samples) / 16000
                     logger.info(f"📊 音频: {len(samples)} 采样点 ({duration:.1f}s)")
 
@@ -693,16 +708,25 @@ async def handle_client(websocket):
 
                     if format_id == 0x01:
                         # Float32 格式：跳过格式标识字节
-                        audio_chunks.append(message[1:])
+                        samples = np.frombuffer(message[1:], dtype=np.float32)
                     elif format_id == 0x02:
                         # Int16 格式：转换为 Float32
                         audio_data = message[1:]
                         samples = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32767.0
-                        audio_chunks.append(samples.tobytes())
                     else:
                         # 旧格式（无标识，整个 message 直接是 Float32 数据）
-                        # 注意：不要剥离第一个字节，它是音频数据的一部分
-                        audio_chunks.append(message)
+                        samples = np.frombuffer(message, dtype=np.float32)
+
+                    # 实时降噪（在存入 chunks 之前）
+                    if session_denoise and len(samples) >= 160:
+                        try:
+                            denoiser = get_denoiser()
+                            if denoiser.is_enabled:
+                                samples = denoiser.denoise(samples, sample_rate=16000)
+                        except Exception as e:
+                            pass  # 静默失败，使用原始音频
+
+                    audio_chunks.append(samples.tobytes())
                 else:
                     # 空数据或单字节，忽略
                     pass
