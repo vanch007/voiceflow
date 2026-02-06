@@ -202,6 +202,26 @@ final class StatusBarController {
                 "ko": "권한 확인...",
                 "en": "Check Permissions...",
                 "zh": "权限检查..."
+            ],
+            "text_polish": [
+                "ko": "텍스트 다듬기",
+                "en": "Text Polish",
+                "zh": "文本润色"
+            ],
+            "timestamps": [
+                "ko": "타임스탬프 분할",
+                "en": "Timestamp Segmentation",
+                "zh": "时间戳断句"
+            ],
+            "language": [
+                "ko": "언어",
+                "en": "Language",
+                "zh": "语言"
+            ],
+            "more_languages": [
+                "ko": "더 많은 언어...",
+                "en": "More Languages...",
+                "zh": "更多语言..."
             ]
         ]
 
@@ -372,6 +392,31 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        // Text Polish Toggle
+        let polishItem = NSMenuItem(title: localized("text_polish"), action: #selector(toggleTextPolish), keyEquivalent: "")
+        polishItem.target = self
+        polishItem.state = SettingsManager.shared.textPolishEnabled ? .on : .off
+        polishItem.image = NSImage(systemSymbolName: "wand.and.stars", accessibilityDescription: nil)
+        menu.addItem(polishItem)
+
+        // Timestamp Segmentation Toggle
+        let timestampItem = NSMenuItem(title: localized("timestamps"), action: #selector(toggleTimestamps), keyEquivalent: "")
+        timestampItem.target = self
+        timestampItem.state = SettingsManager.shared.useTimestamps ? .on : .off
+        timestampItem.image = NSImage(systemSymbolName: "clock", accessibilityDescription: nil)
+        menu.addItem(timestampItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // Language quick switch submenu
+        let languageSubmenu = buildLanguageSubmenu()
+        let currentLang = SettingsManager.shared.asrLanguage
+        let languageTitle = "\(localized("language")): \(currentLang.displayName)"
+        let languageItem = NSMenuItem(title: languageTitle, action: nil, keyEquivalent: "")
+        languageItem.image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
+        languageItem.submenu = languageSubmenu
+        menu.addItem(languageItem)
+
         // Scene selection submenu
         let sceneSubmenu = NSMenu()
         let sceneManager = SceneManager.shared
@@ -505,37 +550,15 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        // 模型信息（MLX版本只支持一个模型）
-        let modelInfoItem = NSMenuItem(title: localized("model_info"), action: nil, keyEquivalent: "")
-        modelInfoItem.isEnabled = false
-        menu.addItem(modelInfoItem)
-
-        menu.addItem(NSMenuItem.separator())
-
         let historyItem = NSMenuItem(title: localized("recording_history"), action: #selector(showHistoryAction), keyEquivalent: "h")
         historyItem.target = self
+        historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
         menu.addItem(historyItem)
-
-        menu.addItem(NSMenuItem.separator())
 
         let settingsItem = NSMenuItem(title: localized("settings"), action: #selector(settingsAction), keyEquivalent: ",")
         settingsItem.target = self
+        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
         menu.addItem(settingsItem)
-
-        let hotkeySettingsItem = NSMenuItem(title: localized("hotkey_settings"), action: #selector(hotkeySettingsAction), keyEquivalent: "")
-        hotkeySettingsItem.target = self
-        menu.addItem(hotkeySettingsItem)
-
-        let textReplacementItem = NSMenuItem(title: localized("text_replacement"), action: #selector(textReplacementAction), keyEquivalent: "")
-        textReplacementItem.target = self
-        menu.addItem(textReplacementItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let permissionsItem = NSMenuItem(title: localized("check_permissions"), action: #selector(checkPermissionsAction), keyEquivalent: "")
-        permissionsItem.target = self
-        permissionsItem.image = NSImage(systemSymbolName: "checkmark.shield", accessibilityDescription: nil)
-        menu.addItem(permissionsItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -627,6 +650,52 @@ final class StatusBarController {
 
     @objc private func sceneSettingsAction() {
         onSceneSettings?()
+    }
+
+    // MARK: - Language Actions
+
+    private func buildLanguageSubmenu() -> NSMenu {
+        let submenu = NSMenu()
+        let currentLang = SettingsManager.shared.asrLanguage
+
+        // Common languages (top 6)
+        let commonLanguages: [ASRLanguage] = [.auto, .chinese, .english, .cantonese, .japanese, .korean]
+
+        for lang in commonLanguages {
+            let item = NSMenuItem(title: lang.displayName, action: #selector(selectLanguage(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = lang.rawValue
+            item.state = (currentLang == lang) ? .on : .off
+            submenu.addItem(item)
+        }
+
+        submenu.addItem(NSMenuItem.separator())
+
+        // "More Languages..." entry -> opens settings
+        let moreItem = NSMenuItem(title: localized("more_languages"), action: #selector(settingsAction), keyEquivalent: "")
+        moreItem.target = self
+        submenu.addItem(moreItem)
+
+        return submenu
+    }
+
+    @objc private func selectLanguage(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let language = ASRLanguage(rawValue: rawValue) else { return }
+        SettingsManager.shared.asrLanguage = language
+        buildMenu()
+    }
+
+    // MARK: - Toggle Actions
+
+    @objc private func toggleTextPolish() {
+        SettingsManager.shared.textPolishEnabled.toggle()
+        buildMenu()
+    }
+
+    @objc private func toggleTimestamps() {
+        SettingsManager.shared.useTimestamps.toggle()
+        buildMenu()
     }
 
     private func localizedSceneName(_ sceneType: SceneType) -> String {
