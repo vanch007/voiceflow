@@ -18,6 +18,7 @@
 		L1000002 /* HistoryAnalysisResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = L2000002 /* HistoryAnalysisResult.swift */; };
 		L1000003 /* LLMSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = L2000003 /* LLMSettingsView.swift */; };
 		L1000004 /* HistoryAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = L2000004 /* HistoryAnalysisView.swift */; };
+		PM000001 /* PromptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = PM000002 /* PromptManager.swift */; };
 		A1000001 /* VoiceFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000001 /* VoiceFlowApp.swift */; };
 		A1000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002 /* AppDelegate.swift */; };
 		A1000003 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000003 /* HotkeyManager.swift */; };
@@ -32,7 +33,6 @@
 		A1000014 /* PluginLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000014 /* PluginLoader.swift */; };
 		A1000015 /* PluginManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000015 /* PluginManager.swift */; };
 		A1000016 /* HotkeyConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000016 /* HotkeyConfig.swift */; };
-		A1000017 /* DictionaryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000017 /* DictionaryManager.swift */; };
 		A1000018 /* HotkeySettingsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000018 /* HotkeySettingsWindow.swift */; };
 		C2000001 /* SceneType.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000001 /* SceneType.swift */; };
 		C2000002 /* SceneProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2000002 /* SceneProfile.swift */; };
@@ -43,7 +43,6 @@
 		P2000002 /* PermissionAlertWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = P1000002 /* PermissionAlertWindow.swift */; };
 		T1000001 /* LearnedTerm.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000001 /* LearnedTerm.swift */; };
 		T1000002 /* TermLearner.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000002 /* TermLearner.swift */; };
-		T1000003 /* DictionaryWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = T2000003 /* DictionaryWindow.swift */; };
 		0483771F70A247EBAB11AEC6 /* OnboardingWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED6D97AF1F7B4AF5B3B727AD /* OnboardingWindow.swift */; };
 		DE92135E782B4279952A59B3 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12BA7BF8DD424D87AF7F3915 /* WelcomeView.swift */; };
 		4A2ECC1AEC7442ED8D1C2972 /* MicrophonePermissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 607CC0B7CC2247F982A5CB42 /* MicrophonePermissionView.swift */; };
@@ -76,7 +75,6 @@
 		B1000014 /* PluginLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginLoader.swift; sourceTree = "<group>"; };
 		B1000015 /* PluginManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginManager.swift; sourceTree = "<group>"; };
 		B1000016 /* HotkeyConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyConfig.swift; sourceTree = "<group>"; };
-		B1000017 /* DictionaryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryManager.swift; sourceTree = "<group>"; };
 		B1000018 /* HotkeySettingsWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeySettingsWindow.swift; sourceTree = "<group>"; };
 		C1000001 /* VoiceFlow.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D2000001 /* SceneType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneType.swift; sourceTree = "<group>"; };
@@ -88,7 +86,6 @@
 		P1000002 /* PermissionAlertWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionAlertWindow.swift; sourceTree = "<group>"; };
 		T2000001 /* LearnedTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnedTerm.swift; sourceTree = "<group>"; };
 		T2000002 /* TermLearner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermLearner.swift; sourceTree = "<group>"; };
-		T2000003 /* DictionaryWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictionaryWindow.swift; sourceTree = "<group>"; };
 		ED6D97AF1F7B4AF5B3B727AD /* OnboardingWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWindow.swift; sourceTree = "<group>"; };
 		12BA7BF8DD424D87AF7F3915 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		607CC0B7CC2247F982A5CB42 /* MicrophonePermissionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MicrophonePermissionView.swift; sourceTree = "<group>"; };
@@ -99,6 +96,7 @@
 		L2000002 /* HistoryAnalysisResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryAnalysisResult.swift; sourceTree = "<group>"; };
 		L2000003 /* LLMSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMSettingsView.swift; sourceTree = "<group>"; };
 		L2000004 /* HistoryAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryAnalysisView.swift; sourceTree = "<group>"; };
+		PM000002 /* PromptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManager.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -146,7 +144,6 @@
 			children = (
 				E2000001 /* Scene */,
 				B1000016 /* HotkeyConfig.swift */,
-				B1000017 /* DictionaryManager.swift */,
 				508E63952F3075870016E8CD /* UserDefaults+VoiceFlow.swift */,
 				508E63932F3075780016E8CD /* TextReplacementEngine.swift */,
 				508E63912F3075600016E8CD /* ReplacementStorage.swift */,
@@ -165,6 +162,7 @@
 				T2000002 /* TermLearner.swift */,
 				L2000001 /* LLMSettings.swift */,
 				L2000002 /* HistoryAnalysisResult.swift */,
+				PM000002 /* PromptManager.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -209,7 +207,6 @@
 				B1000012 /* HistoryWindowController.swift */,
 				D2000005 /* SceneSettingsView.swift */,
 				P1000002 /* PermissionAlertWindow.swift */,
-				T2000003 /* DictionaryWindow.swift */,
 				L2000003 /* LLMSettingsView.swift */,
 				L2000004 /* HistoryAnalysisView.swift */,
 			);
@@ -286,7 +283,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000016 /* HotkeyConfig.swift in Sources */,
-				A1000017 /* DictionaryManager.swift in Sources */,
 				A1000018 /* HotkeySettingsWindow.swift in Sources */,
 				A1000001 /* VoiceFlowApp.swift in Sources */,
 				A1000002 /* AppDelegate.swift in Sources */,
@@ -317,11 +313,11 @@
 				P2000002 /* PermissionAlertWindow.swift in Sources */,
 				T1000001 /* LearnedTerm.swift in Sources */,
 				T1000002 /* TermLearner.swift in Sources */,
-				T1000003 /* DictionaryWindow.swift in Sources */,
 				L1000001 /* LLMSettings.swift in Sources */,
 				L1000002 /* HistoryAnalysisResult.swift in Sources */,
 				L1000003 /* LLMSettingsView.swift in Sources */,
 				L1000004 /* HistoryAnalysisView.swift in Sources */,
+				PM000001 /* PromptManager.swift in Sources */,
 				0483771F70A247EBAB11AEC6 /* OnboardingWindow.swift in Sources */,
 				DE92135E782B4279952A59B3 /* WelcomeView.swift in Sources */,
 				4A2ECC1AEC7442ED8D1C2972 /* MicrophonePermissionView.swift in Sources */,

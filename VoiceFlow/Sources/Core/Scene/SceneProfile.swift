@@ -2,7 +2,7 @@ import Foundation
 
 // 注意：SceneType 和 ASRLanguage 在同一模块中定义
 
-/// 术语字典条目
+/// 术语字典条目（仅用于默认预设数据，运行时使用 ReplacementRule）
 struct GlossaryEntry: Codable, Equatable, Identifiable {
     let id: UUID
     var term: String           // ASR可能识别的写法
@@ -52,7 +52,6 @@ struct SceneProfile: Codable, Equatable {
     var polishStyle: PolishStyle
     var enabledPluginIDs: [String]
     var customPrompt: String?
-    var glossary: [GlossaryEntry]
 
     // MARK: - LLM 相关字段
 
@@ -80,7 +79,6 @@ struct SceneProfile: Codable, Equatable {
         polishStyle: PolishStyle,
         enabledPluginIDs: [String],
         customPrompt: String?,
-        glossary: [GlossaryEntry],
         useLLMPolish: Bool? = nil,
         keywords: [String] = [],
         suggestedTerms: [String] = [],
@@ -92,11 +90,49 @@ struct SceneProfile: Codable, Equatable {
         self.polishStyle = polishStyle
         self.enabledPluginIDs = enabledPluginIDs
         self.customPrompt = customPrompt
-        self.glossary = glossary
         self.useLLMPolish = useLLMPolish
         self.keywords = keywords
         self.suggestedTerms = suggestedTerms
         self.lastAnalyzedAt = lastAnalyzedAt
+    }
+
+    // MARK: - Backward Compatibility (for loading old data with glossary)
+
+    enum CodingKeys: String, CodingKey {
+        case sceneType, language, enablePolish, polishStyle, enabledPluginIDs, customPrompt
+        case useLLMPolish, keywords, suggestedTerms, lastAnalyzedAt
+        case glossary  // For backward compatibility only
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        sceneType = try container.decode(SceneType.self, forKey: .sceneType)
+        language = try container.decodeIfPresent(ASRLanguage.self, forKey: .language)
+        enablePolish = try container.decode(Bool.self, forKey: .enablePolish)
+        polishStyle = try container.decode(PolishStyle.self, forKey: .polishStyle)
+        enabledPluginIDs = try container.decode([String].self, forKey: .enabledPluginIDs)
+        customPrompt = try container.decodeIfPresent(String.self, forKey: .customPrompt)
+        useLLMPolish = try container.decodeIfPresent(Bool.self, forKey: .useLLMPolish)
+        keywords = try container.decodeIfPresent([String].self, forKey: .keywords) ?? []
+        suggestedTerms = try container.decodeIfPresent([String].self, forKey: .suggestedTerms) ?? []
+        lastAnalyzedAt = try container.decodeIfPresent(Date.self, forKey: .lastAnalyzedAt)
+        // Ignore glossary field if present (backward compatibility)
+        _ = try? container.decodeIfPresent([GlossaryEntry].self, forKey: .glossary)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(sceneType, forKey: .sceneType)
+        try container.encodeIfPresent(language, forKey: .language)
+        try container.encode(enablePolish, forKey: .enablePolish)
+        try container.encode(polishStyle, forKey: .polishStyle)
+        try container.encode(enabledPluginIDs, forKey: .enabledPluginIDs)
+        try container.encodeIfPresent(customPrompt, forKey: .customPrompt)
+        try container.encodeIfPresent(useLLMPolish, forKey: .useLLMPolish)
+        try container.encode(keywords, forKey: .keywords)
+        try container.encode(suggestedTerms, forKey: .suggestedTerms)
+        try container.encodeIfPresent(lastAnalyzedAt, forKey: .lastAnalyzedAt)
+        // Do not encode glossary - it's now in ReplacementStorage
     }
 
     // MARK: - 默认提示词
@@ -141,7 +177,12 @@ struct SceneProfile: Codable, Equatable {
 
     /// 各场景的默认术语字典
     static let defaultGlossaries: [SceneType: [GlossaryEntry]] = [
-        .social: [],
+        .social: [
+            // 网络用语
+            GlossaryEntry(term: "集美", replacement: "姐妹"),
+            GlossaryEntry(term: "蓝瘦", replacement: "难受"),
+            GlossaryEntry(term: "香菇", replacement: "想哭"),
+        ],
         .coding: [
             // 编程语言
             GlossaryEntry(term: "派森", replacement: "Python"),
@@ -214,7 +255,107 @@ struct SceneProfile: Codable, Equatable {
         .writing: [
             GlossaryEntry(term: "的地得", replacement: "的"),
         ],
-        .general: [],
+        .general: [
+            // ===== 高频同音字错误 =====
+            GlossaryEntry(term: "他门", replacement: "他们"),
+            GlossaryEntry(term: "她门", replacement: "她们"),
+            GlossaryEntry(term: "我门", replacement: "我们"),
+            GlossaryEntry(term: "你门", replacement: "你们"),
+            GlossaryEntry(term: "因该", replacement: "应该"),
+            GlossaryEntry(term: "以该", replacement: "应该"),
+            GlossaryEntry(term: "在见", replacement: "再见"),
+            GlossaryEntry(term: "在次", replacement: "再次"),
+            GlossaryEntry(term: "在来", replacement: "再来"),
+            GlossaryEntry(term: "在说", replacement: "再说"),
+            GlossaryEntry(term: "在也", replacement: "再也"),
+            GlossaryEntry(term: "已后", replacement: "以后"),
+            GlossaryEntry(term: "已前", replacement: "以前"),
+            GlossaryEntry(term: "已经", replacement: "已经"),
+            GlossaryEntry(term: "做用", replacement: "作用"),
+            GlossaryEntry(term: "做为", replacement: "作为"),
+            GlossaryEntry(term: "做品", replacement: "作品"),
+            GlossaryEntry(term: "那里", replacement: "哪里"),
+            GlossaryEntry(term: "那个人", replacement: "哪个人"),
+            GlossaryEntry(term: "那怕", replacement: "哪怕"),
+            GlossaryEntry(term: "那位", replacement: "哪位"),
+            GlossaryEntry(term: "在哪", replacement: "在哪"),
+            GlossaryEntry(term: "反应情况", replacement: "反映情况"),
+            GlossaryEntry(term: "反应问题", replacement: "反映问题"),
+            GlossaryEntry(term: "需到", replacement: "须到"),
+            GlossaryEntry(term: "需知", replacement: "须知"),
+            GlossaryEntry(term: "必需", replacement: "必须"),
+            GlossaryEntry(term: "权利机关", replacement: "权力机关"),
+            GlossaryEntry(term: "权利部门", replacement: "权力部门"),
+
+            // ===== 的地得混用 =====
+            GlossaryEntry(term: "高兴的跳", replacement: "高兴地跳"),
+            GlossaryEntry(term: "快速的跑", replacement: "快速地跑"),
+            GlossaryEntry(term: "慢慢的走", replacement: "慢慢地走"),
+            GlossaryEntry(term: "认真的做", replacement: "认真地做"),
+            GlossaryEntry(term: "努力的学", replacement: "努力地学"),
+            GlossaryEntry(term: "跑的很快", replacement: "跑得很快"),
+            GlossaryEntry(term: "做的很好", replacement: "做得很好"),
+            GlossaryEntry(term: "说的对", replacement: "说得对"),
+            GlossaryEntry(term: "写的好", replacement: "写得好"),
+            GlossaryEntry(term: "唱的好", replacement: "唱得好"),
+
+            // ===== 常见近音词错误 =====
+            GlossaryEntry(term: "既使", replacement: "即使"),
+            GlossaryEntry(term: "在坐", replacement: "在座"),
+            GlossaryEntry(term: "按装", replacement: "安装"),
+            GlossaryEntry(term: "辨认", replacement: "辨认"),
+            GlossaryEntry(term: "包含", replacement: "包涵"),
+            GlossaryEntry(term: "报复", replacement: "抱负"),
+            GlossaryEntry(term: "暴发户", replacement: "暴发户"),
+            GlossaryEntry(term: "爆发力", replacement: "爆发力"),
+            GlossaryEntry(term: "毕竞", replacement: "毕竟"),
+            GlossaryEntry(term: "辩论", replacement: "辩论"),
+            GlossaryEntry(term: "辨别", replacement: "辨别"),
+            GlossaryEntry(term: "不只", replacement: "不止"),
+            GlossaryEntry(term: "查看", replacement: "察看"),
+            GlossaryEntry(term: "常年", replacement: "长年"),
+            GlossaryEntry(term: "陈规", replacement: "成规"),
+            GlossaryEntry(term: "成分", replacement: "成份"),
+            GlossaryEntry(term: "城府", replacement: "诚服"),
+            GlossaryEntry(term: "充斥", replacement: "充斥"),
+            GlossaryEntry(term: "穿带", replacement: "穿戴"),
+
+            // ===== 语气词连写错误 =====
+            GlossaryEntry(term: "嗯嗯嗯", replacement: "嗯"),
+            GlossaryEntry(term: "啊啊啊", replacement: "啊"),
+            GlossaryEntry(term: "呃呃呃", replacement: "呃"),
+            GlossaryEntry(term: "额额额", replacement: "额"),
+            GlossaryEntry(term: "哦哦哦", replacement: "哦"),
+            GlossaryEntry(term: "好好好", replacement: "好"),
+            GlossaryEntry(term: "对对对", replacement: "对"),
+            GlossaryEntry(term: "是是是", replacement: "是"),
+            GlossaryEntry(term: "行行行", replacement: "行"),
+            GlossaryEntry(term: "然后然后", replacement: "然后"),
+            GlossaryEntry(term: "就是就是", replacement: "就是"),
+            GlossaryEntry(term: "那个那个", replacement: "那个"),
+            GlossaryEntry(term: "这个这个", replacement: "这个"),
+            GlossaryEntry(term: "我我我", replacement: "我"),
+            GlossaryEntry(term: "你你你", replacement: "你"),
+            GlossaryEntry(term: "他他他", replacement: "他"),
+
+            // ===== 口语连读错误 =====
+            GlossaryEntry(term: "这样子", replacement: "这样"),
+            GlossaryEntry(term: "那样子", replacement: "那样"),
+            GlossaryEntry(term: "怎样子", replacement: "怎样"),
+            GlossaryEntry(term: "什么样子的", replacement: "什么样的"),
+            GlossaryEntry(term: "就是说嘛", replacement: "就是说"),
+            GlossaryEntry(term: "然后呢就是", replacement: "然后"),
+            GlossaryEntry(term: "所以说呢", replacement: "所以"),
+
+            // ===== 数字相关 =====
+            GlossaryEntry(term: "一零", replacement: "10"),
+            GlossaryEntry(term: "二零", replacement: "20"),
+            GlossaryEntry(term: "三零", replacement: "30"),
+            GlossaryEntry(term: "四零", replacement: "40"),
+            GlossaryEntry(term: "五零", replacement: "50"),
+            GlossaryEntry(term: "百分之百", replacement: "100%"),
+            GlossaryEntry(term: "百分之五十", replacement: "50%"),
+        ],
         .medical: [
             GlossaryEntry(term: "acetaminophen", replacement: "acetaminophen"),
             GlossaryEntry(term: "ibuprofen", replacement: "ibuprofen"),
@@ -538,8 +679,6 @@ struct SceneProfile: Codable, Equatable {
 
     /// 默认配置
     static func defaultProfile(for sceneType: SceneType) -> SceneProfile {
-        let defaultGlossary = defaultGlossaries[sceneType] ?? []
-
         switch sceneType {
         case .social:
             return SceneProfile(
@@ -548,18 +687,16 @@ struct SceneProfile: Codable, Equatable {
                 enablePolish: true,
                 polishStyle: .casual,
                 enabledPluginIDs: [],
-                customPrompt: nil,
-                glossary: defaultGlossary
+                customPrompt: nil
             )
         case .coding:
             return SceneProfile(
                 sceneType: .coding,
                 language: nil,
-                enablePolish: false,
+                enablePolish: true,
                 polishStyle: .technical,
                 enabledPluginIDs: [],
-                customPrompt: nil,
-                glossary: defaultGlossary
+                customPrompt: nil
             )
         case .writing:
             return SceneProfile(
@@ -568,18 +705,16 @@ struct SceneProfile: Codable, Equatable {
                 enablePolish: true,
                 polishStyle: .formal,
                 enabledPluginIDs: [],
-                customPrompt: nil,
-                glossary: defaultGlossary
+                customPrompt: nil
             )
         case .general:
             return SceneProfile(
                 sceneType: .general,
                 language: nil,
-                enablePolish: false,
+                enablePolish: true,
                 polishStyle: .neutral,
                 enabledPluginIDs: [],
-                customPrompt: nil,
-                glossary: defaultGlossary
+                customPrompt: nil
             )
         case .medical:
             return SceneProfile(
@@ -588,8 +723,7 @@ struct SceneProfile: Codable, Equatable {
                 enablePolish: true,
                 polishStyle: .formal,
                 enabledPluginIDs: [],
-                customPrompt: nil,
-                glossary: defaultGlossary
+                customPrompt: nil
             )
         case .legal:
             return SceneProfile(
@@ -598,18 +732,16 @@ struct SceneProfile: Codable, Equatable {
                 enablePolish: true,
                 polishStyle: .formal,
                 enabledPluginIDs: [],
-                customPrompt: nil,
-                glossary: defaultGlossary
+                customPrompt: nil
             )
         case .technical:
             return SceneProfile(
                 sceneType: .technical,
                 language: nil,
-                enablePolish: false,
+                enablePolish: true,
                 polishStyle: .technical,
                 enabledPluginIDs: [],
-                customPrompt: nil,
-                glossary: defaultGlossary
+                customPrompt: nil
             )
         case .finance:
             return SceneProfile(
@@ -618,18 +750,16 @@ struct SceneProfile: Codable, Equatable {
                 enablePolish: true,
                 polishStyle: .formal,
                 enabledPluginIDs: [],
-                customPrompt: nil,
-                glossary: defaultGlossary
+                customPrompt: nil
             )
         case .engineering:
             return SceneProfile(
                 sceneType: .engineering,
                 language: nil,
-                enablePolish: false,
+                enablePolish: true,
                 polishStyle: .technical,
                 enabledPluginIDs: [],
-                customPrompt: nil,
-                glossary: defaultGlossary
+                customPrompt: nil
             )
         }
     }

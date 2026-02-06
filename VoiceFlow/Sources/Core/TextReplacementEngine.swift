@@ -9,14 +9,16 @@ final class TextReplacementEngine {
         NSLog("[TextReplacementEngine] Initialized")
     }
 
-    /// Apply replacement rules to input text
-    /// - Parameter text: The original transcribed text
+    /// Apply replacement rules to input text (scene-aware)
+    /// - Parameters:
+    ///   - text: The original transcribed text
+    ///   - scene: Optional scene type for filtering rules
     /// - Returns: Text with replacements applied
-    func applyReplacements(to text: String) -> String {
-        let rules = storage.getAll().filter { $0.isEnabled }
+    func applyReplacements(to text: String, scene: SceneType? = nil) -> String {
+        let rules = storage.getRules(for: scene)
 
         guard !rules.isEmpty else {
-            NSLog("[TextReplacementEngine] No enabled rules, returning original text")
+            NSLog("[TextReplacementEngine] No enabled rules for scene: \(scene?.rawValue ?? "all"), returning original text")
             return text
         }
 
@@ -24,11 +26,11 @@ final class TextReplacementEngine {
 
         // Apply each enabled rule
         for rule in rules {
-            // Case-insensitive matching
-            let range = result.range(
-                of: rule.trigger,
-                options: [.caseInsensitive, .literal]
-            )
+            let options: String.CompareOptions = rule.caseSensitive
+                ? [.literal]
+                : [.caseInsensitive, .literal]
+
+            let range = result.range(of: rule.trigger, options: options)
 
             if let matchRange = range {
                 result.replaceSubrange(matchRange, with: rule.replacement)
