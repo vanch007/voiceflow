@@ -36,6 +36,10 @@ final class ASRClient {
     private var reconnectTask: Task<Void, Never>?
     private let serverURL = URL(string: "ws://localhost:9876")!
     private var isConnected = false
+
+    // 追踪待发送的音频块数量
+    private var pendingAudioSends = 0
+    private let sendLock = NSLock()
     private let reconnectInterval: TimeInterval = 3.0
     private let maxReconnectInterval: TimeInterval = 30.0
     private var currentReconnectInterval: TimeInterval = 3.0
@@ -114,7 +118,8 @@ final class ASRClient {
         reconnectTask = nil
     }
 
-    func sendStart() {
+    /// 带回调的 sendStart，确保 start 消息发送完成后再回调
+    func sendStart(completion: @escaping () -> Void) {
         let profile = SceneManager.shared.getEffectiveProfile()
         let modelId = settingsManager.modelSize.modelId
 
@@ -134,6 +139,7 @@ final class ASRClient {
             "enable_polish": profile.enablePolish ? "true" : "false",
             "use_llm_polish": shouldUseLLM,
             "use_timestamps": settingsManager.useTimestamps,
+            "enable_denoise": settingsManager.enableDenoise,
             "model_id": modelId,
             "language": profile.getEffectiveLanguage().rawValue,
             "active_app": activeAppInfo
@@ -152,43 +158,86 @@ final class ASRClient {
 
         message["scene"] = sceneInfo
 
-        sendJSONObject(message)
+        sendJSONObject(message, completion: completion)
     }
 
-    private func sendJSONObject(_ dict: [String: Any]) {
+    /// 向后兼容的无参版本
+    func sendStart() {
+        sendStart(completion: {})
+    }
+
+    private func sendJSONObject(_ dict: [String: Any], completion: (() -> Void)? = nil) {
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
-              let str = String(data: data, encoding: .utf8) else { return }
+              let str = String(data: data, encoding: .utf8) else {
+            completion?()
+            return
+        }
         let message = URLSessionWebSocketTask.Message.string(str)
         webSocketTask?.send(message) { error in
             if let error {
                 print("[ASRClient] Send JSON error: \(error)")
             }
+            completion?()
         }
     }
 
-    func sendStop() {
-        sendJSON(["type": "stop"])
+    /// 带回调的 sendStop，确保 stop 消息发送完成后再回调
+    func sendStop(completion: @escaping () -> Void) {
+        sendJSON(["type": "stop"], completion: completion)
     }
 
+    /// 向后兼容的无参版本
+    func sendStop() {
+        sendStop(completion: {})
+    }
+
+    /// 发送音频块，追踪 pending 数量
     func sendAudioChunk(_ data: Data) {
+        sendLock.lock()
+        pendingAudioSends += 1
+        sendLock.unlock()
+
         let message = URLSessionWebSocketTask.Message.data(data)
-        webSocketTask?.send(message) { error in
+        webSocketTask?.send(message) { [weak self] error in
             if let error {
                 print("[ASRClient] Send audio error: \(error)")
             }
+            self?.sendLock.lock()
+            self?.pendingAudioSends -= 1
+            self?.sendLock.unlock()
+        }
+    }
+
+    /// 等待所有音频块发送完成
+    func flushAudioChunks(completion: @escaping () -> Void) {
+        DispatchQueue.global().async { [weak self] in
+            var waited = 0
+            while waited < 500 {  // 最多等待500ms
+                self?.sendLock.lock()
+                let pending = self?.pendingAudioSends ?? 0
+                self?.sendLock.unlock()
+                if pending == 0 { break }
+                Thread.sleep(forTimeInterval: 0.01)
+                waited += 10
+            }
+            DispatchQueue.main.async { completion() }
         }
     }
 
     // MARK: - Private
 
-    private func sendJSON(_ dict: [String: String]) {
+    private func sendJSON(_ dict: [String: String], completion: (() -> Void)? = nil) {
         guard let data = try? JSONSerialization.data(withJSONObject: dict),
-              let str = String(data: data, encoding: .utf8) else { return }
+              let str = String(data: data, encoding: .utf8) else {
+            completion?()
+            return
+        }
         let message = URLSessionWebSocketTask.Message.string(str)
         webSocketTask?.send(message) { error in
             if let error {
                 print("[ASRClient] Send JSON error: \(error)")
             }
+            completion?()
         }
     }
 
@@ -483,6 +532,7 @@ final class ASRClient {
             "type": "start",
             "enable_polish": profile.enablePolish ? "true" : "false",
             "use_llm_polish": shouldUseLLM,
+            "enable_denoise": settingsManager.enableDenoise,
             "model_id": modelId,
             "language": profile.getEffectiveLanguage().rawValue,
             "active_app": activeAppInfo

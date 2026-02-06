@@ -177,10 +177,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sceneManager = SceneManager.shared
         NSLog("[AppDelegate] SceneManager initialized, current scene: %@", sceneManager.currentScene.rawValue)
 
-        // Start cursor tracking for overlay panel positioning
-        CursorTracker.shared.startMonitoringClicks()
-        NSLog("[AppDelegate] CursorTracker mouse click monitoring started")
-
         // Observe settings changes for real-time application
         NotificationCenter.default.addObserver(
             self,
@@ -617,8 +613,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         playSound(startSoundID, name: "startSound")
         overlayPanel.showRecording()
         statusBarController.updateStatus(.recording)
-        asrClient.sendStart()
-        audioRecorder.startRecording()
+
+        // 修复时序：先发送 start 消息，等待后再启动录音
+        asrClient.sendStart { [weak self] in
+            self?.audioRecorder.startRecording {
+                NSLog("[Recording] Audio capture fully started after start message sent")
+            }
+        }
     }
 
     private func showVoiceDisabledAlert() {
@@ -655,12 +656,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isRecording = false
         NSLog("[Recording] Stopping recording, playing stop sound")
         playSound(stopSoundID, name: "stopSound")
-        audioRecorder.stopRecording()
         audioRecorder.disableSilenceDetection()  // 停止时禁用静音检测
         overlayPanel.showProcessing()
         overlayPanel.setFreeSpeakMode(false)  // 退出自由说话模式
         statusBarController.updateStatus(.processing)
-        asrClient.sendStop()
+
+        // 修复时序：停止录音 → 等待音频发送完成 → 发送 stop
+        audioRecorder.stopRecording { [weak self] in
+            self?.asrClient.flushAudioChunks {
+                self?.asrClient.sendStop {
+                    NSLog("[Recording] Stop sent after all audio flushed")
+                }
+            }
+        }
     }
 
     /// 自由说话模式：开始录音（启用静音自动停止）

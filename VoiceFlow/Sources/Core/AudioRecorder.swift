@@ -142,7 +142,8 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         }
     }
 
-    func startRecording() {
+    /// 带回调的 startRecording，确保 isRecording 设置完成后再回调
+    func startRecording(completion: @escaping () -> Void) {
         // Save current output volume before ducking kicks in
         savedOutputVolume = getOutputVolume()
         // Check if default device changed (only when using system default)
@@ -155,8 +156,14 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         sessionQueue.async { [weak self] in
             self?.isRecording = true
             self?.silenceStartTime = nil  // 重置静音计时
+            NSLog("[AudioRecorder] Recording started (isRecording = true)")
+            DispatchQueue.main.async { completion() }
         }
-        NSLog("[AudioRecorder] Recording started.")
+    }
+
+    /// 向后兼容的无参版本
+    func startRecording() {
+        startRecording(completion: {})
     }
 
     /// 启用自由说话模式的静音检测
@@ -181,10 +188,13 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
         return Date().timeIntervalSince(startTime)
     }
 
-    func stopRecording() {
+    /// 带回调的 stopRecording，确保 isRecording 设置完成后再回调
+    func stopRecording(completion: @escaping () -> Void) {
         sessionQueue.async { [weak self] in
             self?.isRecording = false
             self?.silenceStartTime = nil
+            NSLog("[AudioRecorder] Recording stopped (isRecording = false)")
+            DispatchQueue.main.async { completion() }
         }
         // Restore output volume that macOS ducked
         if let volume = savedOutputVolume {
@@ -194,7 +204,11 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
             }
             savedOutputVolume = nil
         }
-        NSLog("[AudioRecorder] Recording stopped.")
+    }
+
+    /// 向后兼容的无参版本
+    func stopRecording() {
+        stopRecording(completion: {})
     }
 
     private func setupSession() {
