@@ -24,7 +24,7 @@ final class SettingsWindow {
 
     private func createWindow() {
         let windowWidth: CGFloat = 500
-        let windowHeight: CGFloat = 580
+        let windowHeight: CGFloat = 700
 
         let contentView = NSHostingView(
             rootView: SettingsContentView(settingsManager: settingsManager)
@@ -114,6 +114,19 @@ private struct SettingsContentView: View {
             }
 
             Section {
+                Toggle("智能断句（基于停顿时长）", isOn: $settingsManager.useTimestamps)
+                Text("使用 AI 模型分析语音停顿，自动插入标点符号")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } header: {
+                Text("断句优化")
+            } footer: {
+                Text("开启后将根据说话停顿智能添加句号、逗号等标点，长文本断句更自然")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Section {
                 Toggle("开机自动启动", isOn: $settingsManager.autoLaunchEnabled)
                 Text("启用后，应用将在您登录 macOS 时自动启动")
                     .font(.caption)
@@ -128,6 +141,6 @@ private struct SettingsContentView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 500, height: 580)
+        .frame(width: 500, height: 700)
     }
 }

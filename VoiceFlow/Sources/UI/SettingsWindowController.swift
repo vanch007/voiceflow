@@ -144,6 +144,13 @@ private struct GeneralSettingsTab: View {
                     .foregroundColor(.secondary)
             }
 
+            Section("断句优化") {
+                Toggle("智能断句（基于停顿时长）", isOn: $settingsManager.useTimestamps)
+                Text("使用 AI 模型分析语音停顿，自动插入标点符号")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Section("启动选项") {
                 Toggle("开机自动启动", isOn: $settingsManager.autoLaunchEnabled)
             }

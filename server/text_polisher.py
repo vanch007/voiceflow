@@ -3,8 +3,133 @@
 
 import logging
 import re
+from typing import List, Dict, Union
 
 logger = logging.getLogger(__name__)
+
+
+class TimestampAwarePunctuator:
+    """基于词级时间戳的智能断句器。
+
+    根据词与词之间的停顿时长智能插入标点符号：
+    - 长停顿 (>1.5s) → 句号 + 换行
+    - 中停顿 (>0.8s) → 逗号
+    - 短停顿 (>0.3s) → 顿号（中文）或空格（英文）
+    """
+
+    # 停顿阈值（秒）
+    LONG_PAUSE_THRESHOLD = 1.5   # 长停顿 → 句号 + 换行
+    MID_PAUSE_THRESHOLD = 0.8    # 中停顿 → 逗号
+    SHORT_PAUSE_THRESHOLD = 0.3  # 短停顿 → 顿号/空格
+
+    def __init__(self):
+        """初始化断句器。"""
+        logger.info("TimestampAwarePunctuator initialized")
+
+    def punctuate(self, words: List[Dict[str, Union[str, float]]]) -> str:
+        """根据词级时间戳智能断句。
+
+        Args:
+            words: 词级时间戳列表，格式：
+                [
+                    {"word": "今天", "start": 0.0, "end": 0.5},
+                    {"word": "天气", "start": 0.5, "end": 1.0},
+                    ...
+                ]
+
+        Returns:
+            断句后的完整文本
+        """
+        if not words:
+            return ""
+
+        result_parts = []
+
+        for i, word_info in enumerate(words):
+            word = word_info.get('word', '')
+            if not word:
+                continue
+
+            result_parts.append(word)
+
+            # 检查与下一个词的停顿
+            if i < len(words) - 1:
+                current_end = word_info.get('end', 0.0)
+                next_start = words[i + 1].get('start', 0.0)
+                next_word = words[i + 1].get('word', '')
+                gap = next_start - current_end
+
+                if gap > self.LONG_PAUSE_THRESHOLD:
+                    # 长停顿 → 句号 + 换行
+                    if self._is_chinese(word):
+                        result_parts.append("。\n")
+                    else:
+                        result_parts.append(". ")
+                elif gap > self.MID_PAUSE_THRESHOLD:
+                    # 中停顿 → 逗号
+                    if self._is_chinese(word):
+                        result_parts.append("，")
+                    else:
+                        result_parts.append(", ")
+                elif gap > self.SHORT_PAUSE_THRESHOLD:
+                    # 短停顿 → 顿号（中文）或空格（英文）
+                    if self._is_chinese(word):
+                        result_parts.append("、")
+                    else:
+                        result_parts.append(" ")
+                else:
+                    # 无停顿或极短停顿
+                    # 英文词之间需要空格，中文词之间不需要
+                    if not self._is_chinese(word) and not self._is_chinese(next_word):
+                        result_parts.append(" ")
+                    # 中文词之间不加任何分隔符
+
+        # 末尾补句号
+        if result_parts and not result_parts[-1].rstrip().endswith(("。", ".", "!", "?", "！", "？")):
+            # 根据最后一个词的语言决定句号类型
+            last_word = words[-1].get('word', '') if words else ''
+            if self._is_chinese(last_word):
+                result_parts.append("。")
+            else:
+                result_parts.append(".")
+
+        result = "".join(result_parts)
+        logger.info(f"智能断句完成，原始词数: {len(words)}，结果: {result[:50]}...")
+        return result
+
+    @staticmethod
+    def _is_chinese(text: str) -> bool:
+        """判断文本是否包含中文字符。
+
+        Args:
+            text: 待判断的文本
+
+        Returns:
+            True 如果包含中文字符，否则 False
+        """
+        if not text:
+            return False
+        return any('\u4e00' <= char <= '\u9fff' for char in text)
+
+    def punctuate_with_fallback(
+        self,
+        words: List[Dict[str, Union[str, float]]],
+        fallback_text: str = ""
+    ) -> str:
+        """带降级的智能断句。
+
+        Args:
+            words: 词级时间戳列表
+            fallback_text: 降级时使用的文本（如果 words 为空）
+
+        Returns:
+            断句后的文本，如果 words 为空则返回 fallback_text
+        """
+        if not words:
+            logger.warning("时间戳列表为空，使用降级文本")
+            return fallback_text
+
+        return self.punctuate(words)
 
 
 class SelfCorrectionDetector:

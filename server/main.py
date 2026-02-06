@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import websockets
 from mlx_asr import MLXQwen3ASR
-from text_polisher import TextPolisher
+from text_polisher import TextPolisher, TimestampAwarePunctuator
 from scene_polisher import ScenePolisher
 from llm_client import LLMClient, LLMConfig, init_llm_client, get_llm_client, shutdown_llm_client
 from llm_polisher import LLMPolisher, init_llm_polisher, get_llm_polisher
@@ -372,6 +372,7 @@ async def handle_client(websocket):
     recording = False
     enable_polish = False
     use_llm_polish = False  # LLM 润色开关
+    use_timestamps = False  # 时间戳智能断句开关
     session_model_id = None
     session_language = None
     session_scene = None  # 场景信息
@@ -441,6 +442,7 @@ async def handle_client(websocket):
                 elif msg_type == "start":
                     enable_polish = data.get("enable_polish") == "true"
                     use_llm_polish = data.get("use_llm_polish", False)  # 新增 LLM 润色开关
+                    use_timestamps = data.get("use_timestamps", False)  # 新增时间戳智能断句开关
                     session_model_id = data.get("model_id")
                     lang_code = data.get("language", "auto")
                     session_language = LANGUAGE_MAP.get(lang_code, None)
@@ -451,7 +453,7 @@ async def handle_client(websocket):
                     if active_app:
                         session_scene["active_app"] = active_app
 
-                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, LLM: {use_llm_polish}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}")
+                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, LLM: {use_llm_polish}, Timestamps: {use_timestamps}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}")
 
                     # 确保模型已加载
                     if session_model_id:
@@ -506,16 +508,34 @@ async def handle_client(websocket):
                     t0 = time.perf_counter()
                     try:
                         # 使用锁保护模型访问，防止并发崩溃
-                        def transcribe_with_lock():
-                            with model_lock:
-                                return model.transcribe(audio=(samples, 16000), language=language)
+                        if use_timestamps:
+                            # 使用时间戳模式（两阶段处理）
+                            def transcribe_with_timestamps_lock():
+                                with model_lock:
+                                    return model.transcribe_with_timestamps(
+                                        audio=(samples, 16000),
+                                        language=language
+                                    )
 
-                        result = await asyncio.wait_for(
-                            asyncio.to_thread(transcribe_with_lock),
-                            timeout=30.0
-                        )
+                            result = await asyncio.wait_for(
+                                asyncio.to_thread(transcribe_with_timestamps_lock),
+                                timeout=60.0  # 时间戳模式需要更长超时（两个模型）
+                            )
+                            # result 是字典: {"text": "...", "words": [...]}
+                        else:
+                            # 使用普通模式
+                            def transcribe_with_lock():
+                                with model_lock:
+                                    return model.transcribe(audio=(samples, 16000), language=language)
+
+                            result = await asyncio.wait_for(
+                                asyncio.to_thread(transcribe_with_lock),
+                                timeout=30.0
+                            )
+
                     except asyncio.TimeoutError:
-                        logger.error("❌ ASR 转录超时 (30s)")
+                        timeout_msg = "60s" if use_timestamps else "30s"
+                        logger.error(f"❌ ASR 转录超时 ({timeout_msg})")
                         await websocket.send(json.dumps({
                             "type": "final",
                             "text": "",
@@ -526,17 +546,31 @@ async def handle_client(websocket):
 
                     elapsed = time.perf_counter() - t0
 
-                    # 提取文本
-                    if isinstance(result, str):
-                        original_text = result
-                    elif isinstance(result, list) and len(result) > 0:
-                        original_text = result[0].text if hasattr(result[0], 'text') else str(result[0])
-                    elif hasattr(result, 'text'):
-                        original_text = result.text
-                    else:
-                        original_text = str(result)
+                    # 提取文本并处理时间戳断句
+                    if use_timestamps and isinstance(result, dict):
+                        # 时间戳模式：先用时间戳断句
+                        words = result.get("words", [])
+                        original_text = result.get("text", "")
 
-                    logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text}")
+                        if words:
+                            # 使用 TimestampAwarePunctuator 智能断句
+                            punctuator = TimestampAwarePunctuator()
+                            original_text = punctuator.punctuate(words)
+                            logger.info(f"✅ 时间戳断句完成 ({elapsed:.2f}s, {len(words)} 词): {original_text[:50]}...")
+                        else:
+                            logger.warning("⚠️ 时间戳对齐失败，使用原始文本")
+                    else:
+                        # 普通模式：提取文本
+                        if isinstance(result, str):
+                            original_text = result
+                        elif isinstance(result, list) and len(result) > 0:
+                            original_text = result[0].text if hasattr(result[0], 'text') else str(result[0])
+                        elif hasattr(result, 'text'):
+                            original_text = result.text
+                        else:
+                            original_text = str(result)
+
+                        logger.info(f"✅ 转录完成 ({elapsed:.2f}s): {original_text}")
 
                     # 两步响应策略
                     if enable_polish:

@@ -162,6 +162,13 @@ final class SettingsManager: ObservableObject {
         }
     }
 
+    @Published var useTimestamps: Bool {
+        didSet {
+            UserDefaults.standard.set(useTimestamps, forKey: Keys.useTimestamps)
+            NSLog("[SettingsManager] Use timestamps changed to: \(useTimestamps)")
+        }
+    }
+
     @Published var llmSettings: LLMSettings {
         didSet {
             saveLLMSettings()
@@ -294,6 +301,7 @@ final class SettingsManager: ObservableObject {
         static let autoLaunchEnabled = "autoLaunchEnabled"
         static let asrLanguage = "asrLanguage"
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        static let useTimestamps = "useTimestamps"
         // General settings keys
         static let language = "settings.general.language"
         static let soundEffectsEnabled = "settings.general.soundEffectsEnabled"
@@ -329,6 +337,9 @@ final class SettingsManager: ObservableObject {
 
         // Load text polish enabled (default: false)
         self.textPolishEnabled = UserDefaults.standard.isTextPolishEnabled
+
+        // Load use timestamps (default: false)
+        self.useTimestamps = UserDefaults.standard.object(forKey: Keys.useTimestamps) as? Bool ?? false
 
         // Load LLM settings
         self.llmSettings = Self.loadLLMSettingsStatic()

@@ -126,8 +126,9 @@ final class ASRClient {
         var message: [String: Any] = [
             "type": "start",
             "enable_polish": profile.enablePolish ? "true" : "false",
+            "use_timestamps": settingsManager.useTimestamps,
             "model_id": modelId,
-            "language": profile.language.rawValue,
+            "language": profile.getEffectiveLanguage().rawValue,
             "active_app": activeAppInfo
         ]
 
@@ -450,7 +451,7 @@ final class ASRClient {
             "enable_polish": profile.enablePolish ? "true" : "false",
             "use_llm_polish": shouldUseLLM,
             "model_id": modelId,
-            "language": profile.language.rawValue,
+            "language": profile.getEffectiveLanguage().rawValue,
             "active_app": activeAppInfo
         ]
 
