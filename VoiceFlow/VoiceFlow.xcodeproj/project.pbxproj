@@ -19,6 +19,7 @@
 		L1000003 /* LLMSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = L2000003 /* LLMSettingsView.swift */; };
 		L1000004 /* HistoryAnalysisView.swift in Sources */ = {isa = PBXBuildFile; fileRef = L2000004 /* HistoryAnalysisView.swift */; };
 		PM000001 /* PromptManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = PM000002 /* PromptManager.swift */; };
+		CT000001 /* CursorTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = CT000002 /* CursorTracker.swift */; };
 		A1000001 /* VoiceFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000001 /* VoiceFlowApp.swift */; };
 		A1000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000002 /* AppDelegate.swift */; };
 		A1000003 /* HotkeyManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000003 /* HotkeyManager.swift */; };
@@ -97,6 +98,7 @@
 		L2000003 /* LLMSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LLMSettingsView.swift; sourceTree = "<group>"; };
 		L2000004 /* HistoryAnalysisView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryAnalysisView.swift; sourceTree = "<group>"; };
 		PM000002 /* PromptManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManager.swift; sourceTree = "<group>"; };
+		CT000002 /* CursorTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorTracker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -163,6 +165,7 @@
 				L2000001 /* LLMSettings.swift */,
 				L2000002 /* HistoryAnalysisResult.swift */,
 				PM000002 /* PromptManager.swift */,
+				CT000002 /* CursorTracker.swift */,
 			);
 			path = Core;
 			sourceTree = "<group>";
@@ -318,6 +321,7 @@
 				L1000003 /* LLMSettingsView.swift in Sources */,
 				L1000004 /* HistoryAnalysisView.swift in Sources */,
 				PM000001 /* PromptManager.swift in Sources */,
+				CT000001 /* CursorTracker.swift in Sources */,
 				0483771F70A247EBAB11AEC6 /* OnboardingWindow.swift in Sources */,
 				DE92135E782B4279952A59B3 /* WelcomeView.swift in Sources */,
 				4A2ECC1AEC7442ED8D1C2972 /* MicrophonePermissionView.swift in Sources */,

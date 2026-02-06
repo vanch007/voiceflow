@@ -177,6 +177,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sceneManager = SceneManager.shared
         NSLog("[AppDelegate] SceneManager initialized, current scene: %@", sceneManager.currentScene.rawValue)
 
+        // Start cursor tracking for overlay panel positioning
+        CursorTracker.shared.startMonitoringClicks()
+        NSLog("[AppDelegate] CursorTracker mouse click monitoring started")
+
         // Observe settings changes for real-time application
         NotificationCenter.default.addObserver(
             self,
