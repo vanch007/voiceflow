@@ -2,7 +2,7 @@
   "id": "com.voiceflow.plugins.chinese-punctuation",
   "name": "ChinesePunctuationPlugin",
   "version": "1.0.1",
-  "description": "Automatic Chinese punctuation restoration for transcribed text",
+  "description": "中文标点恢复插件：为无标点的语音转录文本自动添加标点符号",
   "author": "Voiceflow",
   "entrypoint": "chinese_punctuation_plugin.py",
   "platform": "python",
