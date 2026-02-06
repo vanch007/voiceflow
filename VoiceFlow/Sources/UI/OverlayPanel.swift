@@ -11,6 +11,15 @@ final class OverlayPanel {
     private var silenceThreshold: TimeInterval = 2.0
     private var currentSNR: Float = 0.0
     private var signalQuality: SignalQualityLevel = .good
+    private var cursorPosition: CursorTracker.CursorPosition?
+
+    /// 悬浮窗定位模式
+    enum PositionMode {
+        case followCursor    // 跟随光标
+        case screenBottom    // 屏幕底部（回退）
+    }
+
+    private var positionMode: PositionMode = .screenBottom
 
     enum SignalQualityLevel {
         case excellent  // SNR >= 20dB - 绿色
@@ -80,6 +89,10 @@ final class OverlayPanel {
     }
 
     func showRecording(partialText: String = "") {
+        // 录音开始时获取光标位置
+        cursorPosition = CursorTracker.shared.getCurrentCursorPosition()
+        positionMode = cursorPosition?.isValid == true ? .followCursor : .screenBottom
+        NSLog("[OverlayPanel] 光标位置: \(cursorPosition?.rect ?? .zero), isValid: \(cursorPosition?.isValid ?? false), 模式: \(positionMode == .followCursor ? "跟随光标" : "屏幕底部")")
         startRecordingTimer()
         show(state: .recording(text: partialText))
     }
@@ -140,34 +153,32 @@ final class OverlayPanel {
     }
 
     private func calculateWidth(for text: String) -> CGFloat {
-        let font = NSFont.systemFont(ofSize: 14, weight: .medium)
+        // 基础宽度 + 根据文字长度动态调整
+        let baseWidth: CGFloat = 280
+        let maxWidth: CGFloat = 500
+
+        if text.isEmpty {
+            return baseWidth
+        }
+
+        let font = NSFont.systemFont(ofSize: 14)
         let attributes: [NSAttributedString.Key: Any] = [.font: font]
         let textSize = (text as NSString).size(withAttributes: attributes)
 
-        // Width = text width + icon size + spacing + horizontal padding
-        // Icon: ~16pt, spacing: 8pt, padding: 16pt * 2 = 32pt
-        let iconWidth: CGFloat = 16
-        let spacing: CGFloat = 8
-        let horizontalPadding: CGFloat = 32
-        let calculatedWidth = textSize.width + iconWidth + spacing + horizontalPadding
-
-        // Minimum and maximum constraints - 增大范围
-        let minWidth: CGFloat = 300
-        let maxWidth: CGFloat = 600
-
-        return max(minWidth, min(maxWidth, calculatedWidth))
+        return min(maxWidth, max(baseWidth, textSize.width + 60))
     }
 
     private func calculateHeight(for text: String, isRecording: Bool) -> CGFloat {
         if !isRecording {
-            return 44  // 非录音状态保持紧凑
+            return 44
         }
-
-        // 录音状态：根据文字行数动态调整
-        let lineCount = max(1, min(6, text.components(separatedBy: "\n").count + text.count / 40))
-        let baseHeight: CGFloat = 60  // 状态栏高度
-        let lineHeight: CGFloat = 22  // 每行文字高度
-        return baseHeight + CGFloat(lineCount) * lineHeight
+        // 状态栏 + 分隔线 + 文字区域
+        let baseHeight: CGFloat = 80
+        if text.isEmpty {
+            return baseHeight
+        }
+        let lineCount = max(1, min(4, text.count / 30 + 1))
+        return baseHeight + CGFloat(lineCount - 1) * 20
     }
 
     private func createPanel(width: CGFloat, text: String) {
@@ -175,8 +186,12 @@ final class OverlayPanel {
 
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
-        let x = screenFrame.midX - width / 2
-        let y = screenFrame.minY + 100  // 屏幕底部，距离底部 100pt
+
+        let (x, y) = calculatePanelPosition(
+            width: width,
+            height: panelHeight,
+            screenFrame: screenFrame
+        )
 
         let frame = NSRect(x: x, y: y, width: width, height: panelHeight)
 
@@ -195,6 +210,50 @@ final class OverlayPanel {
         p.hidesOnDeactivate = false
 
         panel = p
+    }
+
+    /// 计算悬浮窗位置
+    private func calculatePanelPosition(width: CGFloat, height: CGFloat, screenFrame: CGRect) -> (CGFloat, CGFloat) {
+        switch positionMode {
+        case .followCursor:
+            guard let cursorPos = cursorPosition, cursorPos.isValid else {
+                // 回退到屏幕底部
+                return calculateScreenBottomPosition(width: width, screenFrame: screenFrame)
+            }
+
+            let cursorRect = cursorPos.rect
+            let padding: CGFloat = 8
+
+            // 悬浮窗左边对齐光标位置
+            var x = cursorRect.origin.x
+            // 确保不超出屏幕边界
+            x = max(screenFrame.minX + 10, min(x, screenFrame.maxX - width - 10))
+
+            // 优先在光标下方显示
+            var y = cursorRect.origin.y - height - padding
+
+            // 如果超出屏幕底部，改为光标上方
+            if y < screenFrame.minY {
+                y = cursorRect.origin.y + cursorRect.height + padding
+            }
+
+            // 如果还是超出屏幕顶部，回退到屏幕底部
+            if y + height > screenFrame.maxY {
+                return calculateScreenBottomPosition(width: width, screenFrame: screenFrame)
+            }
+
+            NSLog("[OverlayPanel] 悬浮窗位置: x=\(x), y=\(y), 光标位置: \(cursorRect)")
+            return (x, y)
+
+        case .screenBottom:
+            return calculateScreenBottomPosition(width: width, screenFrame: screenFrame)
+        }
+    }
+
+    private func calculateScreenBottomPosition(width: CGFloat, screenFrame: CGRect) -> (CGFloat, CGFloat) {
+        let x = screenFrame.midX - width / 2
+        let y = screenFrame.minY + 100
+        return (x, y)
     }
 
     private func startRecordingTimer() {
@@ -221,8 +280,12 @@ final class OverlayPanel {
 
         let panelHeight = calculateHeight(for: text, isRecording: true)
         let screenFrame = screen.visibleFrame
-        let x = screenFrame.midX - width / 2
-        let y = screenFrame.minY + 100  // 屏幕底部，距离底部 100pt
+
+        let (x, y) = calculatePanelPosition(
+            width: width,
+            height: panelHeight,
+            screenFrame: screenFrame
+        )
 
         // Animate the frame change for smooth transitions
         NSAnimationContext.runAnimationGroup { context in
@@ -261,32 +324,21 @@ final class OverlayPanel {
             let minutes = Int(recordingDuration) / 60
             let seconds = Int(recordingDuration) % 60
             let durationText = String(format: "%02d:%02d", minutes, seconds)
-            let displayText = text.isEmpty ? "录音中..." : text
 
             // 获取当前场景信息（安全访问）
             let currentScene: SceneType
-            let isAutoDetected: Bool
             if let sceneManager = SceneManager.shared as SceneManager? {
                 currentScene = sceneManager.manualOverride ?? sceneManager.currentScene
-                isAutoDetected = sceneManager.isAutoDetectEnabled && sceneManager.manualOverride == nil
             } else {
                 currentScene = .general
-                isAutoDetected = false
             }
 
             view = NSHostingView(rootView: EnhancedOverlayContentView(
-                icon: "circle.fill",
-                iconColor: .red,
-                text: displayText,
+                text: text,
                 duration: durationText,
                 volume: currentVolume,
                 sceneType: currentScene,
-                sceneAutoDetected: isAutoDetected,
-                isFreeSpeakMode: isFreeSpeakMode,
-                silenceCountdown: silenceCountdown,
-                silenceThreshold: silenceThreshold,
-                signalQuality: signalQuality,
-                snrValue: currentSNR
+                signalQuality: signalQuality
             ))
         case .processing:
             view = NSHostingView(rootView: OverlayContentView(
@@ -333,61 +385,49 @@ private struct OverlayContentView: View {
 }
 
 private struct EnhancedOverlayContentView: View {
-    let icon: String
-    let iconColor: Color
     let text: String
     let duration: String
     let volume: Double
     let sceneType: SceneType
-    let sceneAutoDetected: Bool
-    let isFreeSpeakMode: Bool
-    let silenceCountdown: TimeInterval
-    let silenceThreshold: TimeInterval
     let signalQuality: OverlayPanel.SignalQualityLevel
-    let snrValue: Float
 
-    private var showLowVolumeWarning: Bool {
-        volume < 0.15
-    }
+    @State private var isPulsing = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // 第一行：录音状态 + 场景 + 时长
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .foregroundColor(iconColor)
-                    .font(.system(size: 16))
-                Text(isFreeSpeakMode ? "自由说话" : "录音中")
-                    .foregroundColor(.white)
-                    .font(.system(size: 14, weight: .medium))
+        VStack(alignment: .leading, spacing: 8) {
+            // 第一行：录音动画 + 场景 + 音量波形 + 时长
+            HStack(spacing: 10) {
+                // 脉冲动画录音图标
+                ZStack {
+                    Circle()
+                        .stroke(Color.red.opacity(0.4), lineWidth: 2)
+                        .frame(width: 16, height: 16)
+                        .scaleEffect(isPulsing ? 1.5 : 1.0)
+                        .opacity(isPulsing ? 0 : 0.6)
 
-                // 自由说话模式：显示静音倒计时
-                if isFreeSpeakMode && silenceCountdown > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "speaker.slash.fill")
-                            .font(.system(size: 10))
-                        Text(String(format: "%.1f/%.1fs", silenceCountdown, silenceThreshold))
-                            .font(.system(size: 11, weight: .medium))
-                            .monospacedDigit()
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                }
+                .frame(width: 18)
+                .onAppear {
+                    withAnimation(
+                        .easeInOut(duration: 1.0)
+                        .repeatForever(autoreverses: false)
+                    ) {
+                        isPulsing = true
                     }
-                    .foregroundColor(.orange)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule()
-                            .fill(Color.orange.opacity(0.3))
-                    )
                 }
 
                 // 场景标签
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     Image(systemName: sceneType.icon)
-                        .font(.system(size: 10))
+                        .font(.system(size: 9))
                     Text(sceneType.displayName)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 10, weight: .medium))
                 }
                 .foregroundColor(.white.opacity(0.9))
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(
                     Capsule()
@@ -396,40 +436,35 @@ private struct EnhancedOverlayContentView: View {
 
                 Spacer()
 
-                // 信号质量指示器
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(signalQuality.color)
-                        .frame(width: 8, height: 8)
-                    Text(String(format: "%.0fdB", snrValue))
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(.white.opacity(0.7))
-                        .monospacedDigit()
-                }
+                // 音量波形
+                VolumeWaveformView(volume: volume, signalQuality: signalQuality)
+                    .frame(width: 36, height: 14)
 
+                // 时长
                 Text(duration)
-                    .foregroundColor(.white.opacity(0.8))
-                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white.opacity(0.9))
+                    .font(.system(size: 14, weight: .semibold))
                     .monospacedDigit()
             }
 
             // 分隔线
             Rectangle()
-                .fill(Color.white.opacity(0.2))
+                .fill(Color.white.opacity(0.15))
                 .frame(height: 1)
 
-            // 转录文字区域（动态高度）
-            Text(text.isEmpty || text == "录音中..." ? "等待语音输入..." : text)
-                .foregroundColor(text.isEmpty || text == "录音中..." ? .white.opacity(0.5) : .white)
-                .font(.system(size: 14))
-                .lineLimit(6)
+            // 实时转录文字
+            Text(text.isEmpty ? "等待语音..." : text)
+                .foregroundColor(text.isEmpty ? .white.opacity(0.4) : .white)
+                .font(.system(size: 13))
+                .lineLimit(4)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Color.black.opacity(0.9))
-                .shadow(color: .black.opacity(0.3), radius: 10, y: 5)
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.black.opacity(0.88))
+                .shadow(color: .black.opacity(0.25), radius: 8, y: 4)
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -445,6 +480,49 @@ private struct EnhancedOverlayContentView: View {
         case .technical: return .cyan
         case .finance: return .yellow
         case .engineering: return .red
+        }
+    }
+}
+
+/// 音量波形可视化组件
+private struct VolumeWaveformView: View {
+    let volume: Double
+    let signalQuality: OverlayPanel.SignalQualityLevel
+
+    private let barCount = 5
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<barCount, id: \.self) { index in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(barColor(for: index))
+                    .frame(width: 4, height: barHeight(for: index))
+                    .animation(.easeOut(duration: 0.1), value: volume)
+            }
+        }
+    }
+
+    private func barHeight(for index: Int) -> CGFloat {
+        let baseHeight: CGFloat = 4
+        let maxHeight: CGFloat = 18
+
+        // 创建对称的波形效果，中间最高
+        let middleIndex = Double(barCount - 1) / 2.0
+        let distance = abs(Double(index) - middleIndex)
+        let positionMultiplier = 1.0 - (distance / middleIndex) * 0.3
+
+        // 根据音量计算高度
+        let volumeHeight = baseHeight + (maxHeight - baseHeight) * volume * positionMultiplier
+
+        return max(baseHeight, volumeHeight)
+    }
+
+    private func barColor(for index: Int) -> Color {
+        let threshold = volume * Double(barCount)
+        if Double(index) < threshold {
+            return signalQuality.color
+        } else {
+            return Color.white.opacity(0.2)
         }
     }
 }
