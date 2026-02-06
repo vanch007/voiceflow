@@ -174,8 +174,8 @@ final class DictionaryManager {
 
                 // If frequency is provided, create metadata
                 let frequency = columns.count >= 2 ? Int(columns[1]) ?? 1 : 1
-                let sourceStr = columns.count >= 3 ? columns[2].trimmingCharacters(in: .whitespaces) : "manual"
-                let source = LearnSource(rawValue: sourceStr) ?? .manual
+                let sourceStr = columns.count >= 3 ? columns[2].trimmingCharacters(in: .whitespaces) : "correction"
+                let source = LearnSource(rawValue: sourceStr) ?? .manualCorrection
                 let isApproved = columns.count >= 4 ? (columns[3].lowercased() == "true") : true
 
                 // Remove existing and add new
