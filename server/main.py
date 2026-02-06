@@ -14,7 +14,8 @@ from mlx_asr import MLXQwen3ASR
 from text_polisher import TextPolisher, TimestampAwarePunctuator
 from scene_polisher import ScenePolisher
 from llm_client import LLMClient, LLMConfig, init_llm_client, get_llm_client, shutdown_llm_client
-from llm_polisher import LLMPolisher, init_llm_polisher, get_llm_polisher
+from llm_polisher import LLMPolisher, init_llm_polisher, get_llm_polisher, DEFAULT_POLISH_PROMPTS
+from prompt_config import get_prompt_config
 from history_analyzer import HistoryAnalyzer, init_history_analyzer, get_history_analyzer
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -34,6 +35,9 @@ config = {}
 # 模型访问锁，防止并发转录导致 MLX 崩溃
 import threading
 model_lock = threading.Lock()
+
+# 后台任务集合，防止被 GC 回收
+background_tasks: set = set()
 
 # Plugin system
 plugins: list = []
@@ -259,11 +263,11 @@ async def vad_streaming_transcribe(
     model,
     language,
     silence_threshold: float = 0.01,
-    silence_duration_ms: int = 500,
+    silence_duration_ms: int = 300,
     check_interval_ms: int = 100
 ):
     """
-    基于 VAD 的流式转录：检测到停顿时触发转录
+    基于 VAD 的流式转录：仅在检测到停顿时触发转录
 
     Args:
         websocket: WebSocket 连接
@@ -278,8 +282,40 @@ async def vad_streaming_transcribe(
     frames_needed = silence_duration_ms // check_interval_ms
     last_transcribed_length = 0
     last_text = ""
+    is_transcribing = False  # 防止并发转录
 
-    logger.info(f"🎙️ VAD 流式转录已启动 (threshold={silence_threshold}, duration={silence_duration_ms}ms)")
+    logger.info(f"🎙️ VAD 流式转录已启动 (threshold={silence_threshold}, pause={silence_duration_ms}ms)")
+
+    async def do_transcribe(samples, trigger_reason: str):
+        """执行转录并发送结果"""
+        nonlocal last_text, last_transcribed_length, is_transcribing
+
+        if is_transcribing:
+            return  # 避免并发转录
+
+        is_transcribing = True
+        try:
+            def transcribe_with_lock():
+                with model_lock:
+                    return model.transcribe((samples, 16000), language)
+
+            result = await asyncio.to_thread(transcribe_with_lock)
+            text = extract_text(result)
+
+            # 只在文本变化时发送
+            if text and text != last_text:
+                last_text = text
+                last_transcribed_length = len(samples)
+                await websocket.send(json.dumps({
+                    "type": "partial",
+                    "text": text
+                }))
+                logger.info(f"📝 Partial ({trigger_reason}): {text}")
+
+        except Exception as e:
+            logger.warning(f"⚠️ 转录失败 ({trigger_reason}): {e}")
+        finally:
+            is_transcribing = False
 
     try:
         while True:
@@ -303,31 +339,11 @@ async def vad_streaming_transcribe(
             else:
                 silence_frames = 0
 
-            # 检测到停顿，且有新音频需要转录
-            if silence_frames >= frames_needed and len(samples) > last_transcribed_length:
-                try:
-                    # 使用锁保护模型访问
-                    def transcribe_with_lock():
-                        with model_lock:
-                            return model.transcribe((samples, 16000), language)
+            # 触发条件：检测到停顿，且有新音频
+            pause_trigger = silence_frames >= frames_needed and len(samples) > last_transcribed_length
 
-                    result = await asyncio.to_thread(transcribe_with_lock)
-                    text = extract_text(result)
-
-                    # 只在文本变化时发送
-                    if text and text != last_text:
-                        last_text = text
-                        last_transcribed_length = len(samples)
-                        await websocket.send(json.dumps({
-                            "type": "partial",
-                            "text": text
-                        }))
-                        logger.info(f"📝 Partial (pause detected): {text}")
-
-                except Exception as e:
-                    logger.warning(f"⚠️ VAD 转录失败: {e}")
-
-                # 重置静音计数，等待下一次停顿
+            if pause_trigger:
+                await do_transcribe(samples, "pause")
                 silence_frames = 0
 
     except asyncio.CancelledError:
@@ -377,7 +393,6 @@ async def handle_client(websocket):
     session_language = None
     session_scene = None  # 场景信息
     transcription_task: asyncio.Task = None
-    custom_dictionary: list[str] = []
 
     try:
         async for message in websocket:
@@ -439,6 +454,59 @@ async def handle_client(websocket):
                             "error": "History analyzer not initialized"
                         }))
 
+                elif msg_type == "get_default_prompts":
+                    # 获取默认提示词
+                    await websocket.send(json.dumps({
+                        "type": "default_prompts",
+                        "prompts": DEFAULT_POLISH_PROMPTS
+                    }))
+                    logger.info("📤 已发送默认提示词")
+
+                elif msg_type == "get_custom_prompts":
+                    # 获取用户自定义提示词
+                    prompt_config = get_prompt_config()
+                    await websocket.send(json.dumps({
+                        "type": "custom_prompts",
+                        "prompts": prompt_config.get_all_user_prompts()
+                    }))
+                    logger.info("📤 已发送用户自定义提示词")
+
+                elif msg_type == "save_custom_prompt":
+                    # 保存或重置用户自定义提示词
+                    scene_type = data.get("scene_type", "")
+                    prompt = data.get("prompt")  # None 表示重置为默认
+
+                    prompt_config = get_prompt_config()
+                    try:
+                        if prompt is None:
+                            # 重置为默认
+                            prompt_config.reset_prompt(scene_type)
+                            await websocket.send(json.dumps({
+                                "type": "save_custom_prompt_ack",
+                                "success": True,
+                                "scene_type": scene_type,
+                                "action": "reset"
+                            }))
+                            logger.info(f"🔄 已重置场景 '{scene_type}' 为默认提示词")
+                        else:
+                            # 保存自定义
+                            prompt_config.set_prompt(scene_type, prompt)
+                            await websocket.send(json.dumps({
+                                "type": "save_custom_prompt_ack",
+                                "success": True,
+                                "scene_type": scene_type,
+                                "action": "save"
+                            }))
+                            logger.info(f"💾 已保存场景 '{scene_type}' 的自定义提示词")
+                    except Exception as e:
+                        await websocket.send(json.dumps({
+                            "type": "save_custom_prompt_ack",
+                            "success": False,
+                            "scene_type": scene_type,
+                            "error": str(e)
+                        }))
+                        logger.error(f"❌ 保存提示词失败: {e}")
+
                 elif msg_type == "start":
                     enable_polish = data.get("enable_polish") == "true"
                     use_llm_polish = data.get("use_llm_polish", False)  # 新增 LLM 润色开关
@@ -471,12 +539,6 @@ async def handle_client(websocket):
                             session_language
                         )
                     )
-
-                elif msg_type == "dictionary":
-                    words = data.get("words", [])
-                    custom_dictionary = words
-                    logger.info(f"Custom dictionary updated: {len(custom_dictionary)} words")
-                    await websocket.send(json.dumps({"type": "dictionary_updated", "count": len(custom_dictionary)}))
 
                 elif msg_type == "stop":
                     logger.info("⏹️ 停止录音，正在处理音频...")
@@ -588,12 +650,15 @@ async def handle_client(websocket):
 
                         # 第二步：后台 LLM 润色（如果启用）
                         llm_pol = get_llm_polisher()
+                        logger.info(f"🔍 LLM 条件检查: llm_pol={llm_pol is not None}, use_llm_polish={use_llm_polish}")
                         if llm_pol and use_llm_polish:
                             async def llm_polish_background():
                                 try:
+                                    logger.info("🚀 后台 LLM 润色任务开始...")
                                     polished_text, polish_method = await llm_pol.polish_async(
                                         original_text, session_scene, use_llm=True
                                     )
+                                    logger.info(f"📝 LLM 润色返回: method={polish_method}")
                                     if polish_method == "llm":
                                         # LLM 润色成功，发送更新
                                         polished_text = run_plugins(polished_text)
@@ -602,11 +667,15 @@ async def handle_client(websocket):
                                             "text": polished_text
                                         }))
                                         logger.info(f"✨ LLM 润色完成: {polished_text}")
+                                    else:
+                                        logger.info(f"ℹ️ LLM 未生效，使用 {polish_method} 方法")
                                 except Exception as e:
-                                    logger.warning(f"⚠️ 后台 LLM 润色失败: {e}")
+                                    logger.warning(f"⚠️ 后台 LLM 润色失败: {e}", exc_info=True)
 
-                            # 启动后台任务
-                            asyncio.create_task(llm_polish_background())
+                            # 启动后台任务并保存引用防止 GC 回收
+                            task = asyncio.create_task(llm_polish_background())
+                            background_tasks.add(task)
+                            task.add_done_callback(background_tasks.discard)
                     else:
                         # 不启用润色，直接返回原文
                         polished_text = run_plugins(original_text)
@@ -621,17 +690,18 @@ async def handle_client(websocket):
                 # 解码音频数据（支持格式标识）
                 if len(message) > 1:
                     format_id = message[0]
-                    audio_data = message[1:]
 
-                    if format_id == 0x02:
+                    if format_id == 0x01:
+                        # Float32 格式：跳过格式标识字节
+                        audio_chunks.append(message[1:])
+                    elif format_id == 0x02:
                         # Int16 格式：转换为 Float32
+                        audio_data = message[1:]
                         samples = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32767.0
                         audio_chunks.append(samples.tobytes())
-                    elif format_id == 0x01:
-                        # Float32 格式：直接使用
-                        audio_chunks.append(audio_data)
                     else:
-                        # 兼容旧格式（无标识，直接是 Float32）
+                        # 旧格式（无标识，整个 message 直接是 Float32 数据）
+                        # 注意：不要剥离第一个字节，它是音频数据的一部分
                         audio_chunks.append(message)
                 else:
                     # 空数据或单字节，忽略
