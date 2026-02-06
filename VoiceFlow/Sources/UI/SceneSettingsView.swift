@@ -92,7 +92,7 @@ private struct SceneProfileEditor: View {
     @ObservedObject var sceneManager: SceneManager
     @Binding var showingAddRuleSheet: Bool
 
-    @State private var language: ASRLanguage = .auto
+    @State private var language: ASRLanguage? = nil  // nil 表示跟随全局设置
     @State private var enablePolish: Bool = false
     @State private var polishStyle: PolishStyle = .neutral
     @State private var customPrompt: String = ""
@@ -136,15 +136,17 @@ private struct SceneProfileEditor: View {
                         .fontWeight(.medium)
 
                     Picker("", selection: $language) {
+                        Text("跟随全局设置 (\(SettingsManager.shared.asrLanguage.displayName))").tag(nil as ASRLanguage?)
+                        Divider()
                         ForEach(ASRLanguage.allCases, id: \.self) { lang in
-                            Text(lang.displayName).tag(lang)
+                            Text(lang.displayName).tag(lang as ASRLanguage?)
                         }
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
-                    .frame(maxWidth: 200)
+                    .frame(maxWidth: 280)
 
-                    Text("为此场景指定特定语言，或选择「自动检测」")
+                    Text("选择「跟随全局设置」使用通用设置中的语言，或为此场景指定特定语言")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }

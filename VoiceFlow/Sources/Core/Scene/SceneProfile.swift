@@ -46,7 +46,8 @@ enum PolishStyle: String, Codable, CaseIterable {
 /// 场景预设配置
 struct SceneProfile: Codable, Equatable {
     var sceneType: SceneType
-    var language: ASRLanguage
+    /// 场景语言设置，nil 表示跟随全局设置
+    var language: ASRLanguage?
     var enablePolish: Bool
     var polishStyle: PolishStyle
     var enabledPluginIDs: [String]
@@ -67,9 +68,14 @@ struct SceneProfile: Codable, Equatable {
     /// 上次分析时间
     var lastAnalyzedAt: Date?
 
+    /// 获取实际使用的语言（场景设置优先，否则跟随全局设置）
+    func getEffectiveLanguage() -> ASRLanguage {
+        return language ?? SettingsManager.shared.asrLanguage
+    }
+
     init(
         sceneType: SceneType,
-        language: ASRLanguage,
+        language: ASRLanguage? = nil,
         enablePolish: Bool,
         polishStyle: PolishStyle,
         enabledPluginIDs: [String],
@@ -538,7 +544,7 @@ struct SceneProfile: Codable, Equatable {
         case .social:
             return SceneProfile(
                 sceneType: .social,
-                language: .auto,
+                language: nil,
                 enablePolish: true,
                 polishStyle: .casual,
                 enabledPluginIDs: [],
@@ -548,7 +554,7 @@ struct SceneProfile: Codable, Equatable {
         case .coding:
             return SceneProfile(
                 sceneType: .coding,
-                language: .auto,
+                language: nil,
                 enablePolish: false,
                 polishStyle: .technical,
                 enabledPluginIDs: [],
@@ -558,7 +564,7 @@ struct SceneProfile: Codable, Equatable {
         case .writing:
             return SceneProfile(
                 sceneType: .writing,
-                language: .auto,
+                language: nil,
                 enablePolish: true,
                 polishStyle: .formal,
                 enabledPluginIDs: [],
@@ -568,7 +574,7 @@ struct SceneProfile: Codable, Equatable {
         case .general:
             return SceneProfile(
                 sceneType: .general,
-                language: .auto,
+                language: nil,
                 enablePolish: false,
                 polishStyle: .neutral,
                 enabledPluginIDs: [],
@@ -578,7 +584,7 @@ struct SceneProfile: Codable, Equatable {
         case .medical:
             return SceneProfile(
                 sceneType: .medical,
-                language: .auto,
+                language: nil,
                 enablePolish: true,
                 polishStyle: .formal,
                 enabledPluginIDs: [],
@@ -588,7 +594,7 @@ struct SceneProfile: Codable, Equatable {
         case .legal:
             return SceneProfile(
                 sceneType: .legal,
-                language: .auto,
+                language: nil,
                 enablePolish: true,
                 polishStyle: .formal,
                 enabledPluginIDs: [],
@@ -598,7 +604,7 @@ struct SceneProfile: Codable, Equatable {
         case .technical:
             return SceneProfile(
                 sceneType: .technical,
-                language: .auto,
+                language: nil,
                 enablePolish: false,
                 polishStyle: .technical,
                 enabledPluginIDs: [],
@@ -608,7 +614,7 @@ struct SceneProfile: Codable, Equatable {
         case .finance:
             return SceneProfile(
                 sceneType: .finance,
-                language: .auto,
+                language: nil,
                 enablePolish: true,
                 polishStyle: .formal,
                 enabledPluginIDs: [],
@@ -618,7 +624,7 @@ struct SceneProfile: Codable, Equatable {
         case .engineering:
             return SceneProfile(
                 sceneType: .engineering,
-                language: .auto,
+                language: nil,
                 enablePolish: false,
                 polishStyle: .technical,
                 enabledPluginIDs: [],
