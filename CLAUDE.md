@@ -46,8 +46,11 @@ scripts/start-server.sh
 ## Testing
 
 ```bash
-# Python server tests
+# Python server tests (all)
 cd server && pytest tests/
+
+# Python single test
+cd server && pytest tests/test_file.py::test_function -v
 
 # Swift tests (via Xcode)
 cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
@@ -131,51 +134,16 @@ TextInjector pastes text into active app
 - `{"type": "test_llm_connection"}` - Test LLM service availability (Client → Server)
 - `{"type": "analyze_history", "entries": [...], "app_name": "..."}` - Analyze recording history (Client → Server)
 
-## Recent Features
+## Key Features Detail
 
-### Two-Phase Polish Strategy
-文本润色采用两阶段响应策略减少感知延迟：
-1. 第一阶段：快速返回基础润色结果
-2. 第二阶段：通过 `polish_update` 消息推送 LLM 增强结果
-
-相关文件：`ASRClient.swift` (onPolishUpdate)、`server/main.py`、`TextInjector.swift`
-
-### FreeSpeak Mode
-切换式录音模式（区别于按住触发），支持：
-- `HotkeyConfig.swift` 中的 `freeSpeak` 触发类型
-- 静音检测自动停止录音（`AudioRecorder.swift` 中的 silence detection）
-- `OverlayPanel` 显示静音倒计时
-
-### Context-Aware Polishing
-根据活跃应用自动选择润色场景：
-- `ASRClient` 在 start 消息中发送 `active_app` 上下文
-- `LLMPolisher` 根据应用名称映射到对应场景
-- `server/main.py` 合并应用上下文到会话场景
-
-### Scene Profiles (`Core/Scene/`)
-- `SceneProfile.swift`: 场景配置模型（已移除 glossary 字段，术语词典迁移到 ReplacementStorage）
-- 场景可配置：语言（支持跟随全局设置）、润色规则、LLM 提示词
-
-### Text Replacement System
-文本替换系统重构，支持场景感知和分组管理：
-- `ReplacementRule`: 支持 `applicableScenes` 场景筛选和 `caseSensitive` 大小写敏感
-- `ReplacementStorage`: 统一管理替换规则，支持预设导入和场景过滤
-- UI 按替换词分组展示，聚合相同替换目标的多个触发词
-
-### Prompt Management System
-提示词管理系统实现前后端同步：
-- `PromptManager.swift`: 从服务器获取和管理场景提示词
-- `prompt_config.py`: 用户自定义提示词持久化存储 (`~/Library/Application Support/VoiceFlow/user_prompts.json`)
-- `llm_polisher.py`: 优化后的默认提示词采用简洁示例格式
-
-### Audio Processing Advanced Features
-- **VAD-Only Transcription**: 仅基于停顿检测触发转录（300ms 静音阈值），移除周期触发机制
-- **Audio Compression**: Int16 压缩减少传输带宽
-- **Adaptive Noise Floor**: 自适应噪声底部追踪
-- **SNR Monitoring**: 实时信噪比监测，OverlayPanel 显示信号质量
-
-### Chinese Dialect Support
-`server/main.py` 的 `LANGUAGE_MAP` 支持中文方言选项传递给 Qwen3-ASR。
+| Feature | Description | Key Files |
+|---------|-------------|-----------|
+| Two-Phase Polish | 快速返回基础结果，异步推送 LLM 增强结果 | `ASRClient.swift`, `server/main.py` |
+| FreeSpeak Mode | 切换式录音，静音检测自动停止 | `HotkeyConfig.swift`, `AudioRecorder.swift` |
+| Context-Aware Polish | 根据活跃应用自动选择润色场景 | `ASRClient.swift`, `llm_polisher.py` |
+| Scene Profiles | 场景配置：语言、润色规则、LLM 提示词 | `Core/Scene/SceneProfile.swift` |
+| Text Replacement | 场景感知替换规则，支持大小写敏感 | `ReplacementRule.swift`, `ReplacementStorage.swift` |
+| VAD Transcription | 基于停顿检测触发转录（300ms 静音阈值） | `AudioRecorder.swift` |
 
 ## Key Files for Common Tasks
 
@@ -222,12 +190,10 @@ Check Python server logs for transcription errors:
 
 ## Code Guidelines
 
-- Use `NSLog()` for important events (connection status, errors)
-- Use `Logger` (os.log) for detailed debug info in HotkeyManager
-- All audio processing happens on `sessionQueue` background thread
-- UI updates must dispatch to `DispatchQueue.main`
+- Use `NSLog()` for important events, `Logger` (os.log) for detailed debug
+- Audio processing on `sessionQueue` background thread; UI updates on `DispatchQueue.main`
 - WebSocket reconnection is automatic - don't manually retry in UI code
-- When `language` is set to "auto", pass `None` to MLX model (don't pass the parameter)
+- When `language` is "auto", pass `None` to MLX model
 
 ## Permissions Required
 
