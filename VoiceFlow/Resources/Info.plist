@@ -22,5 +22,7 @@
     <string>VoiceFlow needs microphone access to capture audio for speech recognition.</string>
     <key>NSAccessibilityUsageDescription</key>
     <string>VoiceFlow needs accessibility access to simulate keyboard input and detect global hotkeys.</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>VoiceFlow 需要屏幕录制权限来捕获系统音频进行实时转录</string>
 </dict>
 </plist>
