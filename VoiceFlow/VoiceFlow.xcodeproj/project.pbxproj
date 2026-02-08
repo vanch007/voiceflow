@@ -56,6 +56,7 @@
 		'PM000001' = {isa = PBXBuildFile; fileRef = PM000002; };
 		'T1000001' = {isa = PBXBuildFile; fileRef = T2000001; };
 		'T1000002' = {isa = PBXBuildFile; fileRef = T2000002; };
+		'FL000001' = {isa = PBXBuildFile; fileRef = FL000002; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -111,6 +112,7 @@
 		'PM000002' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptManager.swift; sourceTree = "<group>"; };
 		'T2000001' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnedTerm.swift; sourceTree = "<group>"; };
 		'T2000002' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermLearner.swift; sourceTree = "<group>"; };
+		'FL000002' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLogger.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -157,6 +159,7 @@
 				E1000003,
 				E1000004,
 				E1000007,
+				FL000003,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -233,6 +236,14 @@
 				L2000004,
 			);
 			path = UI;
+			sourceTree = "<group>";
+		};
+		'FL000003' = {
+			isa = PBXGroup;
+			children = (
+				FL000002,
+			);
+			path = Utils;
 			sourceTree = "<group>";
 		};
 		'E2000001' = {
@@ -341,6 +352,7 @@
 				L1000004,
 				PM000001,
 				CT000001,
+				FL000001,
 				0483771F70A247EBAB11AEC6 /* OnboardingWindow.swift in Sources */,
 				DE92135E782B4279952A59B3 /* WelcomeView.swift in Sources */,
 				4A2ECC1AEC7442ED8D1C2972 /* MicrophonePermissionView.swift in Sources */,

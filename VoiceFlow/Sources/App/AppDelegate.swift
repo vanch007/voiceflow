@@ -129,9 +129,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return voiceflowDir.appendingPathComponent("asr_server.pid").path
     }
 
-    /// Store the last original (unpolished) transcription for potential future comparison UI
-    private var lastOriginalText: String?
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[AppDelegate] applicationDidFinishLaunching called!")
         // Hide dock icon
@@ -167,7 +164,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Load sounds via AudioServices (bypasses AVCaptureSession output blocking)
         loadSounds()
 
-        // Initialize settings manager and text replacement engine
+        setupManagers()
+        setupAudioPipeline()
+        setupUIComponents()
+        setupEventHandlers()
+    }
+
+    // MARK: - Initialization Phases
+
+    /// Initialize settings, replacement engine, plugins, and scene manager
+    private func setupManagers() {
         settingsManager = SettingsManager.shared
         replacementStorage = ReplacementStorage()
 
@@ -198,7 +204,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: SettingsManager.settingsDidChangeNotification,
             object: nil
         )
+    }
 
+    /// Configure audio recorder, ASR client, and their callbacks
+    private func setupAudioPipeline() {
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
 
@@ -310,10 +319,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        asrClient.onOriginalTextReceived = { [weak self] originalText in
-            guard let self else { return }
-            self.lastOriginalText = originalText
-            NSLog("[AppDelegate] Original text stored: %@", originalText)
+        asrClient.onOriginalTextReceived = { originalText in
+            NSLog("[AppDelegate] Original text received: %@", originalText)
         }
 
         asrClient.onPolishUpdate = { [weak self] updatedText in
@@ -349,7 +356,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.statusBarController.updateErrorState(hasError: hasError, message: errorMessage)
             }
         }
+    }
 
+    /// Create status bar, hotkey manager, subtitle panel, and wire up menu actions
+    private func setupUIComponents() {
         statusBarController = StatusBarController()
         statusBarController.onQuit = {
             NSApp.terminate(nil)
@@ -415,7 +425,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Initialize subtitle panel for system audio transcription
         subtitlePanel = SubtitlePanel()
+    }
 
+    /// Bind notification observers, restore device selection, connect ASR, and show onboarding
+    private func setupEventHandlers() {
         // Observe hotkey enabled setting
         settingsManager.$hotkeyEnabled
             .sink { [weak self] enabled in
@@ -521,8 +534,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Clean up any orphan server from previous crash/force quit
         cleanupOrphanASRServer()
 
-        // TODO: Pass selected model size (settingsManager.modelSize) to ASR server
-        // This will be implemented in a future task when server supports model selection
+        // NOTE: Model size selection is not yet supported by the ASR server.
+        // When server adds model selection support, pass settingsManager.modelSize as a CLI argument here.
 
         // Log paths for debugging
         NSLog("[ASRServer] Project root: %@", Self.projectRoot)
@@ -762,19 +775,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// 本地日志写入文件（NSLog 被系统过滤，用文件确保可见）
     private func debugLog(_ message: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let line = "[\(timestamp)] \(message)\n"
-        let logDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("VoiceFlow", isDirectory: true)
-        try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
-        let path = logDir.appendingPathComponent("system_audio.log").path
-        if let handle = FileHandle(forWritingAtPath: path) {
-            handle.seekToEndOfFile()
-            handle.write(line.data(using: .utf8)!)
-            handle.closeFile()
-        } else {
-            FileManager.default.createFile(atPath: path, contents: line.data(using: .utf8))
-        }
+        FileLogger.shared.log(message, to: "system_audio.log")
     }
 
     /// 开始系统音频录制

@@ -143,19 +143,7 @@ final class SystemAudioRecorder: NSObject {
     // MARK: - File Logging
 
     private func fileLog(_ message: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let line = "[\(timestamp)] \(message)\n"
-        let logDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("VoiceFlow", isDirectory: true)
-        try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
-        let path = logDir.appendingPathComponent("system_audio.log").path
-        if let handle = FileHandle(forWritingAtPath: path) {
-            handle.seekToEndOfFile()
-            handle.write(line.data(using: .utf8)!)
-            handle.closeFile()
-        } else {
-            FileManager.default.createFile(atPath: path, contents: line.data(using: .utf8))
-        }
+        FileLogger.shared.log(message, to: "system_audio.log")
     }
 
     deinit {
