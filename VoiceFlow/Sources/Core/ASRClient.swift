@@ -19,7 +19,7 @@ private struct ASRMessage: Decodable {
 
 final class ASRClient {
     var onTranscriptionResult: ((String) -> Void)?
-    var onPartialResult: ((String) -> Void)?  // 实时部分结果回调
+    var onPartialResult: ((String, String) -> Void)?  // 实时部分结果回调 (text, trigger: "pause"/"periodic")
     var onOriginalTextReceived: ((String) -> Void)?  // 原始文本回调
     var onPolishMethodReceived: ((String) -> Void)?  // 润色方法回调
     var onPolishUpdate: ((String) -> Void)?  // LLM 润色更新回调
@@ -36,6 +36,9 @@ final class ASRClient {
     private var reconnectTask: Task<Void, Never>?
     private let serverURL = URL(string: "ws://localhost:9876")!
     private var isConnected = false
+
+    /// 公开的连接状态（供外部检查 ASR 服务器是否可用）
+    var isServerConnected: Bool { isConnected }
 
     // 追踪待发送的音频块数量
     private var pendingAudioSends = 0
@@ -119,7 +122,8 @@ final class ASRClient {
     }
 
     /// 带回调的 sendStart，确保 start 消息发送完成后再回调
-    func sendStart(completion: @escaping () -> Void) {
+    /// - Parameter mode: 录音模式，"voice_input"(默认语音输入) 或 "subtitle"(系统音频字幕)
+    func sendStart(mode: String = "voice_input", completion: @escaping () -> Void) {
         let profile = SceneManager.shared.getEffectiveProfile()
         let modelId = settingsManager.modelSize.modelId
 
@@ -136,6 +140,7 @@ final class ASRClient {
         // 构建基础消息
         var message: [String: Any] = [
             "type": "start",
+            "mode": mode,
             "enable_polish": profile.enablePolish ? "true" : "false",
             "use_llm_polish": shouldUseLLM,
             "use_timestamps": settingsManager.useTimestamps,
@@ -162,8 +167,8 @@ final class ASRClient {
     }
 
     /// 向后兼容的无参版本
-    func sendStart() {
-        sendStart(completion: {})
+    func sendStart(mode: String = "voice_input") {
+        sendStart(mode: mode, completion: {})
     }
 
     private func sendJSONObject(_ dict: [String: Any], completion: (() -> Void)? = nil) {
@@ -286,8 +291,9 @@ final class ASRClient {
 
         case "partial":
             let text = json["text"] as? String ?? ""
+            let trigger = json["trigger"] as? String ?? "periodic"
             DispatchQueue.main.async { [weak self] in
-                self?.onPartialResult?(text)
+                self?.onPartialResult?(text, trigger)
             }
 
         case "polish_update":

@@ -24,7 +24,7 @@ final class SettingsWindow {
 
     private func createWindow() {
         let windowWidth: CGFloat = 500
-        let windowHeight: CGFloat = 700
+        let windowHeight: CGFloat = 850
 
         let contentView = NSHostingView(
             rootView: SettingsContentView(settingsManager: settingsManager)
@@ -48,6 +48,7 @@ final class SettingsWindow {
 
 private struct SettingsContentView: View {
     @ObservedObject var settingsManager: SettingsManager
+    @ObservedObject var systemAudioSettings = SystemAudioSettings.shared
 
     var body: some View {
         Form {
@@ -138,9 +139,60 @@ private struct SettingsContentView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+
+            Section {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Text("字幕字体大小")
+                        Spacer()
+                        Text("\(Int(systemAudioSettings.subtitleFontSize)) pt")
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $systemAudioSettings.subtitleFontSize, in: 18...24, step: 1)
+
+                    HStack {
+                        Text("背景透明度")
+                        Spacer()
+                        Text("\(Int(systemAudioSettings.subtitleBackgroundOpacity * 100))%")
+                            .foregroundColor(.secondary)
+                    }
+                    Slider(value: $systemAudioSettings.subtitleBackgroundOpacity, in: 0.6...0.8, step: 0.05)
+
+                    Picker("最大行数", selection: $systemAudioSettings.subtitleMaxLines) {
+                        ForEach(1...5, id: \.self) { count in
+                            Text("\(count) 行").tag(count)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("转录文件存储路径")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    Text(systemAudioSettings.transcriptStoragePath)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+
+                    Button("打开转录文件夹") {
+                        systemAudioSettings.openTranscriptFolder()
+                    }
+                    .buttonStyle(.bordered)
+                }
+            } header: {
+                Text("系统音频转录")
+            } footer: {
+                Text("配置系统音频字幕的显示样式和转录文件存储位置")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 500, height: 700)
+        .frame(width: 500, height: 850)
     }
 }

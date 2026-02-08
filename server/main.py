@@ -265,7 +265,9 @@ async def vad_streaming_transcribe(
     language,
     silence_threshold: float = 0.01,
     silence_duration_ms: int = 300,
-    check_interval_ms: int = 100
+    check_interval_ms: int = 100,
+    subtitle_mode: bool = False,
+    subtitle_interval_s: float = 1.5
 ):
     """
     基于 VAD 的流式转录：仅在检测到停顿时触发转录
@@ -278,40 +280,93 @@ async def vad_streaming_transcribe(
         silence_threshold: 静音阈值 (RMS)，降低更敏感
         silence_duration_ms: 需要持续静音多久才触发 (毫秒)
         check_interval_ms: 检查间隔 (毫秒)
+        subtitle_mode: 字幕模式，启用定时转录
+        subtitle_interval_s: 字幕模式下定时转录间隔 (秒)
     """
     silence_frames = 0
     frames_needed = silence_duration_ms // check_interval_ms
     last_transcribed_length = 0
     last_text = ""
     is_transcribing = False  # 防止并发转录
+    last_periodic_time = time.monotonic()  # 上次定时转录时间
 
-    logger.info(f"🎙️ VAD 流式转录已启动 (threshold={silence_threshold}, pause={silence_duration_ms}ms)")
+    # 字幕模式：滑动窗口转录
+    subtitle_window_s = 6.0        # 转录窗口大小（秒）
+    subtitle_window_samples = int(subtitle_window_s * 16000)
+    last_sent_text = ""            # 上次发送给客户端的字幕内容（去重用）
+
+    mode_label = "subtitle" if subtitle_mode else "voice_input"
+    logger.info(f"🎙️ VAD 流式转录已启动 (mode={mode_label}, threshold={silence_threshold}, pause={silence_duration_ms}ms, periodic={subtitle_interval_s}s)" if subtitle_mode else f"🎙️ VAD 流式转录已启动 (mode={mode_label}, threshold={silence_threshold}, pause={silence_duration_ms}ms)")
 
     async def do_transcribe(samples, trigger_reason: str):
         """执行转录并发送结果"""
         nonlocal last_text, last_transcribed_length, is_transcribing
+        nonlocal last_sent_text
 
         if is_transcribing:
             return  # 避免并发转录
 
         is_transcribing = True
         try:
-            def transcribe_with_lock():
-                with model_lock:
-                    return model.transcribe((samples, 16000), language)
+            if subtitle_mode:
+                # 字幕模式：只转录最近 N 秒的音频窗口
+                window_samples = samples[-subtitle_window_samples:] if len(samples) > subtitle_window_samples else samples
 
-            result = await asyncio.to_thread(transcribe_with_lock)
-            text = extract_text(result)
+                def transcribe_window():
+                    with model_lock:
+                        return model.transcribe((window_samples, 16000), language)
 
-            # 只在文本变化时发送
-            if text and text != last_text:
-                last_text = text
+                result = await asyncio.to_thread(transcribe_window)
+                text = extract_text(result).strip()
                 last_transcribed_length = len(samples)
+
+                if not text or text == last_sent_text:
+                    is_transcribing = False
+                    return
+
+                last_sent_text = text
+
+                # 只取最后一句（最后一个句末标点之后的部分）作为实时字幕
+                # 如果没有句末标点就显示全部
+                break_chars = '。！？.!?\n'
+                last_break = -1
+                for i in range(len(text) - 2, -1, -1):  # 跳过最后一个字符（可能就是标点）
+                    if text[i] in break_chars:
+                        last_break = i
+                        break
+
+                if last_break >= 0:
+                    display_text = text[last_break + 1:].strip()
+                    if not display_text:
+                        display_text = text  # 标点在末尾，显示全部
+                else:
+                    display_text = text
+
                 await websocket.send(json.dumps({
                     "type": "partial",
-                    "text": text
+                    "text": display_text,
+                    "trigger": "periodic"
                 }))
-                logger.info(f"📝 Partial ({trigger_reason}): {text}")
+                logger.info(f"📝 Subtitle: {display_text}")
+
+            else:
+                # 语音输入模式：转录全部音频（保持原有行为）
+                def transcribe_with_lock():
+                    with model_lock:
+                        return model.transcribe((samples, 16000), language)
+
+                result = await asyncio.to_thread(transcribe_with_lock)
+                text = extract_text(result)
+
+                if text and text != last_text:
+                    last_text = text
+                    last_transcribed_length = len(samples)
+                    await websocket.send(json.dumps({
+                        "type": "partial",
+                        "text": text,
+                        "trigger": trigger_reason
+                    }))
+                    logger.info(f"📝 Partial ({trigger_reason}): {text}")
 
         except Exception as e:
             logger.warning(f"⚠️ 转录失败 ({trigger_reason}): {e}")
@@ -340,12 +395,25 @@ async def vad_streaming_transcribe(
             else:
                 silence_frames = 0
 
-            # 触发条件：检测到停顿，且有新音频
+            # 触发条件1：检测到停顿，且有新音频
             pause_trigger = silence_frames >= frames_needed and len(samples) > last_transcribed_length
+
+            # 触发条件2（仅字幕模式）：定时转录，不等停顿也出字幕
+            now = time.monotonic()
+            periodic_trigger = (
+                subtitle_mode
+                and not is_transcribing
+                and len(samples) > last_transcribed_length
+                and (now - last_periodic_time) >= subtitle_interval_s
+            )
 
             if pause_trigger:
                 await do_transcribe(samples, "pause")
                 silence_frames = 0
+                last_periodic_time = now
+            elif periodic_trigger:
+                await do_transcribe(samples, "periodic")
+                last_periodic_time = now
 
     except asyncio.CancelledError:
         logger.info("🛑 VAD 流式转录任务已取消")
@@ -528,12 +596,13 @@ async def handle_client(websocket):
                     session_scene = data.get("scene", {})  # 解析场景信息
                     active_app = data.get("active_app", {})  # 解析活跃应用信息
                     session_denoise = data.get("enable_denoise", False)  # 解析降噪开关
+                    session_mode = data.get("mode", "voice_input")  # 录音模式: voice_input / subtitle
 
                     # 将 active_app 信息合并到 session_scene
                     if active_app:
                         session_scene["active_app"] = active_app
 
-                    logger.info(f"🎤 开始录音. Polish: {enable_polish}, LLM: {use_llm_polish}, Timestamps: {use_timestamps}, Denoise: {session_denoise}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}")
+                    logger.info(f"🎤 开始录音. Mode: {session_mode}, Polish: {enable_polish}, LLM: {use_llm_polish}, Timestamps: {use_timestamps}, Denoise: {session_denoise}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}")
 
                     # 确保模型已加载
                     if session_model_id:
@@ -543,12 +612,15 @@ async def handle_client(websocket):
                     recording = True
 
                     # 启动 VAD 流式转录任务
+                    is_subtitle = (session_mode == "subtitle")
                     transcription_task = asyncio.create_task(
                         vad_streaming_transcribe(
                             websocket,
                             audio_chunks,
                             get_model(session_model_id),
-                            session_language
+                            session_language,
+                            subtitle_mode=is_subtitle,
+                            silence_duration_ms=200 if is_subtitle else 300
                         )
                     )
 

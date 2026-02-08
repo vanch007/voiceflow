@@ -111,6 +111,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var asrServerProcess: Process?
     private var recordingStartTime: Date?
 
+    // System audio recording
+    private var systemAudioRecorder: SystemAudioRecorder?
+    private var subtitlePanel: SubtitlePanel!
+    private var isSystemAudioRecording = false
+    private var systemAudioStartTime: Date?
+
     private var startSoundID: SystemSoundID = 0
     private var stopSoundID: SystemSoundID = 0
     private var cancellables = Set<AnyCancellable>()
@@ -142,6 +148,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Show permission alert if any permission is missing
         permissionAlertWindow = PermissionAlertWindow()
+        permissionAlertWindow.onRetryCheck = { [weak self] in
+            guard let self else { return }
+            let status = PermissionManager.shared.checkAllPermissions()
+            if status.isAccessibilityGranted {
+                self.hotkeyManager?.start()
+                NSLog("[AppDelegate] HotkeyManager restarted after permission granted")
+            }
+        }
         if !permissionStatus.isAccessibilityGranted || !permissionStatus.isMicrophoneGranted {
             NSLog("[AppDelegate] Missing permissions detected, showing alert window")
             permissionAlertWindow.show()
@@ -235,6 +249,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Process text through plugins
                 processedText = self.pluginManager.processText(processedText)
 
+                NSLog("[AppDelegate] onTranscriptionResult: isSystemAudioRecording=%@, text=%@",
+                      self.isSystemAudioRecording ? "true" : "false", processedText)
+
+                // 系统音频录制时：添加到字幕面板，不注入文本
+                if self.isSystemAudioRecording {
+                    if !processedText.isEmpty {
+                        self.subtitlePanel.addFinalSubtitle(processedText)
+                    }
+                    // 收到 final 结果后，重置系统音频录制状态
+                    self.isSystemAudioRecording = false
+                    self.subtitlePanel.stopRecording()
+                    self.statusBarController.updateStatus(.idle)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                        self.subtitlePanel.hide()
+                    }
+                    return
+                }
+
+                // 麦克风录音模式：必须有 recordingStartTime 才显示完成（防止残留响应）
+                guard self.recordingStartTime != nil else {
+                    NSLog("[AppDelegate] Ignoring stale transcription result (no active recording)")
+                    return
+                }
+
                 self.overlayPanel.showDone()
                 self.statusBarController.updateStatus(.idle)
                 if !processedText.isEmpty {
@@ -258,10 +296,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        asrClient.onPartialResult = { [weak self] text in
+        asrClient.onPartialResult = { [weak self] text, trigger in
             guard let self else { return }
             DispatchQueue.main.async {
-                // 实时更新悬浮窗显示的文字
+                // 系统音频录制时：只更新字幕面板，不更新 overlayPanel
+                if self.isSystemAudioRecording {
+                    self.subtitlePanel.updatePartialSubtitle(text, trigger: trigger)
+                    return
+                }
+
+                // 麦克风录音时：更新 overlayPanel
                 self.overlayPanel.updateRecordingText(text)
             }
         }
@@ -341,6 +385,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.startRecordingFreeSpeak()
             }
         }
+
+        // 双击 Option：系统音频录制切换
+        hotkeyManager.onSystemAudioDoubleTap = { [weak self] in
+            self?.toggleSystemAudioRecording()
+        }
+
         hotkeyManager.start()
 
         // Initialize hotkey settings window
@@ -357,6 +407,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.hotkeySettingsWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
+
+        // 状态栏菜单触发系统音频录制
+        statusBarController.onToggleSystemAudio = { [weak self] in
+            self?.toggleSystemAudioRecording()
+        }
+
+        // Initialize subtitle panel for system audio transcription
+        subtitlePanel = SubtitlePanel()
 
         // Observe hotkey enabled setting
         settingsManager.$hotkeyEnabled
@@ -689,5 +747,183 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         asrClient.sendStart()
         audioRecorder.enableSilenceDetection(threshold: 0.005, duration: 2.0)
         audioRecorder.startRecording()
+    }
+
+    // MARK: - System Audio Recording
+
+    /// 切换系统音频录制状态
+    private func toggleSystemAudioRecording() {
+        if isSystemAudioRecording {
+            stopSystemAudioRecording()
+        } else {
+            startSystemAudioRecording()
+        }
+    }
+
+    /// 本地日志写入文件（NSLog 被系统过滤，用文件确保可见）
+    private func debugLog(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "[\(timestamp)] \(message)\n"
+        let logDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("VoiceFlow", isDirectory: true)
+        try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
+        let path = logDir.appendingPathComponent("system_audio.log").path
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(line.data(using: .utf8)!)
+            handle.closeFile()
+        } else {
+            FileManager.default.createFile(atPath: path, contents: line.data(using: .utf8))
+        }
+    }
+
+    /// 开始系统音频录制
+    private func startSystemAudioRecording() {
+        debugLog("startSystemAudioRecording called, isRecording=\(isRecording), isSystemAudioRecording=\(isSystemAudioRecording)")
+
+        // 检查是否正在麦克风录音
+        guard !isRecording else {
+            debugLog("BLOCKED: microphone recording in progress")
+            return
+        }
+
+        // 防止重复启动
+        guard !isSystemAudioRecording else {
+            debugLog("BLOCKED: already starting or recording")
+            return
+        }
+
+        debugLog("Starting system audio recording...")
+
+        // 立即设置标志，防止异步操作期间重复触发
+        self.isSystemAudioRecording = true
+        self.systemAudioStartTime = Date()
+
+        // 显示字幕面板（录制模式，不自动隐藏）
+        self.subtitlePanel.showRecording()
+        self.statusBarController.updateStatus(.systemAudioRecording)
+
+        // 初始化 BlackHole 录制器
+        self.initializeSystemAudioRecorder()
+    }
+
+    private func initializeSystemAudioRecorder() {
+        debugLog("initializeSystemAudioRecorder called")
+
+        // 创建 SystemAudioRecorder
+        let recorder = SystemAudioRecorder()
+        self.systemAudioRecorder = recorder
+
+        // 用一个标识符追踪当前录制会话，防止旧回调影响新会话
+        let sessionID = UUID()
+        let currentSessionID = sessionID
+
+        // 音频数据回调 → 发送到 ASR
+        var chunkCount = 0
+        recorder.onAudioChunk = { [weak self] data in
+            chunkCount += 1
+            if chunkCount <= 5 || chunkCount % 50 == 0 {
+                self?.debugLog("onAudioChunk #\(chunkCount), size=\(data.count)")
+            }
+            self?.asrClient.sendAudioChunk(data)
+        }
+
+        // 音量回调 → 系统音频不需要显示音量
+        recorder.onVolumeLevel = { _ in }
+
+        // 错误回调 — 只有当前会话的错误才停止录制
+        recorder.onError = { [weak self] error in
+            self?.debugLog("ERROR (session=\(currentSessionID.uuidString.prefix(8))): \(error.localizedDescription)")
+            // 不自动停止，只记录错误；权限错误不应杀死整个会话
+        }
+
+        // 检查 ASR 连接状态
+        guard self.asrClient.isServerConnected else {
+            debugLog("BLOCKED: ASR server not connected")
+            self.isSystemAudioRecording = false
+            self.systemAudioStartTime = nil
+            self.subtitlePanel.hide()
+            self.statusBarController.updateStatus(.idle)
+            return
+        }
+
+        debugLog("ASR connected, sending start and beginning recording")
+        self.playSound(self.startSoundID, name: "startSound")
+        self.statusBarController.updateSystemAudioRecordingStatus(recording: true)
+
+        // 发送 ASR 开始消息（字幕模式，启用定时转录）
+        self.asrClient.sendStart(mode: "subtitle")
+
+        // 直接开始录制（跳过 prepare，权限由 startRecording 内部处理）
+        recorder.startRecording { [weak self] success in
+            self?.debugLog("startRecording completion: success=\(success)")
+            guard let self = self else { return }
+            if !success {
+                self.debugLog("startRecording failed, will retry after requesting permission")
+                DispatchQueue.main.async {
+                    // 录制失败时重置状态，不调用 stopSystemAudioRecording 避免发送无效的 stop
+                    self.isSystemAudioRecording = false
+                    self.systemAudioStartTime = nil
+                    self.subtitlePanel.hide()
+                    self.statusBarController.updateStatus(.idle)
+                    self.statusBarController.updateSystemAudioRecordingStatus(recording: false)
+                    self.systemAudioRecorder = nil
+                }
+            }
+        }
+    }
+
+    /// 停止系统音频录制
+    private func stopSystemAudioRecording() {
+        guard isSystemAudioRecording else { return }
+
+        NSLog("[SystemAudio] Stopping system audio recording...")
+        // 注意：不要在这里设置 isSystemAudioRecording = false
+        // 必须等 ASR 返回 final 结果后再重置，否则 onTranscriptionResult 会丢弃结果
+        playSound(stopSoundID, name: "stopSound")
+        statusBarController.updateStatus(.processing)
+        statusBarController.updateSystemAudioRecordingStatus(recording: false)
+
+        // 停止录制
+        systemAudioRecorder?.stopRecording { [weak self] in
+            guard let self = self else { return }
+
+            // 发送 ASR 停止消息
+            self.asrClient.flushAudioChunks {
+                self.asrClient.sendStop {
+                    NSLog("[SystemAudio] Stop sent after all audio flushed")
+                    // sendStop 完成后，等待 final 结果返回
+                    // 设置一个超时：5秒后如果还没收到结果，强制重置状态
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                        if self.isSystemAudioRecording {
+                            NSLog("[SystemAudio] Timeout waiting for final result, resetting state")
+                            self.isSystemAudioRecording = false
+                            self.subtitlePanel.stopRecording()
+                            self.statusBarController.updateStatus(.idle)
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                                self.subtitlePanel.hide()
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 保存转录结果
+            if let startTime = self.systemAudioStartTime {
+                let duration = Date().timeIntervalSince(startTime)
+                // 从字幕面板获取所有字幕并保存
+                let subtitles = self.subtitlePanel.getAllSubtitles()
+                for subtitle in subtitles {
+                    TranscriptStorage.shared.saveTranscript(
+                        text: subtitle,
+                        timestamp: Date(),
+                        duration: duration / Double(max(subtitles.count, 1))
+                    )
+                }
+                self.systemAudioStartTime = nil
+            }
+
+            self.systemAudioRecorder = nil
+        }
     }
 }

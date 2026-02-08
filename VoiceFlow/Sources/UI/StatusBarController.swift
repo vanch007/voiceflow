@@ -2,7 +2,8 @@ import AppKit
 
 enum AppStatus {
     case idle
-    case recording
+    case recording           // 麦克风录制中
+    case systemAudioRecording // 系统音频录制中
     case processing
     case error
 }
@@ -20,10 +21,12 @@ final class StatusBarController {
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
     var onHotkeySettings: (() -> Void)?
     var onSceneSettings: (() -> Void)?
+    var onToggleSystemAudio: (() -> Void)?  // 系统音频录制切换回调
 
     private let statusItem: NSStatusItem
     private var isConnected = false
     private var isRecording = false
+    private var isSystemAudioRecording = false  // 系统音频录制状态
     private var activeDeviceName: String?
     private var currentStatus: AppStatus = .idle
     private var errorMessage: String?
@@ -221,6 +224,26 @@ final class StatusBarController {
                 "ko": "더 많은 언어...",
                 "en": "More Languages...",
                 "zh": "更多语言..."
+            ],
+            "system_audio": [
+                "ko": "시스템 오디오 자막",
+                "en": "System Audio Subtitle",
+                "zh": "系统音频字幕"
+            ],
+            "system_audio_start": [
+                "ko": "시작",
+                "en": "Start",
+                "zh": "开始录制"
+            ],
+            "system_audio_stop": [
+                "ko": "중지",
+                "en": "Stop",
+                "zh": "停止录制"
+            ],
+            "system_audio_recording": [
+                "ko": "녹음 중...",
+                "en": "Recording...",
+                "zh": "录制中..."
             ]
         ]
 
@@ -250,6 +273,12 @@ final class StatusBarController {
     func updateRecordingStatus(recording: Bool) {
         isRecording = recording
         updateIcon()
+    }
+
+    func updateSystemAudioRecordingStatus(recording: Bool) {
+        isSystemAudioRecording = recording
+        updateIcon()
+        buildMenu()
     }
 
     func updateActiveDevice(name: String) {
@@ -296,6 +325,9 @@ final class StatusBarController {
         case .recording:
             symbolName = "mic.fill"
             baseColor = .systemRed
+        case .systemAudioRecording:
+            symbolName = "speaker.wave.3.fill"
+            baseColor = .systemBlue
         case .processing:
             symbolName = "waveform"
             baseColor = .systemBlue
@@ -321,16 +353,18 @@ final class StatusBarController {
         let appStateText: String
         switch currentStatus {
         case .idle:
-            appStateText = "대기 중"
+            appStateText = "待机中"
         case .recording:
-            appStateText = "녹음 중"
+            appStateText = "麦克风录音中"
+        case .systemAudioRecording:
+            appStateText = "系统音频录制中"
         case .processing:
-            appStateText = "처리 중"
+            appStateText = "处理中"
         case .error:
-            appStateText = "오류"
+            appStateText = "错误"
         }
 
-        let asrStatusText = isConnected ? "연결됨" : "끊어짐"
+        let asrStatusText = isConnected ? "已连接" : "已断开"
 
         // Format timestamp in localized format
         let dateFormatter = DateFormatter()
@@ -388,6 +422,27 @@ final class StatusBarController {
             connItem.image = statusImage?.withSymbolConfiguration(config)
         }
         menu.addItem(connItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        // 系统音频字幕菜单项
+        let systemAudioTitle = isSystemAudioRecording
+            ? "\(localized("system_audio")): \(localized("system_audio_recording"))"
+            : localized("system_audio")
+        let systemAudioItem = NSMenuItem(
+            title: systemAudioTitle,
+            action: #selector(toggleSystemAudioAction),
+            keyEquivalent: ""
+        )
+        systemAudioItem.target = self
+        systemAudioItem.state = isSystemAudioRecording ? .on : .off
+        let systemAudioIcon = isSystemAudioRecording ? "speaker.wave.3.fill" : "speaker.wave.2"
+        systemAudioItem.image = NSImage(systemSymbolName: systemAudioIcon, accessibilityDescription: nil)
+        if isSystemAudioRecording {
+            let config = NSImage.SymbolConfiguration(paletteColors: [.systemBlue])
+            systemAudioItem.image = systemAudioItem.image?.withSymbolConfiguration(config)
+        }
+        menu.addItem(systemAudioItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -697,6 +752,10 @@ final class StatusBarController {
     @objc private func toggleDenoise() {
         SettingsManager.shared.enableDenoise.toggle()
         buildMenu()
+    }
+
+    @objc private func toggleSystemAudioAction() {
+        onToggleSystemAudio?()
     }
 
     private func localizedSceneName(_ sceneType: SceneType) -> String {

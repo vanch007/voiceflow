@@ -8,6 +8,7 @@ final class HotkeyManager {
     var onLongPress: (() -> Void)?
     var onLongPressEnd: (() -> Void)?
     var onToggleRecording: (() -> Void)?  // 自由说话模式：切换录音状态
+    var onSystemAudioDoubleTap: (() -> Void)?  // 双击 Option：系统音频录制切换
 
     private var currentConfig: HotkeyConfig
     private var keyIsDown = false
@@ -18,9 +19,15 @@ final class HotkeyManager {
     private var isEnabled = true
     private let userDefaultsKey = "voiceflow.hotkeyConfig"
 
-    // Double-tap detection
+    // Double-tap detection (for doubleTap trigger mode)
     private var lastTapTime: TimeInterval = 0
     private var tapCount = 0
+
+    // System audio double-tap Control detection (独立于主热键配置)
+    private var controlLastTapTime: TimeInterval = 0
+    private var controlTapCount = 0
+    private var controlKeyIsDown = false
+    private let controlDoubleTapInterval: TimeInterval = 0.3  // 300ms 双击间隔
 
     init() {
         // Load config from UserDefaults or use default
@@ -92,6 +99,11 @@ final class HotkeyManager {
     private func handleFlagsChanged(event: NSEvent) {
         guard isEnabled else { return }
 
+        // 始终检测双击 Control（系统音频录制），独立于主热键配置
+        // 如果检测到双击，跳过主热键处理，避免冲突
+        let isDoubleTap = handleSystemAudioDoubleTapControl(event: event)
+        guard !isDoubleTap else { return }
+
         switch currentConfig.triggerType {
         case .doubleTap:
             handleDoubleTapTrigger(event: event)
@@ -102,6 +114,48 @@ final class HotkeyManager {
         case .freeSpeak:
             handleFreeSpeakTrigger(event: event)
         }
+    }
+
+    /// 检测双击 Control 用于系统音频录制（独立于主热键配置）
+    /// 返回 true 表示检测到双击，主热键应跳过此事件
+    private func handleSystemAudioDoubleTapControl(event: NSEvent) -> Bool {
+        let keyCode = event.keyCode
+
+        // 检查是否是 Control 键 (左 Control: 59, 右 Control: 62)
+        guard keyCode == 59 || keyCode == 62 else { return false }
+
+        let isControlPressed = event.modifierFlags.contains(.control)
+
+        if isControlPressed && !controlKeyIsDown {
+            // Control 键按下
+            controlKeyIsDown = true
+            let now = ProcessInfo.processInfo.systemUptime
+
+            // 检查是否为双击
+            if now - controlLastTapTime < controlDoubleTapInterval {
+                controlTapCount += 1
+            } else {
+                controlTapCount = 1
+            }
+            controlLastTapTime = now
+
+            if controlTapCount >= 2 {
+                // 双击 Control 检测到，取消长按计时器，阻止主热键
+                controlTapCount = 0
+                longPressTimer?.invalidate()
+                longPressTimer = nil
+                keyIsDown = false  // 重置主热键状态，防止长按触发
+                NSLog("[HotkeyManager] 双击 Control 检测到")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onSystemAudioDoubleTap?()
+                }
+                return true
+            }
+        } else if !isControlPressed && controlKeyIsDown {
+            // Control 键释放
+            controlKeyIsDown = false
+        }
+        return false
     }
 
     private func handleKeyDown(event: NSEvent) {
