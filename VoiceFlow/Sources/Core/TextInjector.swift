@@ -4,6 +4,8 @@ import Carbon
 final class TextInjector {
     private let maxPasteWaitTime: TimeInterval = 0.5  // 最大等待粘贴完成时间
     private let pasteCheckInterval: TimeInterval = 0.01  // 检查间隔
+    private let pastePreDelay: useconds_t = 50_000   // 粘贴前等待目标应用就绪 (50ms)
+    private let keyEventInterval: useconds_t = 10_000 // 按键 down/up 之间间隔 (10ms)
 
     func inject(text: String) {
         NSLog("[TextInjector] 🚀 Starting injection for text: \(text.prefix(50))")
@@ -85,7 +87,7 @@ final class TextInjector {
 
     private func simulatePaste() {
         // Small delay to ensure target app is ready to receive paste
-        usleep(50000)  // 50ms delay
+        usleep(pastePreDelay)
 
         let source = CGEventSource(stateID: .hidSystemState)
 
@@ -106,7 +108,7 @@ final class TextInjector {
         keyDown.post(tap: .cgSessionEventTap)
         NSLog("[TextInjector] 📤 Posted keyDown event")
 
-        usleep(10000)  // 10ms between key down and up
+        usleep(keyEventInterval)
 
         keyUp.post(tap: .cgSessionEventTap)
         NSLog("[TextInjector] 📤 Posted keyUp event")
@@ -153,7 +155,7 @@ final class TextInjector {
     }
 
     private func simulateSelectAllAndPaste() {
-        usleep(50000)  // 50ms delay
+        usleep(pastePreDelay)
 
         let source = CGEventSource(stateID: .hidSystemState)
 
@@ -163,12 +165,12 @@ final class TextInjector {
             keyDownA.flags = .maskCommand
             keyUpA.flags = .maskCommand
             keyDownA.post(tap: .cgSessionEventTap)
-            usleep(10000)
+            usleep(keyEventInterval)
             keyUpA.post(tap: .cgSessionEventTap)
             NSLog("[TextInjector] ⌨️ Cmd+A sent (Select All)")
         }
 
-        usleep(50000)  // 50ms delay between select and paste
+        usleep(pastePreDelay)
 
         // Cmd+V (Paste)
         if let keyDownV = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
@@ -176,7 +178,7 @@ final class TextInjector {
             keyDownV.flags = .maskCommand
             keyUpV.flags = .maskCommand
             keyDownV.post(tap: .cgSessionEventTap)
-            usleep(10000)
+            usleep(keyEventInterval)
             keyUpV.post(tap: .cgSessionEventTap)
             NSLog("[TextInjector] ⌨️ Cmd+V sent (Paste)")
         }

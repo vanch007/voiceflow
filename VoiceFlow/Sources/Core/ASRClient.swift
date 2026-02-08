@@ -47,7 +47,6 @@ final class ASRClient {
     private let maxReconnectInterval: TimeInterval = 30.0
     private var currentReconnectInterval: TimeInterval = 3.0
     private var shouldReconnect = true
-    private var currentLanguage: String = SettingsManager.shared.voiceLanguage
     private var lastErrorMessage: String?
 
     // 引用 SettingsManager 获取配置
@@ -433,14 +432,6 @@ final class ASRClient {
               let category = userInfo["category"] as? String,
               let key = userInfo["key"] as? String else {
             return
-        }
-
-        // Update language when voice language setting changes
-        if category == "voice" && key == "language" {
-            if let language = userInfo["value"] as? String {
-                currentLanguage = language
-                NSLog("[ASRClient] Voice language changed to: \(language)")
-            }
         }
 
         // Sync LLM settings when changed
