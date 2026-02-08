@@ -1,13 +1,14 @@
 import SwiftUI
 import AppKit
 
-/// Accessibility Permission screen (Step 3) - Request accessibility access for hotkey monitoring and text injection
+/// Accessibility Permission screen - Request accessibility access for hotkey monitoring and text injection
 struct AccessibilityPermissionView: View {
     let onNext: () -> Void
     let onBack: () -> Void
 
     @State private var isPermissionGranted = false
     @State private var isChecking = false
+    private let poller = PermissionPoller()
 
     var body: some View {
         VStack(spacing: 20) {
@@ -98,16 +99,10 @@ struct AccessibilityPermissionView: View {
                     }
                     .buttonStyle(.plain)
 
-                    Button(action: checkPermissionStatus) {
-                        Text(isChecking ? "检查中..." : "我已授权，继续")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.gray.opacity(0.3))
-                            .foregroundColor(.primary)
-                            .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isChecking)
+                    // 提示用户授权后会自动前进
+                    Text("授权后将自动继续")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
                 } else {
                     Button(action: onNext) {
                         Text("继续")
@@ -133,6 +128,16 @@ struct AccessibilityPermissionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             checkPermissionStatus()
+            // 启动轮询：用户在系统设置中授权后自动前进
+            poller.startPolling(for: .accessibility) {
+                isPermissionGranted = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    onNext()
+                }
+            }
+        }
+        .onDisappear {
+            poller.stopPolling()
         }
     }
 
@@ -151,6 +156,7 @@ struct AccessibilityPermissionView: View {
 
             // If permission granted, auto-proceed after brief delay
             if granted {
+                poller.stopPolling()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     onNext()
                 }

@@ -4,6 +4,9 @@ final class PermissionAlertWindow: NSObject {
     private var window: NSWindow?
     var onRetryCheck: (() -> Void)?
 
+    private var accessibilityPoller: PermissionPoller?
+    private var microphonePoller: PermissionPoller?
+
     // MARK: - Public Methods
 
     func show() {
@@ -13,11 +16,45 @@ final class PermissionAlertWindow: NSObject {
         updateContent()
         window?.makeKeyAndOrderFront(nil)
         window?.center()
+
+        // 启动轮询，自动检测权限变化
+        let status = PermissionManager.shared.checkAllPermissions()
+        if !status.isAccessibilityGranted {
+            accessibilityPoller = PermissionPoller()
+            accessibilityPoller?.startPolling(for: .accessibility) { [weak self] in
+                self?.checkAndAutoClose()
+            }
+        }
+        if !status.isMicrophoneGranted {
+            microphonePoller = PermissionPoller()
+            microphonePoller?.startPolling(for: .microphone) { [weak self] in
+                self?.checkAndAutoClose()
+            }
+        }
     }
 
     func hide() {
+        accessibilityPoller?.stopPolling()
+        accessibilityPoller = nil
+        microphonePoller?.stopPolling()
+        microphonePoller = nil
         window?.close()
         window = nil
+    }
+
+    private func checkAndAutoClose() {
+        let status = PermissionManager.shared.checkAllPermissions()
+        if status.isAccessibilityGranted && status.isMicrophoneGranted {
+            NSLog("[PermissionAlertWindow] All permissions granted, auto-closing")
+            DispatchQueue.main.async {
+                self.onRetryCheck?()
+                self.hide()
+            }
+        } else {
+            DispatchQueue.main.async {
+                self.updateContent()
+            }
+        }
     }
 
     // MARK: - Window Creation
@@ -110,6 +147,15 @@ final class PermissionAlertWindow: NSObject {
         // Action Buttons
         let buttonY: CGFloat = 20
         var buttonX: CGFloat = window.frame.width - 120
+
+        // Restart Button
+        let restartButton = NSButton(frame: NSRect(x: buttonX, y: buttonY, width: 100, height: 32))
+        restartButton.title = localized("restart")
+        restartButton.bezelStyle = .rounded
+        restartButton.target = self
+        restartButton.action = #selector(restartAppAction)
+        contentView.addSubview(restartButton)
+        buttonX -= 110
 
         // Retry Button
         let retryButton = NSButton(frame: NSRect(x: buttonX, y: buttonY, width: 100, height: 32))
@@ -242,6 +288,18 @@ final class PermissionAlertWindow: NSObject {
         onRetryCheck?()
     }
 
+    @objc private func restartAppAction() {
+        NSLog("[PermissionAlertWindow] Restart app requested")
+        let bundlePath = Bundle.main.bundlePath
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = ["-n", bundlePath]
+        try? task.run()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NSApp.terminate(nil)
+        }
+    }
+
     // MARK: - Localization
 
     private func localized(_ key: String) -> String {
@@ -297,6 +355,11 @@ final class PermissionAlertWindow: NSObject {
                 "ko": "재시도",
                 "en": "Retry",
                 "zh": "重试"
+            ],
+            "restart": [
+                "ko": "재시작",
+                "en": "Restart",
+                "zh": "重启应用"
             ],
             "instructions_title": [
                 "ko": "권한 수정 방법:",

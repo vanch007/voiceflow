@@ -72,23 +72,36 @@ extension OnboardingWindow: NSWindowDelegate {
 private struct OnboardingContentView: View {
     let onComplete: () -> Void
 
-    @State private var currentStep: OnboardingStep = .welcome
+    @State private var currentStep: OnboardingStep = .microphone
 
-    enum OnboardingStep {
-        case welcome
+    enum OnboardingStep: CaseIterable {
         case microphone
         case accessibility
         case hotkeyPractice
         case completion
     }
 
+    /// 当前流程中实际需要展示的步骤（跳过已授权的）
+    private var activeSteps: [OnboardingStep] {
+        var steps: [OnboardingStep] = []
+        if PermissionManager.shared.checkMicrophonePermission() != .granted {
+            steps.append(.microphone)
+        }
+        if PermissionManager.shared.checkAccessibilityPermission() != .granted {
+            steps.append(.accessibility)
+        }
+        steps.append(.hotkeyPractice)
+        steps.append(.completion)
+        return steps
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Progress indicator
+            // Progress indicator — 动态调整为实际步骤数
             HStack(spacing: 8) {
-                ForEach(0..<5) { index in
+                ForEach(0..<activeSteps.count, id: \.self) { index in
                     Circle()
-                        .fill(index <= stepIndex ? Color.blue : Color.gray.opacity(0.3))
+                        .fill(index <= currentActiveIndex ? Color.blue : Color.gray.opacity(0.3))
                         .frame(width: 8, height: 8)
                 }
             }
@@ -98,23 +111,19 @@ private struct OnboardingContentView: View {
             // Current step view
             Group {
                 switch currentStep {
-                case .welcome:
-                    WelcomeView(onNext: {
-                        currentStep = .microphone
-                    })
                 case .microphone:
                     MicrophonePermissionView(
                         onNext: {
-                            currentStep = .accessibility
+                            advanceToNextStep(from: .microphone)
                         },
                         onBack: {
-                            currentStep = .welcome
+                            // 第一步无需返回
                         }
                     )
                 case .accessibility:
                     AccessibilityPermissionView(
                         onNext: {
-                            currentStep = .hotkeyPractice
+                            advanceToNextStep(from: .accessibility)
                         },
                         onBack: {
                             currentStep = .microphone
@@ -135,15 +144,34 @@ private struct OnboardingContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear {
+            // 初始化时检查麦克风权限，已授权则跳过
+            if PermissionManager.shared.checkMicrophonePermission() == .granted {
+                advanceToNextStep(from: .microphone)
+            }
+        }
     }
 
-    private var stepIndex: Int {
-        switch currentStep {
-        case .welcome: return 0
-        case .microphone: return 1
-        case .accessibility: return 2
-        case .hotkeyPractice: return 3
-        case .completion: return 4
+    /// 步骤切换时检查下一步是否可跳过
+    private func advanceToNextStep(from current: OnboardingStep) {
+        switch current {
+        case .microphone:
+            if PermissionManager.shared.checkAccessibilityPermission() == .granted {
+                currentStep = .hotkeyPractice
+            } else {
+                currentStep = .accessibility
+            }
+        case .accessibility:
+            currentStep = .hotkeyPractice
+        case .hotkeyPractice:
+            currentStep = .completion
+        case .completion:
+            break
         }
+    }
+
+    /// 当前步骤在活跃步骤列表中的索引
+    private var currentActiveIndex: Int {
+        activeSteps.firstIndex(of: currentStep) ?? 0
     }
 }

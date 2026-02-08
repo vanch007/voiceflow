@@ -1,7 +1,7 @@
 import SwiftUI
 import AVFoundation
 
-/// Microphone Permission screen (Step 2) - Request microphone access for audio recording
+/// Microphone Permission screen - Request microphone access for audio recording
 struct MicrophonePermissionView: View {
     let onNext: () -> Void
     let onBack: () -> Void
@@ -9,6 +9,7 @@ struct MicrophonePermissionView: View {
     enum MicPermission { case undetermined, granted, denied }
     @State private var permissionStatus: MicPermission = .undetermined
     @State private var isRequesting = false
+    private let poller = PermissionPoller()
 
     var body: some View {
         VStack(spacing: 20) {
@@ -107,6 +108,16 @@ struct MicrophonePermissionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             checkPermissionStatus()
+            // 启动轮询：处理用户先拒绝再去系统设置手动开启的场景
+            poller.startPolling(for: .microphone) {
+                permissionStatus = .granted
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    onNext()
+                }
+            }
+        }
+        .onDisappear {
+            poller.stopPolling()
         }
     }
 
@@ -127,6 +138,12 @@ struct MicrophonePermissionView: View {
             DispatchQueue.main.async {
                 isRequesting = false
                 permissionStatus = granted ? .granted : .denied
+                if granted {
+                    poller.stopPolling()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        onNext()
+                    }
+                }
             }
         }
     }
