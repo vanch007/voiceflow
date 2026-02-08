@@ -344,8 +344,6 @@ class TextPolisher:
         original_text = text
         logger.debug(f"Polishing text: {text[:50]}...")
 
-        # Step 1: Skip self-correction detection (disabled - too aggressive, causes false positives)
-        # polished = self.self_correction.detect_and_correct(text)
         polished = text
 
         # Step 2: Remove filler words

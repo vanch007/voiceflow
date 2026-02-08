@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import shutil
+import threading
 import time
 from pathlib import Path
 
@@ -13,11 +14,11 @@ import websockets
 from mlx_asr import MLXQwen3ASR
 from text_polisher import TextPolisher, TimestampAwarePunctuator
 from scene_polisher import ScenePolisher
-from llm_client import LLMClient, LLMConfig, init_llm_client, get_llm_client, shutdown_llm_client
+from llm_client import LLMConfig, init_llm_client, get_llm_client
 from llm_polisher import LLMPolisher, init_llm_polisher, get_llm_polisher, DEFAULT_POLISH_PROMPTS
 from prompt_config import get_prompt_config
-from history_analyzer import HistoryAnalyzer, init_history_analyzer, get_history_analyzer
-from audio_denoiser import get_denoiser, init_denoiser
+from history_analyzer import init_history_analyzer, get_history_analyzer
+from audio_denoiser import get_denoiser
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -34,7 +35,6 @@ llm_polisher: LLMPolisher = None
 config = {}
 
 # 模型访问锁，防止并发转录导致 MLX 崩溃
-import threading
 model_lock = threading.Lock()
 
 # 后台任务集合，防止被 GC 回收

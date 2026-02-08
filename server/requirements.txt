@@ -1,5 +1,5 @@
 websockets
 numpy
-soundfile
-qwen-asr
+soundfile  # NOTE: not directly imported by server code; may be an indirect dependency of mlx-audio
+qwen-asr  # NOTE: not directly imported; mlx_asr.py uses mlx_audio.stt — verify if still needed
 pytest

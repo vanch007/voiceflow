@@ -2,7 +2,6 @@
 """Scene-aware text polisher for VoiceFlow."""
 
 import logging
-import re
 from text_polisher import TextPolisher
 
 logger = logging.getLogger(__name__)
