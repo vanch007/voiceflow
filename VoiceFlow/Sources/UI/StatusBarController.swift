@@ -626,14 +626,6 @@ final class StatusBarController {
         onSettings?()
     }
 
-    @objc private func hotkeySettingsAction() {
-        onHotkeySettings?()
-    }
-
-    @objc private func textReplacementAction() {
-        onTextReplacement?()
-    }
-
     @objc private func showHistoryAction() {
         onShowHistory?()
     }
