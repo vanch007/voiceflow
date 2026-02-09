@@ -93,6 +93,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindowController: SettingsWindowController!
     private var hotkeyManager: HotkeyManager!
     private var hotkeySettingsWindow: HotkeySettingsWindow!
+    private var recordingHistoryWindow: RecordingHistoryWindow!
     private var audioRecorder: AudioRecorder!
     private var asrClient: ASRClient!
     private var textInjector: TextInjector!
@@ -366,7 +367,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settingsWindowController.show()
         }
         statusBarController.onShowHistory = { [weak self] in
-            self?.settingsWindowController.show(tab: .recordingHistory)
+            self?.recordingHistoryWindow.show()
         }
         statusBarController.onTextReplacement = { [weak self] in
             self?.settingsWindowController.show(tab: .textReplacement)
@@ -415,6 +416,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.hotkeySettingsWindow.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
         }
+
+        // Initialize recording history window
+        recordingHistoryWindow = RecordingHistoryWindow(recordingHistory: recordingHistory)
 
         // 状态栏菜单触发系统音频录制
         statusBarController.onToggleSystemAudio = { [weak self] in

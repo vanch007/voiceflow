@@ -249,7 +249,6 @@
 				P1000002,
 				L2000003,
 				L2000004,
-		RH000002,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -369,7 +368,6 @@
 				PM000001,
 				CT000001,
 				FL000001,
-		RH000001,
 				0483771F70A247EBAB11AEC6 /* OnboardingWindow.swift in Sources */,
 				DE92135E782B4279952A59B3 /* WelcomeView.swift in Sources */,
 				4A2ECC1AEC7442ED8D1C2972 /* MicrophonePermissionView.swift in Sources */,
