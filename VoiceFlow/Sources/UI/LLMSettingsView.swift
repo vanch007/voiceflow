@@ -21,7 +21,7 @@ struct LLMSettingsView: View {
 
     enum ConnectionTestResult {
         case success(latencyMs: Int)
-        case failure(message: String)
+        case failure(message: String, suggestion: String? = nil)
     }
 
     var body: some View {
@@ -213,13 +213,25 @@ struct LLMSettingsView: View {
                 Text("连接成功 (\(latencyMs)ms)")
                     .foregroundColor(.green)
             }
-        case .failure(let message):
-            HStack(spacing: 4) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.red)
-                Text(message)
-                    .foregroundColor(.red)
-                    .lineLimit(1)
+        case .failure(let message, let suggestion):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.red)
+                    Text(message)
+                        .foregroundColor(.red)
+                }
+
+                if let suggestion = suggestion {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lightbulb.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption)
+                        Text(suggestion)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
         }
     }
@@ -281,7 +293,8 @@ struct LLMSettingsView: View {
                 if success {
                     self.connectionTestResult = .success(latencyMs: latency ?? 0)
                 } else {
-                    self.connectionTestResult = .failure(message: "连接失败")
+                    let suggestion = self.getConnectionFailureSuggestion()
+                    self.connectionTestResult = .failure(message: "连接失败", suggestion: suggestion)
                 }
             }
         }
@@ -322,9 +335,46 @@ struct LLMSettingsView: View {
             DispatchQueue.main.async {
                 if self.isTestingConnection {
                     self.isTestingConnection = false
-                    self.connectionTestResult = .failure(message: "连接超时")
+                    let suggestion = self.getTimeoutSuggestion()
+                    self.connectionTestResult = .failure(message: "连接超时", suggestion: suggestion)
                 }
             }
+        }
+    }
+
+    private func getConnectionFailureSuggestion() -> String {
+        let backend = detectBackend(from: apiURL)
+
+        switch backend {
+        case "ollama":
+            return "请确保 Ollama 已启动: ollama serve"
+        case "vllm":
+            return "请检查 vLLM 服务是否运行在 \(apiURL)"
+        case "openai":
+            if apiURL.contains("openai.com") {
+                return "请检查 API Key 是否有效且有余额"
+            } else {
+                return "请确保 API 服务正在运行"
+            }
+        case "anthropic":
+            return "请检查 API Key 是否有效"
+        default:
+            return "请检查 API 地址和密钥是否正确"
+        }
+    }
+
+    private func getTimeoutSuggestion() -> String {
+        let backend = detectBackend(from: apiURL)
+
+        switch backend {
+        case "ollama":
+            return "Ollama 可能未启动，运行: ollama serve"
+        case "vllm":
+            return "检查模型是否已加载完成"
+        case "openai", "anthropic":
+            return "检查网络连接或增加超时时间"
+        default:
+            return "检查服务状态或增加超时时间"
         }
     }
 
