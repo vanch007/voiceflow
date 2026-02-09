@@ -27,6 +27,7 @@ final class ASRClient {
     var onConnectionStatusChanged: ((Bool) -> Void)?
     var onErrorStateChanged: ((Bool, String?) -> Void)?
     var onLLMConnectionTestResult: ((Bool, Int?) -> Void)?  // LLM 连接测试结果
+    var onModelListReceived: (([String]) -> Void)?  // 模型列表回调
     var onHistoryAnalysisResult: ((HistoryAnalysisResult?) -> Void)?  // 历史分析结果
     var onDefaultPromptsReceived: (([String: String]) -> Void)?  // 默认提示词回调
     var onCustomPromptsReceived: (([String: String]) -> Void)?  // 自定义提示词回调
