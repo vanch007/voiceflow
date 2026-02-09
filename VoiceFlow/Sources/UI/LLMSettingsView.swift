@@ -347,34 +347,63 @@ struct LLMSettingsView: View {
 
         switch backend {
         case "ollama":
-            return "请确保 Ollama 已启动: ollama serve"
+            if apiURL.contains("localhost") || apiURL.contains("127.0.0.1") {
+                return "1) 运行 'ollama serve' 启动服务  2) 确认端口 11434 未被占用  3) 运行 'ollama list' 检查模型是否已下载"
+            } else {
+                return "请确保远程 Ollama 服务可访问且防火墙已开放"
+            }
         case "vllm":
-            return "请检查 vLLM 服务是否运行在 \(apiURL)"
+            return "1) 检查 vLLM 服务是否运行  2) 确认 API 地址正确 (\(apiURL))  3) 检查模型是否已加载完成"
         case "openai":
             if apiURL.contains("openai.com") {
-                return "请检查 API Key 是否有效且有余额"
+                if apiKey.isEmpty {
+                    return "OpenAI 需要 API Key，请前往 https://platform.openai.com/api-keys 获取"
+                } else {
+                    return "1) 检查 API Key 是否有效  2) 确认账户有足够余额  3) 验证 API Key 权限设置"
+                }
             } else {
-                return "请确保 API 服务正在运行"
+                return "1) 确保本地 OpenAI 兼容服务正在运行  2) 检查 API 地址格式 (应以 /v1 结尾)  3) 验证服务健康状态"
             }
         case "anthropic":
-            return "请检查 API Key 是否有效"
+            if apiKey.isEmpty {
+                return "Claude 需要 API Key，请前往 https://console.anthropic.com 获取"
+            } else {
+                return "1) 检查 API Key 格式 (应以 sk-ant- 开头)  2) 确认 API Key 未过期  3) 验证网络连接"
+            }
         default:
-            return "请检查 API 地址和密钥是否正确"
+            if apiURL.isEmpty {
+                return "请先填写 API 地址，或使用下方预设配置"
+            } else if !apiURL.hasPrefix("http://") && !apiURL.hasPrefix("https://") {
+                return "API 地址格式错误，应以 http:// 或 https:// 开头"
+            } else {
+                return "1) 检查 API 地址是否正确  2) 确认服务正在运行  3) 验证 API Key (如需要)"
+            }
         }
     }
 
     private func getTimeoutSuggestion() -> String {
         let backend = detectBackend(from: apiURL)
+        let currentTimeout = Int(timeout) ?? 10
 
         switch backend {
         case "ollama":
-            return "Ollama 可能未启动，运行: ollama serve"
+            return "1) 运行 'ollama serve' 启动服务  2) 首次加载模型较慢，建议增加超时至 30 秒  3) 运行 'ollama ps' 查看模型状态"
         case "vllm":
-            return "检查模型是否已加载完成"
-        case "openai", "anthropic":
-            return "检查网络连接或增加超时时间"
+            return "1) 检查模型加载进度 (首次启动可能需要几分钟)  2) 当前超时 \(currentTimeout) 秒，建议增加至 30 秒  3) 查看 vLLM 服务日志"
+        case "openai":
+            if apiURL.contains("openai.com") {
+                return "1) 检查网络连接 (可能被防火墙拦截)  2) 当前超时 \(currentTimeout) 秒，海外 API 建议增加至 20 秒  3) 尝试使用代理"
+            } else {
+                return "1) 确认本地服务正在运行  2) 检查服务响应时间  3) 增加超时设置或优化模型配置"
+            }
+        case "anthropic":
+            return "1) 检查网络连接 (Claude API 需要稳定网络)  2) 当前超时 \(currentTimeout) 秒，建议增加至 20 秒  3) 验证 API 区域设置"
         default:
-            return "检查服务状态或增加超时时间"
+            if currentTimeout < 10 {
+                return "当前超时时间过短 (\(currentTimeout) 秒)，建议增加至 10-30 秒"
+            } else {
+                return "1) 检查 API 服务状态  2) 当前超时 \(currentTimeout) 秒，可尝试增加至 30 秒  3) 验证网络连接"
+            }
         }
     }
 
