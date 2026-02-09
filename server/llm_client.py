@@ -242,6 +242,36 @@ class LLMClient:
             logger.warning(f"LLM health check error: {e}")
             return False, None
 
+    async def list_available_models(self) -> list[str]:
+        """
+        List available models from LLM service.
+
+        Returns:
+            List of model names, empty list on error
+        """
+        try:
+            session = await self._get_session()
+            url = f"{self.config.api_url.rstrip('/')}/models"
+
+            headers = {}
+            if self.config.api_key:
+                headers["Authorization"] = f"Bearer {self.config.api_key}"
+
+            async with session.get(url, headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    # OpenAI-compatible API returns {"data": [{"id": "model-name"}, ...]}
+                    models = [model["id"] for model in data.get("data", [])]
+                    logger.info(f"Retrieved {len(models)} models from LLM service")
+                    return models
+                else:
+                    logger.warning(f"Failed to list models: status {resp.status}")
+                    return []
+
+        except Exception as e:
+            logger.warning(f"Failed to list models: {e}")
+            return []
+
 
 # Global LLM client instance
 _llm_client: Optional[LLMClient] = None
