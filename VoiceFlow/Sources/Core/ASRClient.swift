@@ -7,6 +7,7 @@ private enum ASRMessageType: String, Decodable {
     case polish_update  // LLM 润色完成后的更新
     case config_llm_ack
     case test_llm_connection_result
+    case list_models_result
     case analysis_result
 }
 
