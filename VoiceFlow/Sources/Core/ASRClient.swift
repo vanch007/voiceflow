@@ -460,6 +460,16 @@ final class ASRClient {
         NSLog("[ASRClient] Testing LLM connection...")
     }
 
+    /// List available models from LLM backend
+    func listAvailableModels(backend: String) {
+        let message: [String: Any] = [
+            "type": "list_models",
+            "backend": backend
+        ]
+        sendJSONObject(message)
+        NSLog("[ASRClient] Requesting available models for backend: %@", backend)
+    }
+
     /// Analyze recording history for an application
     func analyzeHistory(entries: [RecordingEntry], appName: String, existingTerms: [String] = []) {
         let entriesData = entries.map { entry -> [String: Any] in
