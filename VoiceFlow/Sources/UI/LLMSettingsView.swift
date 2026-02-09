@@ -4,6 +4,7 @@ import Foundation
 /// LLM 设置视图
 struct LLMSettingsView: View {
     @ObservedObject var settingsManager: SettingsManager
+    let asrClient: ASRClient
     @State private var isTestingConnection = false
     @State private var connectionTestResult: ConnectionTestResult?
     @State private var showAPIKey = false
@@ -165,6 +166,7 @@ struct LLMSettingsView: View {
         .formStyle(.grouped)
         .onAppear {
             loadCurrentSettings()
+            setupASRClientCallbacks()
         }
     }
 
@@ -238,6 +240,20 @@ struct LLMSettingsView: View {
         timeout = String(Int(defaults.timeout))
     }
 
+    private func setupASRClientCallbacks() {
+        // 设置 LLM 连接测试结果回调
+        asrClient.onLLMConnectionTestResult = { [self] success, latency in
+            DispatchQueue.main.async {
+                self.isTestingConnection = false
+                if success {
+                    self.connectionTestResult = .success(latencyMs: latency ?? 0)
+                } else {
+                    self.connectionTestResult = .failure(message: "连接失败")
+                }
+            }
+        }
+    }
+
     private func testConnection() {
         isTestingConnection = true
         connectionTestResult = nil
@@ -245,23 +261,29 @@ struct LLMSettingsView: View {
         // 先保存当前设置
         saveSettings()
 
-        // 模拟连接测试（实际通过 ASRClient 发送）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            // TODO: 实际实现需要通过 ASRClient.testLLMConnection()
-            // 这里暂时模拟结果
-            if apiURL.contains("localhost") {
-                connectionTestResult = .success(latencyMs: 45)
-            } else if apiKey.isEmpty && !apiURL.contains("localhost") {
-                connectionTestResult = .failure(message: "需要 API Key")
-            } else {
-                connectionTestResult = .success(latencyMs: 120)
+        // 使用 ASRClient 测试 LLM 连接
+        Task {
+            // 等待一下让设置保存生效
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+
+            DispatchQueue.main.async {
+                asrClient.testLLMConnection()
             }
-            isTestingConnection = false
+
+            // 设置超时保护
+            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10s timeout
+
+            DispatchQueue.main.async {
+                if self.isTestingConnection {
+                    self.isTestingConnection = false
+                    self.connectionTestResult = .failure(message: "连接超时")
+                }
+            }
         }
     }
 }
 
 #Preview("LLM Settings") {
-    LLMSettingsView(settingsManager: SettingsManager.shared)
+    LLMSettingsView(settingsManager: SettingsManager.shared, asrClient: ASRClient())
         .frame(width: 600, height: 700)
 }

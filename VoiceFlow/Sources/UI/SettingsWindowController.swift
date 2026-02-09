@@ -21,12 +21,14 @@ final class SettingsWindowController: NSWindowController {
     private let settingsManager: SettingsManager
     private let replacementStorage: ReplacementStorage
     private let recordingHistory: RecordingHistory
+    private let asrClient: ASRClient
     private let tabSelection = TabSelectionModel()
 
-    init(settingsManager: SettingsManager, replacementStorage: ReplacementStorage, recordingHistory: RecordingHistory) {
+    init(settingsManager: SettingsManager, replacementStorage: ReplacementStorage, recordingHistory: RecordingHistory, asrClient: ASRClient) {
         self.settingsManager = settingsManager
         self.replacementStorage = replacementStorage
         self.recordingHistory = recordingHistory
+        self.asrClient = asrClient
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
@@ -45,6 +47,7 @@ final class SettingsWindowController: NSWindowController {
                 settingsManager: settingsManager,
                 replacementStorage: replacementStorage,
                 recordingHistory: recordingHistory,
+                asrClient: asrClient,
                 tabSelection: tabSelection
             )
         )
@@ -71,6 +74,7 @@ private struct SettingsContentView: View {
     @ObservedObject var settingsManager: SettingsManager
     @ObservedObject var replacementStorage: ReplacementStorage
     let recordingHistory: RecordingHistory
+    let asrClient: ASRClient
     @ObservedObject var tabSelection: TabSelectionModel
     @State private var pluginInfoList: [PluginInfo] = []
 
@@ -82,7 +86,7 @@ private struct SettingsContentView: View {
                 .tag(SettingsTab.general)
 
             // LLM 设置标签页
-            LLMSettingsView(settingsManager: settingsManager)
+            LLMSettingsView(settingsManager: settingsManager, asrClient: asrClient)
                 .tabItem { Label("LLM", systemImage: "brain") }
                 .tag(SettingsTab.llm)
 
@@ -1643,6 +1647,7 @@ private struct PluginDetailView: View {
         settingsManager: SettingsManager.shared,
         replacementStorage: ReplacementStorage(),
         recordingHistory: RecordingHistory(),
+        asrClient: ASRClient(),
         tabSelection: TabSelectionModel()
     )
 }
