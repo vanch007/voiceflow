@@ -30,7 +30,7 @@
 		'A1000007' = {isa = PBXBuildFile; fileRef = B1000007; };
 		'A1000008' = {isa = PBXBuildFile; fileRef = B1000008; };
 		'A1000011' = {isa = PBXBuildFile; fileRef = B1000011; };
-		'A1000012' = {isa = PBXBuildFile; fileRef = B1000012; };
+
 		'A1000013' = {isa = PBXBuildFile; fileRef = B1000013; };
 		'A1000014' = {isa = PBXBuildFile; fileRef = B1000014; };
 		'A1000015' = {isa = PBXBuildFile; fileRef = B1000015; };
@@ -57,6 +57,7 @@
 		'T1000001' = {isa = PBXBuildFile; fileRef = T2000001; };
 		'T1000002' = {isa = PBXBuildFile; fileRef = T2000002; };
 		'FL000001' = {isa = PBXBuildFile; fileRef = FL000002; };
+		'AC000001' = {isa = PBXBuildFile; fileRef = AC000002; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -88,7 +89,7 @@
 		'B1000009' = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		'B1000010' = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VoiceFlow.entitlements; sourceTree = "<group>"; };
 		'B1000011' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingHistory.swift; sourceTree = "<group>"; };
-		'B1000012' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryWindowController.swift; sourceTree = "<group>"; };
+
 		'B1000013' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginAPI.swift; sourceTree = "<group>"; };
 		'B1000014' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginLoader.swift; sourceTree = "<group>"; };
 		'B1000015' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginManager.swift; sourceTree = "<group>"; };
@@ -113,7 +114,19 @@
 		'T2000001' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LearnedTerm.swift; sourceTree = "<group>"; };
 		'T2000002' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermLearner.swift; sourceTree = "<group>"; };
 		'FL000002' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileLogger.swift; sourceTree = "<group>"; };
+		'AC000002' = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Assets.xcassets; path = VoiceFlow/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXResourcesBuildPhase section */
+		'R1000001' = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC000001,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		'D1000001' = {
@@ -142,6 +155,7 @@
 			isa = PBXGroup;
 			children = (
 				B1000010,
+				AC000002,
 				E1000002,
 				E1000005,
 				E1000006,
@@ -229,7 +243,6 @@
 				508E63982F30759E0016E8CD /* SettingsWindowController.swift */,
 				B1000007,
 				B1000008,
-				B1000012,
 				D2000005,
 				P1000002,
 				L2000003,
@@ -266,6 +279,7 @@
 			buildPhases = (
 				F1000002,
 				D1000001,
+				R1000001,
 			);
 			buildRules = (
 			);
@@ -332,7 +346,6 @@
 				508E638E2F30752D0016E8CD /* SettingsManager.swift in Sources */,
 				508E63992F30759E0016E8CD /* SettingsWindowController.swift in Sources */,
 				508E639A2F30759E0016E8CD /* SettingsWindow.swift in Sources */,
-				A1000012,
 				A1000013,
 				A1000014,
 				A1000015,
@@ -489,6 +502,7 @@
 		'G1000006' = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = VoiceFlow.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
@@ -514,6 +528,7 @@
 		'G1000007' = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = VoiceFlow.entitlements;
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;

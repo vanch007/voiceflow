@@ -10,7 +10,9 @@ final class SubtitlePanel {
     private var panel: NSPanel?
     private var hideTimer: Timer?
 
-    // 字幕数据：单一文本源
+    // 字幕数据：已确认段落 + 当前 partial
+    private var confirmedSegments: [String] = []
+    private var currentPartialText: String = ""
     private var fullText: String = ""
 
     // 可配置样式
@@ -89,18 +91,33 @@ final class SubtitlePanel {
         return ("", text)
     }
 
-    /// 更新 partial 字幕
+    /// 重建 fullText = confirmedSegments + currentPartialText
+    private func rebuildFullText() {
+        let confirmed = confirmedSegments.joined()
+        if currentPartialText.isEmpty {
+            fullText = confirmed
+        } else if confirmed.isEmpty {
+            fullText = currentPartialText
+        } else {
+            fullText = confirmed + currentPartialText
+        }
+    }
+
+    /// 更新 partial 字幕（只更新当前未确认文本）
     func updatePartialSubtitle(_ text: String, trigger: String = "periodic") {
         guard !text.isEmpty else { return }
-        fullText = text
+        currentPartialText = text
+        rebuildFullText()
         showPanel()
         updateContent()
     }
 
-    /// 添加最终字幕（录制结束时的完整结果）
+    /// 添加最终字幕（将文本追加到已确认段落）
     func addFinalSubtitle(_ text: String) {
         guard !text.isEmpty else { return }
-        fullText = text
+        confirmedSegments.append(text)
+        currentPartialText = ""
+        rebuildFullText()
         showPanel()
         updateContent()
         resetHideTimer()
@@ -108,18 +125,15 @@ final class SubtitlePanel {
 
     /// 清空所有字幕
     func clearSubtitles() {
+        confirmedSegments.removeAll()
+        currentPartialText = ""
         fullText = ""
         updateContent()
     }
 
-    /// 获取所有字幕文本
+    /// 获取所有已确认的字幕段落
     func getAllSubtitles() -> [String] {
-        guard !fullText.isEmpty else { return [] }
-        let (prev, active) = Self.splitIntoTwoLines(fullText)
-        var result: [String] = []
-        if !prev.isEmpty { result.append(prev) }
-        if !active.isEmpty { result.append(active) }
-        return result
+        return confirmedSegments
     }
 
     // MARK: - Panel Management

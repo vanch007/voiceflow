@@ -99,7 +99,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlayPanel: OverlayPanel!
     private var settingsManager: SettingsManager!
     private var recordingHistory: RecordingHistory!
-    private var historyWindowController: HistoryWindowController!
     private var replacementStorage: ReplacementStorage!
     private var replacementEngine: TextReplacementEngine!
     private var pluginManager: PluginManager!
@@ -214,7 +213,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         asrClient = ASRClient()
         PromptManager.shared.configure(with: asrClient)
         termLearner = TermLearner()
-        historyWindowController = HistoryWindowController(recordingHistory: recordingHistory)
         // Connect RecordingHistory changes to TermLearner auto-refresh
         recordingHistory.onEntriesChanged = { [weak self] in
             guard let self = self else { return }
@@ -368,10 +366,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.settingsWindowController.show()
         }
         statusBarController.onShowHistory = { [weak self] in
-            self?.historyWindowController.showWindow()
+            self?.settingsWindowController.show(tab: .recordingHistory)
         }
         statusBarController.onTextReplacement = { [weak self] in
-            self?.settingsWindowController.show()
+            self?.settingsWindowController.show(tab: .textReplacement)
         }
         statusBarController.onDeviceSelected = { [weak self] deviceID in
             self?.audioRecorder.selectDevice(id: deviceID)
@@ -912,13 +910,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // 保存转录结果
             if let startTime = self.systemAudioStartTime {
                 let duration = Date().timeIntervalSince(startTime)
-                // 从字幕面板获取所有字幕并保存
+                // 从字幕面板获取所有已确认字幕，合并为一条完整记录
                 let subtitles = self.subtitlePanel.getAllSubtitles()
-                for subtitle in subtitles {
+                let fullText = subtitles.joined(separator: "\n")
+                if !fullText.isEmpty {
+                    // 获取当前活跃应用名称
+                    let frontmostApp = NSWorkspace.shared.frontmostApplication
+                    let appName = frontmostApp?.localizedName
                     TranscriptStorage.shared.saveTranscript(
-                        text: subtitle,
-                        timestamp: Date(),
-                        duration: duration / Double(max(subtitles.count, 1))
+                        text: fullText,
+                        timestamp: startTime,
+                        duration: duration,
+                        appName: appName
                     )
                 }
                 self.systemAudioStartTime = nil

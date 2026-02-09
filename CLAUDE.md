@@ -4,37 +4,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VoiceFlow is a macOS menu bar app for voice-to-text transcription. It captures audio via AVCaptureSession, sends it to a local WebSocket ASR server (Qwen3-ASR on MLX), and injects transcription results into the active application.
+VoiceFlow is a macOS menu bar app for voice-to-text transcription. It captures audio via AVCaptureSession, sends it to a local WebSocket ASR server (Qwen3-ASR on MLX), and injects transcription results into the active application. It also supports system audio capture for real-time subtitle display.
 
 **Key Features:**
-- Option key long-press or Control double-tap to start/stop recording
+- Option key long-press to start/stop microphone recording
+- Control key double-tap to toggle system audio subtitle mode
 - Real-time audio capture with 16kHz resampling
 - MLX-accelerated Qwen3-ASR for Apple Silicon
 - WebSocket connection to local ASR server with auto-reconnect
 - Text polish feature with AI enhancement
 - Plugin system for extensible post-ASR processing
+- System audio capture via BlackHole virtual audio device with subtitle overlay
 
 ## Build & Run
 
 ```bash
-# Quick start (build + run with logs)
+# Quick start (builds if needed, then launches from /Applications/)
 ./run.sh
 
-# Build only using xcodebuild
+# Build and install to /Applications/VoiceFlow.app
+scripts/build.sh
+
+# Build only (without install)
 cd VoiceFlow && xcodebuild -scheme VoiceFlow -configuration Debug build
 
-# Open in Xcode for development
+# Open in Xcode
 open VoiceFlow/VoiceFlow.xcodeproj
 
 # Python environment setup (first time)
 scripts/setup.sh
 
-# Build and bundle app
-scripts/build.sh
-
 # Start ASR server only
 scripts/start-server.sh
 ```
+
+**Important:** `run.sh` uses `open` command to launch from `/Applications/` (ensures TCC permissions work). Environment variables are passed via `launchctl setenv`.
 
 **Requirements:**
 - macOS 14.0+ (Sonoma)
@@ -42,6 +46,7 @@ scripts/start-server.sh
 - Python 3.11+
 - Accessibility permissions (for global hotkey monitoring)
 - Microphone permissions (for audio recording)
+- Screen capture permissions (for system audio recording, optional)
 
 ## Testing
 
@@ -62,29 +67,34 @@ cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
 
 **App Layer** (`App/`)
 - `VoiceFlowApp.swift`: SwiftUI app entry point
-- `AppDelegate.swift`: Coordinates all managers, spawns Python ASR server
+- `AppDelegate.swift`: Coordinates all managers, spawns Python ASR server, manages both microphone and system audio recording lifecycles
 
 **Core Services** (`Core/`)
-- `HotkeyManager.swift`: Global hotkey detection (Option long-press, Control double-tap) via CGEvent tap
-- `AudioRecorder.swift`: AVCaptureSession-based audio capture with format conversion
-- `ASRClient.swift`: WebSocket client for ASR server communication
+- `HotkeyManager.swift`: Global hotkey detection (Option long-press, Control double-tap for system audio) via CGEvent tap
+- `AudioRecorder.swift`: AVCaptureSession-based microphone audio capture with format conversion
+- `SystemAudioRecorder.swift`: System audio capture via BlackHole virtual audio device
+- `ASRClient.swift`: WebSocket client for ASR server communication, supports `voice_input` and `subtitle` modes
 - `TextInjector.swift`: CGEvent-based text injection into active apps
 - `SettingsManager.swift`: User preferences management
+- `SystemAudioSettings.swift`: Subtitle style and transcript storage configuration
+- `TranscriptStorage.swift`: Persistent transcript file storage for system audio recordings
+- `PermissionPoller.swift`: Polls permission status every second, auto-callback on grant
+- `ScreenCapturePermission.swift`: ScreenCaptureKit permission management
 - `ReplacementRule.swift` / `ReplacementStorage.swift`: Text replacement rules with scene filtering
 - `PromptManager.swift`: Scene prompt management (fetches from server)
 - `LLMSettings.swift`: LLM configuration with Keychain storage for API keys
-- `HistoryAnalysisResult.swift`: Recording history analysis result model
 
 **UI Layer** (`UI/`)
-- `StatusBarController.swift`: Menu bar item and status management
-- `OverlayPanel.swift`: Visual recording indicator (bottom of screen)
-- `SettingsWindow.swift`: Settings UI
-- `LLMSettingsView.swift`: LLM configuration interface
-- `HistoryAnalysisView.swift`: Recording history analysis results display
+- `StatusBarController.swift`: Menu bar item, status management, system audio toggle menu
+- `OverlayPanel.swift`: Visual recording indicator (bottom of screen, for mic recording)
+- `SubtitlePanel.swift`: Real-time subtitle overlay for system audio (auto-splits by punctuation, adaptive width)
+- `SettingsWindow.swift`: Settings UI including system audio transcript settings
+- `OnboardingWindow.swift`: First-launch permission setup (auto-skips granted permissions)
+- `PermissionAlertWindow.swift`: Permission alert with auto-detect and restart button
 
 ### Python ASR Server (`server/`)
 
-- `main.py`: WebSocket server (ws://localhost:9876), handles audio streaming and transcription
+- `main.py`: WebSocket server (ws://localhost:9876), handles audio streaming, VAD transcription, and subtitle mode with periodic transcription
 - `mlx_asr.py`: MLX-based Qwen3-ASR wrapper for Apple Silicon GPU acceleration
 - `text_polisher.py`: AI text enhancement using LLM
 - `llm_client.py`: OpenAI-compatible LLM client (supports Ollama, vLLM, OpenAI)
@@ -100,32 +110,36 @@ Extensible post-ASR processing plugins. Each plugin has a `manifest.json` descri
 
 ### Data Flow
 
+**Microphone Recording (Option long-press):**
 ```
-User long-presses Option key
-  ↓
 HotkeyManager triggers recording
-  ↓
-AudioRecorder captures mic input → resamples to 16kHz Float32
-  ↓
-ASRClient sends audio chunks via WebSocket
-  ↓
-Python server transcribes with Qwen3-ASR (MLX)
-  ↓
-Optional: Text polish with LLM + Plugin processing
-  ↓
-TextInjector pastes text into active app
+  → AudioRecorder captures mic input → resamples to 16kHz Float32
+  → ASRClient sends audio chunks via WebSocket (mode: "voice_input")
+  → Python server transcribes with Qwen3-ASR (MLX)
+  → Optional: Text polish with LLM + Plugin processing
+  → TextInjector pastes text into active app
+```
+
+**System Audio Subtitle (Control double-tap):**
+```
+HotkeyManager detects double-tap Control
+  → SystemAudioRecorder captures via BlackHole virtual device
+  → ASRClient sends audio chunks via WebSocket (mode: "subtitle")
+  → Python server transcribes with sliding window (6s) + periodic trigger (1.5s)
+  → SubtitlePanel displays real-time subtitle overlay
+  → TranscriptStorage saves transcript to disk
 ```
 
 ### WebSocket Protocol
 
 **Client → Server:**
-- `{"type": "start", "model": "...", "language": "...", "polish": true/false}` - Start session
+- `{"type": "start", "mode": "voice_input"|"subtitle", "model": "...", "language": "...", "enable_polish": "true"|"false"}` - Start session
 - `{"type": "stop"}` - End session
 - Binary audio data (Float32, 16kHz, mono)
 
 **Server → Client:**
 - `{"type": "final", "text": "...", "polish_method": "llm"|"rules"|"none"}` - Final transcription result
-- `{"type": "partial", "text": "..."}` - Partial result during recording
+- `{"type": "partial", "text": "...", "trigger": "pause"|"periodic"}` - Partial result during recording
 - `{"type": "test_llm_connection_result", "success": bool, "latency_ms": int}` - LLM connection test
 - `{"type": "analysis_result", "result": {...}}` - History analysis result
 
@@ -144,19 +158,23 @@ TextInjector pastes text into active app
 | Scene Profiles | 场景配置：语言、润色规则、LLM 提示词 | `Core/Scene/SceneProfile.swift` |
 | Text Replacement | 场景感知替换规则，支持大小写敏感 | `ReplacementRule.swift`, `ReplacementStorage.swift` |
 | VAD Transcription | 基于停顿检测触发转录（300ms 静音阈值） | `AudioRecorder.swift` |
+| System Audio Subtitle | 系统音频实时字幕，定时转录+滑动窗口 | `SystemAudioRecorder.swift`, `SubtitlePanel.swift`, `server/main.py` |
+| Permission Auto-Detect | 权限轮询自动检测，授权后自动继续 | `PermissionPoller.swift`, `OnboardingWindow.swift` |
 
 ## Key Files for Common Tasks
 
 | Task | Files |
 |------|-------|
 | Modify hotkey behavior | `VoiceFlow/Sources/Core/HotkeyManager.swift` |
-| Change audio processing | `VoiceFlow/Sources/Core/AudioRecorder.swift` |
+| Change mic audio processing | `VoiceFlow/Sources/Core/AudioRecorder.swift` |
+| Change system audio capture | `VoiceFlow/Sources/Core/SystemAudioRecorder.swift` |
 | Adjust WebSocket protocol | `VoiceFlow/Sources/Core/ASRClient.swift` + `server/main.py` |
-| Add UI elements | `VoiceFlow/Sources/UI/StatusBarController.swift` |
+| Add UI elements to menu bar | `VoiceFlow/Sources/UI/StatusBarController.swift` |
+| Modify subtitle display | `VoiceFlow/Sources/UI/SubtitlePanel.swift` |
 | Modify ASR model | `server/mlx_asr.py` |
 | Add text post-processing | `server/text_polisher.py` or create new plugin |
 | Configure LLM polish | `VoiceFlow/Sources/Core/LLMSettings.swift` + `server/llm_client.py` |
-| Add history analysis | `server/history_analyzer.py` + `VoiceFlow/Sources/UI/HistoryAnalysisView.swift` |
+| System audio settings | `VoiceFlow/Sources/Core/SystemAudioSettings.swift` + `VoiceFlow/Sources/UI/SettingsWindow.swift` |
 
 ## Debugging
 
@@ -165,6 +183,9 @@ TextInjector pastes text into active app
 [AudioRecorder] Audio device: MacBook Pro Microphone
 [AudioRecorder] Recording started.
 ```
+
+### System Audio
+System audio debug logs are written to `~/Library/Application Support/VoiceFlow/system_audio.log` (NSLog may be filtered by the system).
 
 ### WebSocket Connection
 Auto-reconnects every 3 seconds on disconnect:
@@ -179,7 +200,7 @@ Verify Accessibility permissions in System Settings → Privacy & Security → A
 [HotkeyManager] FAILED to create event tap! Check permissions.
 ```
 
-**Important:** Toggle accessibility permission off→on after each rebuild (code signature changes).
+**Important:** After each rebuild with `scripts/build.sh`, accessibility permissions need re-authorization: System Settings → Privacy & Security → Accessibility → remove VoiceFlow (- button) → re-add (+ button).
 
 ### ASR Server
 Check Python server logs for transcription errors:
@@ -191,22 +212,26 @@ Check Python server logs for transcription errors:
 ## Code Guidelines
 
 - Use `NSLog()` for important events, `Logger` (os.log) for detailed debug
-- Audio processing on `sessionQueue` background thread; UI updates on `DispatchQueue.main`
+- Audio processing on `sessionQueue` / `processingQueue` background threads; UI updates on `DispatchQueue.main`
 - WebSocket reconnection is automatic - don't manually retry in UI code
 - When `language` is "auto", pass `None` to MLX model
+- System audio recording state (`isSystemAudioRecording`) must wait for ASR `final` result before resetting — don't reset on stop, or `onTranscriptionResult` will discard the result
+- SubtitlePanel uses single `fullText` source, splits into two lines at render time by punctuation — never maintain two independent line states
 
 ## Permissions Required
 
 1. **Microphone Access**: Required for `AudioRecorder` to capture audio
 2. **Accessibility Access**: Required for `HotkeyManager` global event monitoring and `TextInjector` text injection
+3. **Screen Capture Access** (optional): Required for `SystemAudioRecorder` to capture system audio via BlackHole
 
-Both are requested automatically on first launch.
+Permissions 1 and 2 are requested automatically on first launch. Permission 3 is requested when system audio recording is first triggered.
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `VOICEFLOW_PYTHON` | Python interpreter path | `<project_root>/.venv/bin/python3` |
+| `VOICEFLOW_PROJECT_ROOT` | Project root directory | Set by `run.sh` via `launchctl setenv` |
 
 ## Known Issues & Solutions
 
@@ -218,6 +243,9 @@ ASRClient 的 WebSocket 连接可能出现 `NSURLErrorDomain Code=-999 "cancelle
 - 使用 `===` 身份检查确保异步回调操作的是当前连接
 - 取消旧的重连任务防止并发冲突
 - `handleDisconnect()` 仅在状态从已连接变为断开时发送通知
+
+### System Audio Recording Setup
+系统音频录制需要 BlackHole 虚拟音频设备。用户需要在「音频 MIDI 设置」中创建「多输出设备」，将音频同时输出到扬声器和 BlackHole。
 
 ### Plugin System
 

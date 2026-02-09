@@ -1,10 +1,27 @@
 import AppKit
 import SwiftUI
 
+/// 设置窗口 Tab 枚举
+enum SettingsTab: Hashable {
+    case general
+    case llm
+    case scene
+    case recordingHistory
+    case subtitleTranscripts
+    case textReplacement
+    case plugins
+}
+
+/// TabView selection 桥接类（AppKit → SwiftUI）
+final class TabSelectionModel: ObservableObject {
+    @Published var selectedTab: SettingsTab = .general
+}
+
 final class SettingsWindowController: NSWindowController {
     private let settingsManager: SettingsManager
     private let replacementStorage: ReplacementStorage
     private let recordingHistory: RecordingHistory
+    private let tabSelection = TabSelectionModel()
 
     init(settingsManager: SettingsManager, replacementStorage: ReplacementStorage, recordingHistory: RecordingHistory) {
         self.settingsManager = settingsManager
@@ -27,7 +44,8 @@ final class SettingsWindowController: NSWindowController {
             rootView: SettingsContentView(
                 settingsManager: settingsManager,
                 replacementStorage: replacementStorage,
-                recordingHistory: recordingHistory
+                recordingHistory: recordingHistory,
+                tabSelection: tabSelection
             )
         )
         window.contentView = contentView
@@ -41,39 +59,57 @@ final class SettingsWindowController: NSWindowController {
         showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    /// 打开设置窗口并切换到指定 tab
+    func show(tab: SettingsTab) {
+        tabSelection.selectedTab = tab
+        show()
+    }
 }
 
 private struct SettingsContentView: View {
     @ObservedObject var settingsManager: SettingsManager
     @ObservedObject var replacementStorage: ReplacementStorage
     let recordingHistory: RecordingHistory
+    @ObservedObject var tabSelection: TabSelectionModel
     @State private var pluginInfoList: [PluginInfo] = []
 
     var body: some View {
-        TabView {
+        TabView(selection: $tabSelection.selectedTab) {
             // 通用设置标签页
             GeneralSettingsTab(settingsManager: settingsManager)
                 .tabItem { Label("通用", systemImage: "gear") }
+                .tag(SettingsTab.general)
 
             // LLM 设置标签页
             LLMSettingsView(settingsManager: settingsManager)
                 .tabItem { Label("LLM", systemImage: "brain") }
+                .tag(SettingsTab.llm)
 
             // 场景设置标签页
             SceneSettingsTab()
                 .tabItem { Label("场景", systemImage: "sparkles.rectangle.stack") }
+                .tag(SettingsTab.scene)
 
             // 录音记录标签页
             RecordingHistoryTab(recordingHistory: recordingHistory)
                 .tabItem { Label("录音记录", systemImage: "waveform") }
+                .tag(SettingsTab.recordingHistory)
+
+            // 字幕记录标签页
+            SubtitleTranscriptsTab()
+                .tabItem { Label("字幕记录", systemImage: "captions.bubble") }
+                .tag(SettingsTab.subtitleTranscripts)
 
             // 文本替换标签页
             TextReplacementTab(replacementStorage: replacementStorage)
                 .tabItem { Label("文本替换", systemImage: "textformat.alt") }
+                .tag(SettingsTab.textReplacement)
 
             // 插件标签页
             PluginSettingsTab(pluginInfoList: $pluginInfoList)
                 .tabItem { Label("插件", systemImage: "puzzlepiece") }
+                .tag(SettingsTab.plugins)
         }
         .frame(width: 800, height: 600)
         .padding()
@@ -923,6 +959,261 @@ private struct EditTriggerSheet: View {
     }
 }
 
+// MARK: - 字幕记录标签页
+
+/// 日期项模型（用于左侧列表）
+private struct TranscriptDateItem: Identifiable, Hashable {
+    let id: String  // dateString as ID
+    let date: Date
+    let count: Int
+
+    static func == (lhs: TranscriptDateItem, rhs: TranscriptDateItem) -> Bool {
+        lhs.id == rhs.id
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+}
+
+private struct SubtitleTranscriptsTab: View {
+    @ObservedObject private var storage = TranscriptStorage.shared
+    @State private var dateItems: [TranscriptDateItem] = []
+    @State private var selectedDateItem: TranscriptDateItem?
+    @State private var entries: [TranscriptEntry] = []
+    @State private var searchText: String = ""
+
+    private let displayDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f
+    }()
+
+    private let timeDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+
+    private let idDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    var filteredEntries: [TranscriptEntry] {
+        if searchText.isEmpty {
+            return entries
+        }
+        return entries.filter { $0.text.localizedCaseInsensitiveContains(searchText) }
+    }
+
+    var body: some View {
+        HSplitView {
+            // 左侧：日期列表
+            VStack(spacing: 0) {
+                // 搜索框
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
+                    TextField("搜索...", text: $searchText)
+                        .textFieldStyle(.plain)
+                }
+                .padding(8)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(6)
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+                Divider()
+
+                // 日期列表
+                List(dateItems, selection: $selectedDateItem) { item in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(displayDateFormatter.string(from: item.date))
+                                .font(.headline)
+                            Text("\(item.count) 条记录")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                        Spacer()
+                    }
+                    .tag(item)
+                }
+                .listStyle(.plain)
+
+                Divider()
+
+                // 底部工具栏
+                HStack {
+                    Text("\(dateItems.count) 天")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+                }
+                .padding(8)
+            }
+            .frame(minWidth: 200, maxWidth: 250)
+
+            // 右侧：转录条目
+            if let selectedDate = selectedDateItem {
+                VStack(spacing: 0) {
+                    // 顶部工具栏
+                    HStack {
+                        Text(displayDateFormatter.string(from: selectedDate.date))
+                            .font(.title3)
+                            .fontWeight(.semibold)
+
+                        Spacer()
+
+                        // 导出 SRT 按钮
+                        Button(action: { exportSRT(date: selectedDate.date) }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "square.and.arrow.up")
+                                Text("导出 SRT")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(entries.isEmpty)
+
+                        // 删除按钮
+                        Button(role: .destructive, action: { deleteDate(selectedDate) }) {
+                            Image(systemName: "trash")
+                        }
+                        .foregroundColor(.red)
+                    }
+                    .padding()
+
+                    Divider()
+
+                    // 转录条目列表（课堂笔记风格）
+                    if filteredEntries.isEmpty {
+                        VStack(spacing: 12) {
+                            Spacer()
+                            Image(systemName: "captions.bubble")
+                                .font(.system(size: 48))
+                                .foregroundColor(.secondary.opacity(0.5))
+                            Text(searchText.isEmpty ? "暂无字幕记录" : "无匹配结果")
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 0) {
+                                ForEach(filteredEntries) { entry in
+                                    HStack(alignment: .top, spacing: 12) {
+                                        // 时间戳 + 时间轴线
+                                        VStack(spacing: 0) {
+                                            Text(timeDateFormatter.string(from: entry.timestamp))
+                                                .font(.system(size: 11, design: .monospaced))
+                                                .foregroundColor(.secondary)
+                                                .frame(width: 70, alignment: .trailing)
+
+                                            Rectangle()
+                                                .fill(Color.accentColor.opacity(0.3))
+                                                .frame(width: 2)
+                                                .frame(maxHeight: .infinity)
+                                        }
+                                        .frame(width: 70)
+
+                                        // 时间轴圆点
+                                        Circle()
+                                            .fill(Color.accentColor)
+                                            .frame(width: 8, height: 8)
+                                            .padding(.top, 4)
+
+                                        // 文本内容
+                                        Text(entry.text)
+                                            .font(.body)
+                                            .textSelection(.enabled)
+                                            .padding(.vertical, 6)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 2)
+                                    .contextMenu {
+                                        Button("复制文本") {
+                                            let pasteboard = NSPasteboard.general
+                                            pasteboard.clearContents()
+                                            pasteboard.setString(entry.text, forType: .string)
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                    }
+                }
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "captions.bubble")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("选择一个日期查看字幕记录")
+                        .foregroundColor(.secondary)
+                    Text("使用系统音频字幕功能后，记录会自动保存在这里")
+                        .font(.caption)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .onAppear { loadDates() }
+        .onChange(of: selectedDateItem) { newItem in
+            if let item = newItem {
+                entries = TranscriptStorage.shared.loadTranscripts(date: item.date)
+            } else {
+                entries = []
+            }
+        }
+    }
+
+    private func loadDates() {
+        let dates = TranscriptStorage.shared.getAvailableDates()
+        dateItems = dates.map { date in
+            TranscriptDateItem(
+                id: idDateFormatter.string(from: date),
+                date: date,
+                count: TranscriptStorage.shared.getTranscriptCount(date: date)
+            )
+        }
+    }
+
+    private func exportSRT(date: Date) {
+        guard let srtURL = TranscriptStorage.shared.exportToSRT(date: date) else { return }
+
+        let savePanel = NSSavePanel()
+        savePanel.allowedContentTypes = [.init(filenameExtension: "srt")!]
+        savePanel.nameFieldStringValue = srtURL.lastPathComponent
+        savePanel.canCreateDirectories = true
+
+        if savePanel.runModal() == .OK, let targetURL = savePanel.url {
+            do {
+                if FileManager.default.fileExists(atPath: targetURL.path) {
+                    try FileManager.default.removeItem(at: targetURL)
+                }
+                try FileManager.default.copyItem(at: srtURL, to: targetURL)
+                NSWorkspace.shared.activateFileViewerSelecting([targetURL])
+            } catch {
+                NSLog("[SubtitleTranscriptsTab] Export failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func deleteDate(_ item: TranscriptDateItem) {
+        TranscriptStorage.shared.deleteTranscripts(date: item.date)
+        selectedDateItem = nil
+        entries = []
+        loadDates()
+    }
+}
+
 // 录音记录标签页
 private struct RecordingHistoryTab: View {
     let recordingHistory: RecordingHistory
@@ -1351,7 +1642,8 @@ private struct PluginDetailView: View {
     SettingsContentView(
         settingsManager: SettingsManager.shared,
         replacementStorage: ReplacementStorage(),
-        recordingHistory: RecordingHistory()
+        recordingHistory: RecordingHistory(),
+        tabSelection: TabSelectionModel()
     )
 }
 
