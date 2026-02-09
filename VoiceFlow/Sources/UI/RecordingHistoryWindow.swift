@@ -5,7 +5,7 @@ final class RecordingHistoryWindow {
     private var window: NSWindow?
     private let recordingHistory: RecordingHistory
 
-    init(recordingHistory: RecordingHistory = .shared) {
+    init(recordingHistory: RecordingHistory) {
         self.recordingHistory = recordingHistory
     }
 
