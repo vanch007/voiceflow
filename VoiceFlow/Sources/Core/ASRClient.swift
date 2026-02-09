@@ -316,6 +316,19 @@ final class ASRClient {
                 self?.onLLMConnectionTestResult?(success, latency)
             }
 
+        case "list_models_result":
+            if let models = json["models"] as? [String] {
+                NSLog("[ASRClient] Received available models: \(models.count) models")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onModelListReceived?(models)
+                }
+            } else {
+                NSLog("[ASRClient] Model list request failed or empty")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onModelListReceived?([])
+                }
+            }
+
         case "analysis_result":
             if let resultDict = json["result"] as? [String: Any],
                let result = HistoryAnalysisResult.fromServerResponse(resultDict) {

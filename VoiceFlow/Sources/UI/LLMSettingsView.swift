@@ -8,6 +8,7 @@ struct LLMSettingsView: View {
     @State private var isTestingConnection = false
     @State private var connectionTestResult: ConnectionTestResult?
     @State private var showAPIKey = false
+    @State private var isLoadingModels = false
 
     // 本地编辑状态
     @State private var apiURL: String = ""
@@ -75,13 +76,44 @@ struct LLMSettingsView: View {
                 HStack {
                     Text("模型")
                         .frame(width: 80, alignment: .leading)
-                    TextField("qwen2.5:7b", text: $model)
-                        .textFieldStyle(.roundedBorder)
+
+                    if availableModels.isEmpty {
+                        TextField("qwen2.5:7b", text: $model)
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        Picker("", selection: $model) {
+                            ForEach(availableModels, id: \.self) { modelName in
+                                Text(modelName).tag(modelName)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+
+                    Button(action: refreshModels) {
+                        HStack(spacing: 4) {
+                            if isLoadingModels {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                    .frame(width: 16, height: 16)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isLoadingModels)
+                    .help("刷新可用模型列表")
                 }
 
-                Text("Ollama: qwen2.5:7b, llama3.2 | OpenAI: gpt-4o-mini | Claude: claude-3-haiku")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if availableModels.isEmpty {
+                    Text("Ollama: qwen2.5:7b, llama3.2 | OpenAI: gpt-4o-mini | Claude: claude-3-haiku")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("已发现 \(availableModels.count) 个可用模型")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Section("高级设置") {
@@ -253,6 +285,19 @@ struct LLMSettingsView: View {
                 }
             }
         }
+
+        // 设置模型列表回调
+        asrClient.onModelListReceived = { [self] models in
+            DispatchQueue.main.async {
+                self.isLoadingModels = false
+                self.availableModels = models
+
+                // 如果当前模型不在列表中且列表不为空，选择第一个
+                if !models.isEmpty && !models.contains(self.model) {
+                    self.model = models[0]
+                }
+            }
+        }
     }
 
     private func testConnection() {
@@ -280,6 +325,45 @@ struct LLMSettingsView: View {
                     self.connectionTestResult = .failure(message: "连接超时")
                 }
             }
+        }
+    }
+
+    private func refreshModels() {
+        isLoadingModels = true
+
+        // 检测 backend 类型
+        let backend = detectBackend(from: apiURL)
+
+        // 请求模型列表
+        asrClient.listAvailableModels(backend: backend)
+
+        // 设置超时保护
+        Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s timeout
+
+            DispatchQueue.main.async {
+                if self.isLoadingModels {
+                    self.isLoadingModels = false
+                    self.availableModels = []
+                }
+            }
+        }
+    }
+
+    private func detectBackend(from url: String) -> String {
+        let lowercased = url.lowercased()
+        if lowercased.contains("openai") {
+            return "openai"
+        } else if lowercased.contains("anthropic") || lowercased.contains("claude") {
+            return "anthropic"
+        } else if lowercased.contains("11434") {
+            return "ollama"
+        } else if lowercased.contains("8000") {
+            return "vllm"
+        } else if lowercased.contains("localhost") {
+            return "ollama"  // 默认本地服务为 ollama
+        } else {
+            return "openai"  // 默认使用 OpenAI 兼容格式
         }
     }
 }
