@@ -16,6 +16,7 @@ struct LLMSettingsView: View {
     @State private var temperature: Double = 0.3
     @State private var maxTokens: String = "512"
     @State private var timeout: String = "10"
+    @State private var availableModels: [String] = []
 
     enum ConnectionTestResult {
         case success(latencyMs: Int)
