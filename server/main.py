@@ -471,6 +471,7 @@ async def handle_client(websocket):
     session_language = None
     session_scene = None  # 场景信息
     session_denoise = False  # 降噪开关
+    session_hotwords = []  # 自定义词汇表/热词列表
     transcription_task: asyncio.Task = None
 
     try:
@@ -597,12 +598,15 @@ async def handle_client(websocket):
                     active_app = data.get("active_app", {})  # 解析活跃应用信息
                     session_denoise = data.get("enable_denoise", False)  # 解析降噪开关
                     session_mode = data.get("mode", "voice_input")  # 录音模式: voice_input / subtitle
+                    session_hotwords = data.get("hotwords", [])  # 解析自定义词汇表/热词列表
 
                     # 将 active_app 信息合并到 session_scene
                     if active_app:
                         session_scene["active_app"] = active_app
 
-                    logger.info(f"🎤 开始录音. Mode: {session_mode}, Polish: {enable_polish}, LLM: {use_llm_polish}, Timestamps: {use_timestamps}, Denoise: {session_denoise}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}")
+                    # 记录热词信息
+                    hotwords_info = f"{len(session_hotwords)} terms" if session_hotwords else "none"
+                    logger.info(f"🎤 开始录音. Mode: {session_mode}, Polish: {enable_polish}, LLM: {use_llm_polish}, Timestamps: {use_timestamps}, Denoise: {session_denoise}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}, Hotwords: {hotwords_info}")
 
                     # 确保模型已加载
                     if session_model_id:
