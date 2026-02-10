@@ -51,6 +51,26 @@ private struct SettingsContentView: View {
     @ObservedObject var systemAudioSettings = SystemAudioSettings.shared
 
     var body: some View {
+        TabView {
+            GeneralSettingsTab(settingsManager: settingsManager, systemAudioSettings: systemAudioSettings)
+                .tabItem {
+                    Label("通用", systemImage: "gearshape")
+                }
+
+            VocabularySettingsTab()
+                .tabItem {
+                    Label("词库", systemImage: "character.book.closed")
+                }
+        }
+        .frame(width: 500, height: 850)
+    }
+}
+
+private struct GeneralSettingsTab: View {
+    @ObservedObject var settingsManager: SettingsManager
+    @ObservedObject var systemAudioSettings: SystemAudioSettings
+
+    var body: some View {
         Form {
             Section {
                 Toggle("启用长按 Option 录音", isOn: $settingsManager.hotkeyEnabled)
@@ -193,6 +213,24 @@ private struct SettingsContentView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 500, height: 850)
+    }
+}
+
+private struct VocabularySettingsTab: View {
+    var body: some View {
+        Form {
+            Section {
+                Text("词库管理功能即将推出")
+                    .foregroundColor(.secondary)
+            } header: {
+                Text("词库")
+            } footer: {
+                Text("在此管理自定义词汇表，提升特定领域的识别准确率")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
     }
 }
