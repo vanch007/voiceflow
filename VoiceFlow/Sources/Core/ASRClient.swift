@@ -7,6 +7,7 @@ private enum ASRMessageType: String, Decodable {
     case polish_update  // LLM 润色完成后的更新
     case config_llm_ack
     case test_llm_connection_result
+    case list_models_result
     case analysis_result
 }
 
@@ -26,6 +27,7 @@ final class ASRClient {
     var onConnectionStatusChanged: ((Bool) -> Void)?
     var onErrorStateChanged: ((Bool, String?) -> Void)?
     var onLLMConnectionTestResult: ((Bool, Int?) -> Void)?  // LLM 连接测试结果
+    var onModelListReceived: (([String]) -> Void)?  // 模型列表回调
     var onHistoryAnalysisResult: ((HistoryAnalysisResult?) -> Void)?  // 历史分析结果
     var onDefaultPromptsReceived: (([String: String]) -> Void)?  // 默认提示词回调
     var onCustomPromptsReceived: (([String: String]) -> Void)?  // 自定义提示词回调
@@ -314,6 +316,19 @@ final class ASRClient {
                 self?.onLLMConnectionTestResult?(success, latency)
             }
 
+        case "list_models_result":
+            if let models = json["models"] as? [String] {
+                NSLog("[ASRClient] Received available models: \(models.count) models")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onModelListReceived?(models)
+                }
+            } else {
+                NSLog("[ASRClient] Model list request failed or empty")
+                DispatchQueue.main.async { [weak self] in
+                    self?.onModelListReceived?([])
+                }
+            }
+
         case "analysis_result":
             if let resultDict = json["result"] as? [String: Any],
                let result = HistoryAnalysisResult.fromServerResponse(resultDict) {
@@ -457,6 +472,16 @@ final class ASRClient {
         let message: [String: Any] = ["type": "test_llm_connection"]
         sendJSONObject(message)
         NSLog("[ASRClient] Testing LLM connection...")
+    }
+
+    /// List available models from LLM backend
+    func listAvailableModels(backend: String) {
+        let message: [String: Any] = [
+            "type": "list_models",
+            "backend": backend
+        ]
+        sendJSONObject(message)
+        NSLog("[ASRClient] Requesting available models for backend: %@", backend)
     }
 
     /// Analyze recording history for an application

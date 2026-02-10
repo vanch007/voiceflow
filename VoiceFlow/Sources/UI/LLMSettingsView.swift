@@ -4,9 +4,11 @@ import Foundation
 /// LLM 设置视图
 struct LLMSettingsView: View {
     @ObservedObject var settingsManager: SettingsManager
+    let asrClient: ASRClient
     @State private var isTestingConnection = false
     @State private var connectionTestResult: ConnectionTestResult?
     @State private var showAPIKey = false
+    @State private var isLoadingModels = false
 
     // 本地编辑状态
     @State private var apiURL: String = ""
@@ -15,10 +17,11 @@ struct LLMSettingsView: View {
     @State private var temperature: Double = 0.3
     @State private var maxTokens: String = "512"
     @State private var timeout: String = "10"
+    @State private var availableModels: [String] = []
 
     enum ConnectionTestResult {
         case success(latencyMs: Int)
-        case failure(message: String)
+        case failure(message: String, suggestion: String? = nil)
     }
 
     var body: some View {
@@ -73,13 +76,44 @@ struct LLMSettingsView: View {
                 HStack {
                     Text("模型")
                         .frame(width: 80, alignment: .leading)
-                    TextField("qwen2.5:7b", text: $model)
-                        .textFieldStyle(.roundedBorder)
+
+                    if availableModels.isEmpty {
+                        TextField("qwen2.5:7b", text: $model)
+                            .textFieldStyle(.roundedBorder)
+                    } else {
+                        Picker("", selection: $model) {
+                            ForEach(availableModels, id: \.self) { modelName in
+                                Text(modelName).tag(modelName)
+                            }
+                        }
+                        .labelsHidden()
+                    }
+
+                    Button(action: refreshModels) {
+                        HStack(spacing: 4) {
+                            if isLoadingModels {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                                    .frame(width: 16, height: 16)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isLoadingModels)
+                    .help("刷新可用模型列表")
                 }
 
-                Text("Ollama: qwen2.5:7b, llama3.2 | OpenAI: gpt-4o-mini | Claude: claude-3-haiku")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                if availableModels.isEmpty {
+                    Text("Ollama: qwen2.5:7b, llama3.2 | OpenAI: gpt-4o-mini | Claude: claude-3-haiku")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Text("已发现 \(availableModels.count) 个可用模型")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
             }
 
             Section("高级设置") {
@@ -165,6 +199,7 @@ struct LLMSettingsView: View {
         .formStyle(.grouped)
         .onAppear {
             loadCurrentSettings()
+            setupASRClientCallbacks()
         }
     }
 
@@ -178,13 +213,25 @@ struct LLMSettingsView: View {
                 Text("连接成功 (\(latencyMs)ms)")
                     .foregroundColor(.green)
             }
-        case .failure(let message):
-            HStack(spacing: 4) {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.red)
-                Text(message)
-                    .foregroundColor(.red)
-                    .lineLimit(1)
+        case .failure(let message, let suggestion):
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.red)
+                    Text(message)
+                        .foregroundColor(.red)
+                }
+
+                if let suggestion = suggestion {
+                    HStack(spacing: 4) {
+                        Image(systemName: "lightbulb.fill")
+                            .foregroundColor(.orange)
+                            .font(.caption)
+                        Text(suggestion)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
             }
         }
     }
@@ -238,6 +285,34 @@ struct LLMSettingsView: View {
         timeout = String(Int(defaults.timeout))
     }
 
+    private func setupASRClientCallbacks() {
+        // 设置 LLM 连接测试结果回调
+        asrClient.onLLMConnectionTestResult = { [self] success, latency in
+            DispatchQueue.main.async {
+                self.isTestingConnection = false
+                if success {
+                    self.connectionTestResult = .success(latencyMs: latency ?? 0)
+                } else {
+                    let suggestion = self.getConnectionFailureSuggestion()
+                    self.connectionTestResult = .failure(message: "连接失败", suggestion: suggestion)
+                }
+            }
+        }
+
+        // 设置模型列表回调
+        asrClient.onModelListReceived = { [self] models in
+            DispatchQueue.main.async {
+                self.isLoadingModels = false
+                self.availableModels = models
+
+                // 如果当前模型不在列表中且列表不为空，选择第一个
+                if !models.isEmpty && !models.contains(self.model) {
+                    self.model = models[0]
+                }
+            }
+        }
+    }
+
     private func testConnection() {
         isTestingConnection = true
         connectionTestResult = nil
@@ -245,23 +320,134 @@ struct LLMSettingsView: View {
         // 先保存当前设置
         saveSettings()
 
-        // 模拟连接测试（实际通过 ASRClient 发送）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            // TODO: 实际实现需要通过 ASRClient.testLLMConnection()
-            // 这里暂时模拟结果
-            if apiURL.contains("localhost") {
-                connectionTestResult = .success(latencyMs: 45)
-            } else if apiKey.isEmpty && !apiURL.contains("localhost") {
-                connectionTestResult = .failure(message: "需要 API Key")
-            } else {
-                connectionTestResult = .success(latencyMs: 120)
+        // 使用 ASRClient 测试 LLM 连接
+        Task {
+            // 等待一下让设置保存生效
+            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+
+            DispatchQueue.main.async {
+                asrClient.testLLMConnection()
             }
-            isTestingConnection = false
+
+            // 设置超时保护
+            try? await Task.sleep(nanoseconds: 10_000_000_000) // 10s timeout
+
+            DispatchQueue.main.async {
+                if self.isTestingConnection {
+                    self.isTestingConnection = false
+                    let suggestion = self.getTimeoutSuggestion()
+                    self.connectionTestResult = .failure(message: "连接超时", suggestion: suggestion)
+                }
+            }
+        }
+    }
+
+    private func getConnectionFailureSuggestion() -> String {
+        let backend = detectBackend(from: apiURL)
+
+        switch backend {
+        case "ollama":
+            if apiURL.contains("localhost") || apiURL.contains("127.0.0.1") {
+                return "1) 运行 'ollama serve' 启动服务  2) 确认端口 11434 未被占用  3) 运行 'ollama list' 检查模型是否已下载"
+            } else {
+                return "请确保远程 Ollama 服务可访问且防火墙已开放"
+            }
+        case "vllm":
+            return "1) 检查 vLLM 服务是否运行  2) 确认 API 地址正确 (\(apiURL))  3) 检查模型是否已加载完成"
+        case "openai":
+            if apiURL.contains("openai.com") {
+                if apiKey.isEmpty {
+                    return "OpenAI 需要 API Key，请前往 https://platform.openai.com/api-keys 获取"
+                } else {
+                    return "1) 检查 API Key 是否有效  2) 确认账户有足够余额  3) 验证 API Key 权限设置"
+                }
+            } else {
+                return "1) 确保本地 OpenAI 兼容服务正在运行  2) 检查 API 地址格式 (应以 /v1 结尾)  3) 验证服务健康状态"
+            }
+        case "anthropic":
+            if apiKey.isEmpty {
+                return "Claude 需要 API Key，请前往 https://console.anthropic.com 获取"
+            } else {
+                return "1) 检查 API Key 格式 (应以 sk-ant- 开头)  2) 确认 API Key 未过期  3) 验证网络连接"
+            }
+        default:
+            if apiURL.isEmpty {
+                return "请先填写 API 地址，或使用下方预设配置"
+            } else if !apiURL.hasPrefix("http://") && !apiURL.hasPrefix("https://") {
+                return "API 地址格式错误，应以 http:// 或 https:// 开头"
+            } else {
+                return "1) 检查 API 地址是否正确  2) 确认服务正在运行  3) 验证 API Key (如需要)"
+            }
+        }
+    }
+
+    private func getTimeoutSuggestion() -> String {
+        let backend = detectBackend(from: apiURL)
+        let currentTimeout = Int(timeout) ?? 10
+
+        switch backend {
+        case "ollama":
+            return "1) 运行 'ollama serve' 启动服务  2) 首次加载模型较慢，建议增加超时至 30 秒  3) 运行 'ollama ps' 查看模型状态"
+        case "vllm":
+            return "1) 检查模型加载进度 (首次启动可能需要几分钟)  2) 当前超时 \(currentTimeout) 秒，建议增加至 30 秒  3) 查看 vLLM 服务日志"
+        case "openai":
+            if apiURL.contains("openai.com") {
+                return "1) 检查网络连接 (可能被防火墙拦截)  2) 当前超时 \(currentTimeout) 秒，海外 API 建议增加至 20 秒  3) 尝试使用代理"
+            } else {
+                return "1) 确认本地服务正在运行  2) 检查服务响应时间  3) 增加超时设置或优化模型配置"
+            }
+        case "anthropic":
+            return "1) 检查网络连接 (Claude API 需要稳定网络)  2) 当前超时 \(currentTimeout) 秒，建议增加至 20 秒  3) 验证 API 区域设置"
+        default:
+            if currentTimeout < 10 {
+                return "当前超时时间过短 (\(currentTimeout) 秒)，建议增加至 10-30 秒"
+            } else {
+                return "1) 检查 API 服务状态  2) 当前超时 \(currentTimeout) 秒，可尝试增加至 30 秒  3) 验证网络连接"
+            }
+        }
+    }
+
+    private func refreshModels() {
+        isLoadingModels = true
+
+        // 检测 backend 类型
+        let backend = detectBackend(from: apiURL)
+
+        // 请求模型列表
+        asrClient.listAvailableModels(backend: backend)
+
+        // 设置超时保护
+        Task {
+            try? await Task.sleep(nanoseconds: 5_000_000_000) // 5s timeout
+
+            DispatchQueue.main.async {
+                if self.isLoadingModels {
+                    self.isLoadingModels = false
+                    self.availableModels = []
+                }
+            }
+        }
+    }
+
+    private func detectBackend(from url: String) -> String {
+        let lowercased = url.lowercased()
+        if lowercased.contains("openai") {
+            return "openai"
+        } else if lowercased.contains("anthropic") || lowercased.contains("claude") {
+            return "anthropic"
+        } else if lowercased.contains("11434") {
+            return "ollama"
+        } else if lowercased.contains("8000") {
+            return "vllm"
+        } else if lowercased.contains("localhost") {
+            return "ollama"  // 默认本地服务为 ollama
+        } else {
+            return "openai"  // 默认使用 OpenAI 兼容格式
         }
     }
 }
 
 #Preview("LLM Settings") {
-    LLMSettingsView(settingsManager: SettingsManager.shared)
+    LLMSettingsView(settingsManager: SettingsManager.shared, asrClient: ASRClient())
         .frame(width: 600, height: 700)
 }

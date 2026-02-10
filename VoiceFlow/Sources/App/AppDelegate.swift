@@ -183,10 +183,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         replacementEngine = TextReplacementEngine(storage: replacementStorage)
         recordingHistory = RecordingHistory()
+
+        // Initialize ASRClient early so it can be passed to SettingsWindowController
+        asrClient = ASRClient()
+
         settingsWindowController = SettingsWindowController(
             settingsManager: settingsManager,
             replacementStorage: replacementStorage,
-            recordingHistory: recordingHistory
+            recordingHistory: recordingHistory,
+            asrClient: asrClient
         )
 
         // Initialize plugin system
@@ -211,7 +216,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
 
-        asrClient = ASRClient()
+        // ASRClient already initialized in setupManagers for SettingsWindowController
         PromptManager.shared.configure(with: asrClient)
         termLearner = TermLearner()
         // Connect RecordingHistory changes to TermLearner auto-refresh

@@ -514,6 +514,21 @@ async def handle_client(websocket):
                             "error": "LLM client not initialized"
                         }))
 
+                elif msg_type == "list_models":
+                    # 获取可用模型列表
+                    llm_client = get_llm_client()
+                    if llm_client:
+                        models = await llm_client.list_available_models()
+                        await websocket.send(json.dumps({
+                            "type": "list_models_result",
+                            "models": models
+                        }))
+                    else:
+                        await websocket.send(json.dumps({
+                            "type": "list_models_result",
+                            "error": "LLM client not initialized"
+                        }))
+
                 elif msg_type == "analyze_history":
                     # 分析录音历史
                     entries = data.get("entries", [])
