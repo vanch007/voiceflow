@@ -67,6 +67,11 @@ struct SceneProfile: Codable, Equatable {
     /// 上次分析时间
     var lastAnalyzedAt: Date?
 
+    // MARK: - Vocabulary Associations
+
+    /// 关联的术语替换规则 ID（从 ReplacementStorage）
+    var vocabularyRuleIDs: [UUID]
+
     /// 获取实际使用的语言（场景设置优先，否则跟随全局设置）
     func getEffectiveLanguage() -> ASRLanguage {
         return language ?? SettingsManager.shared.asrLanguage
@@ -82,7 +87,8 @@ struct SceneProfile: Codable, Equatable {
         useLLMPolish: Bool? = nil,
         keywords: [String] = [],
         suggestedTerms: [String] = [],
-        lastAnalyzedAt: Date? = nil
+        lastAnalyzedAt: Date? = nil,
+        vocabularyRuleIDs: [UUID] = []
     ) {
         self.sceneType = sceneType
         self.language = language
@@ -94,6 +100,7 @@ struct SceneProfile: Codable, Equatable {
         self.keywords = keywords
         self.suggestedTerms = suggestedTerms
         self.lastAnalyzedAt = lastAnalyzedAt
+        self.vocabularyRuleIDs = vocabularyRuleIDs
     }
 
     // MARK: - Backward Compatibility (for loading old data with glossary)
@@ -101,6 +108,7 @@ struct SceneProfile: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case sceneType, language, enablePolish, polishStyle, enabledPluginIDs, customPrompt
         case useLLMPolish, keywords, suggestedTerms, lastAnalyzedAt
+        case vocabularyRuleIDs
         case glossary  // For backward compatibility only
     }
 
@@ -116,6 +124,7 @@ struct SceneProfile: Codable, Equatable {
         keywords = try container.decodeIfPresent([String].self, forKey: .keywords) ?? []
         suggestedTerms = try container.decodeIfPresent([String].self, forKey: .suggestedTerms) ?? []
         lastAnalyzedAt = try container.decodeIfPresent(Date.self, forKey: .lastAnalyzedAt)
+        vocabularyRuleIDs = try container.decodeIfPresent([UUID].self, forKey: .vocabularyRuleIDs) ?? []
         // Ignore glossary field if present (backward compatibility)
         _ = try? container.decodeIfPresent([GlossaryEntry].self, forKey: .glossary)
     }
@@ -132,6 +141,7 @@ struct SceneProfile: Codable, Equatable {
         try container.encode(keywords, forKey: .keywords)
         try container.encode(suggestedTerms, forKey: .suggestedTerms)
         try container.encodeIfPresent(lastAnalyzedAt, forKey: .lastAnalyzedAt)
+        try container.encode(vocabularyRuleIDs, forKey: .vocabularyRuleIDs)
         // Do not encode glossary - it's now in ReplacementStorage
     }
 
