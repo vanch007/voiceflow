@@ -141,13 +141,15 @@ class MLXQwen3ASR:
     def transcribe(
         self,
         audio: Union[Tuple[np.ndarray, int], str, np.ndarray],
-        language: str = None
+        language: str = None,
+        hotwords: List[str] = None
     ) -> str:
         """同步转录音频。
 
         Args:
             audio: 音频数据，可以是(samples, sample_rate)元组、numpy数组或文件路径
             language: 语言设置，默认Chinese
+            hotwords: 热词列表，用于ASR偏向识别
 
         Returns:
             转录文本
@@ -164,11 +166,30 @@ class MLXQwen3ASR:
             else:
                 audio_input = audio
 
-            # 处理 language 为 None 的情况（自动检测时不传 language 参数）
-            if language is None:
-                result = self.model.generate(audio=audio_input)
-            else:
-                result = self.model.generate(audio=audio_input, language=language)
+            # 构建 generate() 参数
+            generate_kwargs = {"audio": audio_input}
+
+            # 添加语言参数（如果不是自动检测）
+            if language is not None:
+                generate_kwargs["language"] = language
+
+            # 添加热词上下文（如果提供）
+            if hotwords and len(hotwords) > 0:
+                generate_kwargs["context"] = hotwords
+                logger.debug(f"🎯 使用热词: {len(hotwords)} 个 - {hotwords[:5]}...")
+
+            # 调用 ASR 模型
+            try:
+                result = self.model.generate(**generate_kwargs)
+            except TypeError as e:
+                # 如果 context 参数不支持，回退到无热词模式
+                if "context" in str(e) and hotwords:
+                    logger.warning(f"⚠️ MLX ASR 不支持 context 参数，忽略热词")
+                    generate_kwargs.pop("context", None)
+                    result = self.model.generate(**generate_kwargs)
+                else:
+                    raise
+
             # 处理不同返回类型
             if isinstance(result, str):
                 return result
@@ -218,7 +239,8 @@ class MLXQwen3ASR:
     def transcribe_with_timestamps(
         self,
         audio: Union[Tuple[np.ndarray, int], str, np.ndarray],
-        language: str = None
+        language: str = None,
+        hotwords: List[str] = None
     ) -> Dict[str, Union[str, List[Dict[str, Union[str, float]]]]]:
         """转录音频并返回词级时间戳。
 
@@ -229,6 +251,7 @@ class MLXQwen3ASR:
         Args:
             audio: 音频数据，可以是(samples, sample_rate)元组、numpy数组或文件路径
             language: 语言设置，None表示自动检测
+            hotwords: 热词列表，用于ASR偏向识别
 
         Returns:
             {
@@ -240,8 +263,8 @@ class MLXQwen3ASR:
                 ]
             }
         """
-        # 阶段1: ASR识别
-        asr_text = self.transcribe(audio, language)
+        # 阶段1: ASR识别（传递热词）
+        asr_text = self.transcribe(audio, language, hotwords)
 
         if not asr_text or not asr_text.strip():
             logger.warning("ASR识别结果为空，跳过时间戳对齐")

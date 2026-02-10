@@ -667,7 +667,8 @@ async def handle_client(websocket):
                                 with model_lock:
                                     return model.transcribe_with_timestamps(
                                         audio=(samples, 16000),
-                                        language=language
+                                        language=language,
+                                        hotwords=session_hotwords
                                     )
 
                             result = await asyncio.wait_for(
@@ -679,7 +680,11 @@ async def handle_client(websocket):
                             # 使用普通模式
                             def transcribe_with_lock():
                                 with model_lock:
-                                    return model.transcribe(audio=(samples, 16000), language=language)
+                                    return model.transcribe(
+                                        audio=(samples, 16000),
+                                        language=language,
+                                        hotwords=session_hotwords
+                                    )
 
                             result = await asyncio.wait_for(
                                 asyncio.to_thread(transcribe_with_lock),
