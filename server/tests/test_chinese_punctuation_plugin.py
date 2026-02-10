@@ -133,8 +133,8 @@ class TestModelManager:
         mock_auto_tokenizer = MagicMock()
         mock_auto_tokenizer.from_pretrained.return_value = mock_tokenizer
 
-        with patch('model_manager.AutoModelForTokenClassification', mock_auto_model):
-            with patch('model_manager.AutoTokenizer', mock_auto_tokenizer):
+        with patch('transformers.AutoModelForTokenClassification', mock_auto_model):
+            with patch('transformers.AutoTokenizer', mock_auto_tokenizer):
                 model, tokenizer = manager.get_transformers_model()
 
         assert model is mock_model
@@ -390,7 +390,7 @@ class TestTransformersAdapter:
         mock_outputs.logits = MagicMock()
         mock_model.return_value = mock_outputs
 
-        with patch('transformers_adapter.torch', mock_torch):
+        with patch.dict('sys.modules', {'torch': mock_torch}):
             adapter = TransformersAdapter(mock_manager)
             result = adapter.restore("你好")
 
@@ -564,8 +564,8 @@ class TestChinesePunctuationPlugin:
         mock_zhpr_adapter.is_available.return_value = True
         mock_zhpr_adapter.restore.return_value = "你好吗？我很好。"
 
-        with patch('chinese_punctuation_plugin.ModelManager') as mock_manager_class:
-            with patch('chinese_punctuation_plugin.ZhprAdapter', return_value=mock_zhpr_adapter):
+        with patch('model_manager.ModelManager') as mock_manager_class:
+            with patch('zhpr_adapter.ZhprAdapter', return_value=mock_zhpr_adapter):
                 result = plugin.on_transcription("你好吗我很好")
 
         assert result == "你好吗？我很好。"
@@ -585,9 +585,9 @@ class TestChinesePunctuationPlugin:
         mock_transformers_adapter.is_available.return_value = True
         mock_transformers_adapter.restore.return_value = "你好吗？我很好。"
 
-        with patch('chinese_punctuation_plugin.ModelManager'):
-            with patch('chinese_punctuation_plugin.ZhprAdapter', return_value=mock_zhpr_adapter):
-                with patch('chinese_punctuation_plugin.TransformersAdapter', return_value=mock_transformers_adapter):
+        with patch('model_manager.ModelManager'):
+            with patch('zhpr_adapter.ZhprAdapter', return_value=mock_zhpr_adapter):
+                with patch('transformers_adapter.TransformersAdapter', return_value=mock_transformers_adapter):
                     result = plugin.on_transcription("你好吗我很好")
 
         assert result == "你好吗？我很好。"
@@ -605,9 +605,9 @@ class TestChinesePunctuationPlugin:
         mock_transformers_adapter = MagicMock()
         mock_transformers_adapter.is_available.return_value = False
 
-        with patch('chinese_punctuation_plugin.ModelManager'):
-            with patch('chinese_punctuation_plugin.ZhprAdapter', return_value=mock_zhpr_adapter):
-                with patch('chinese_punctuation_plugin.TransformersAdapter', return_value=mock_transformers_adapter):
+        with patch('model_manager.ModelManager'):
+            with patch('zhpr_adapter.ZhprAdapter', return_value=mock_zhpr_adapter):
+                with patch('transformers_adapter.TransformersAdapter', return_value=mock_transformers_adapter):
                     result = plugin.on_transcription("你好吗我很好")
 
         # Should return original text (non-destructive)
@@ -618,7 +618,7 @@ class TestChinesePunctuationPlugin:
         plugin = ChinesePunctuationPlugin()
         plugin.initialize({})
 
-        with patch('chinese_punctuation_plugin.ModelManager', side_effect=RuntimeError("Error")):
+        with patch('model_manager.ModelManager', side_effect=RuntimeError("Error")):
             result = plugin.on_transcription("你好")
 
         # Should return original text on error
@@ -665,8 +665,8 @@ class TestChinesePunctuationPlugin:
         mock_zhpr_adapter.is_available.return_value = True
         mock_zhpr_adapter.restore.return_value = "你好。"
 
-        with patch('chinese_punctuation_plugin.ModelManager'):
-            with patch('chinese_punctuation_plugin.ZhprAdapter', return_value=mock_zhpr_adapter):
+        with patch('model_manager.ModelManager'):
+            with patch('zhpr_adapter.ZhprAdapter', return_value=mock_zhpr_adapter):
                 result = plugin._try_library("你好", "zhpr")
 
         assert result == "你好。"
@@ -680,8 +680,8 @@ class TestChinesePunctuationPlugin:
         mock_transformers_adapter.is_available.return_value = True
         mock_transformers_adapter.restore.return_value = "你好。"
 
-        with patch('chinese_punctuation_plugin.ModelManager'):
-            with patch('chinese_punctuation_plugin.TransformersAdapter', return_value=mock_transformers_adapter):
+        with patch('model_manager.ModelManager'):
+            with patch('transformers_adapter.TransformersAdapter', return_value=mock_transformers_adapter):
                 result = plugin._try_library("你好", "transformers")
 
         assert result == "你好。"
@@ -694,8 +694,8 @@ class TestChinesePunctuationPlugin:
         mock_adapter = MagicMock()
         mock_adapter.is_available.return_value = False
 
-        with patch('chinese_punctuation_plugin.ModelManager'):
-            with patch('chinese_punctuation_plugin.ZhprAdapter', return_value=mock_adapter):
+        with patch('model_manager.ModelManager'):
+            with patch('zhpr_adapter.ZhprAdapter', return_value=mock_adapter):
                 result = plugin._try_library("你好", "zhpr")
 
         assert result is None
@@ -705,7 +705,7 @@ class TestChinesePunctuationPlugin:
         plugin = ChinesePunctuationPlugin()
         plugin.initialize({})
 
-        with patch('chinese_punctuation_plugin.ModelManager'):
+        with patch('model_manager.ModelManager'):
             result = plugin._try_library("你好", "unknown")
 
         assert result is None
@@ -736,8 +736,8 @@ class TestIntegration:
         mock_zhpr_adapter.is_available.return_value = True
         mock_zhpr_adapter.restore.return_value = "你好吗？我很好，谢谢。"
 
-        with patch('chinese_punctuation_plugin.ModelManager'):
-            with patch('chinese_punctuation_plugin.ZhprAdapter', return_value=mock_zhpr_adapter):
+        with patch('model_manager.ModelManager'):
+            with patch('zhpr_adapter.ZhprAdapter', return_value=mock_zhpr_adapter):
                 result = plugin.on_transcription("你好吗我很好谢谢")
 
         assert result == "你好吗？我很好，谢谢。"
