@@ -138,6 +138,13 @@ final class ASRClient {
         // 判断是否启用 LLM 纠错（全局是总开关，场景可在全局开启时禁用）
         let shouldUseLLM = settingsManager.llmSettings.isEnabled && (profile.useLLMPolish ?? true)
 
+        // 获取场景关联的自定义词汇表热词
+        let vocabularyStorage = VocabularyStorage()
+        let hotwords = vocabularyStorage.getTerms(from: profile.vocabularyRuleIDs)
+        if !hotwords.isEmpty {
+            NSLog("[ASRClient] Sending \(hotwords.count) hotwords for scene '\(profile.sceneType.rawValue)'")
+        }
+
         // 构建基础消息
         var message: [String: Any] = [
             "type": "start",
@@ -148,7 +155,8 @@ final class ASRClient {
             "enable_denoise": settingsManager.enableDenoise,
             "model_id": modelId,
             "language": profile.getEffectiveLanguage().rawValue,
-            "active_app": activeAppInfo
+            "active_app": activeAppInfo,
+            "hotwords": hotwords
         ]
 
         // 添加场景信息

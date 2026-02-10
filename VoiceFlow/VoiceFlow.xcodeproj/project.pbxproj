@@ -16,6 +16,8 @@
 		508E63902F30754E0016E8CD /* ReplacementRule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E638F2F30754E0016E8CD /* ReplacementRule.swift */; };
 		508E63922F3075600016E8CD /* ReplacementStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E63912F3075600016E8CD /* ReplacementStorage.swift */; };
 		508E63942F3075780016E8CD /* TextReplacementEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E63932F3075780016E8CD /* TextReplacementEngine.swift */; };
+		'VOC00001' = {isa = PBXBuildFile; fileRef = 'VOC00002'; };
+		'VOC00003' = {isa = PBXBuildFile; fileRef = 'VOC00004'; };
 		508E63962F3075870016E8CD /* UserDefaults+VoiceFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E63952F3075870016E8CD /* UserDefaults+VoiceFlow.swift */; };
 		508E63992F30759E0016E8CD /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E63982F30759E0016E8CD /* SettingsWindowController.swift */; };
 		508E639A2F30759E0016E8CD /* SettingsWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 508E63972F30759E0016E8CD /* SettingsWindow.swift */; };
@@ -72,6 +74,8 @@
 		508E638F2F30754E0016E8CD /* ReplacementRule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplacementRule.swift; sourceTree = "<group>"; };
 		508E63912F3075600016E8CD /* ReplacementStorage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReplacementStorage.swift; sourceTree = "<group>"; };
 		508E63932F3075780016E8CD /* TextReplacementEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextReplacementEngine.swift; sourceTree = "<group>"; };
+		'VOC00002' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Vocabulary.swift; sourceTree = "<group>"; };
+		'VOC00004' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyStorage.swift; sourceTree = "<group>"; };
 		508E63952F3075870016E8CD /* UserDefaults+VoiceFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UserDefaults+VoiceFlow.swift"; sourceTree = "<group>"; };
 		508E63972F30759E0016E8CD /* SettingsWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindow.swift; sourceTree = "<group>"; };
 		508E63982F30759E0016E8CD /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
@@ -199,6 +203,8 @@
 				508E63912F3075600016E8CD /* ReplacementStorage.swift */,
 				508E638F2F30754E0016E8CD /* ReplacementRule.swift */,
 				508E638D2F30752D0016E8CD /* SettingsManager.swift */,
+				'VOC00002',
+				'VOC00004',
 				B1000003,
 				B1000004,
 				B1000005,
@@ -347,6 +353,8 @@
 				A1000011,
 				508E63922F3075600016E8CD /* ReplacementStorage.swift in Sources */,
 				508E638E2F30752D0016E8CD /* SettingsManager.swift in Sources */,
+			'VOC00001',
+			'VOC00003',
 				508E63992F30759E0016E8CD /* SettingsWindowController.swift in Sources */,
 				508E639A2F30759E0016E8CD /* SettingsWindow.swift in Sources */,
 				A1000013,

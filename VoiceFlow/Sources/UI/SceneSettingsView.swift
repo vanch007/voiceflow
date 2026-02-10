@@ -98,12 +98,16 @@ private struct SceneProfileEditor: View {
     // 提示词管理器
     @ObservedObject private var promptManager = PromptManager.shared
 
+    // 词汇表管理器
+    @ObservedObject private var vocabularyStorage = VocabularyStorage()
+
     @State private var language: ASRLanguage? = nil  // nil 表示跟随全局设置
     @State private var enablePolish: Bool = false
     @State private var polishStyle: PolishStyle = .neutral
     @State private var customPrompt: String = ""
     @State private var showingAddGlossarySheet: Bool = false
     @State private var editingRule: ReplacementRule? = nil
+    @State private var selectedVocabularyIDs: Set<UUID> = []
 
     // 提示词编辑状态
     @State private var useCustomPrompt: Bool = false
@@ -274,6 +278,82 @@ private struct SceneProfileEditor: View {
                             }
                         }
                         .padding(.leading, 20)
+                    }
+                }
+
+                Divider()
+
+                // 词汇表关联
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("关联词汇表")
+                        .fontWeight(.medium)
+
+                    Text("选择要在此场景中使用的词汇表，用于 ASR 热词偏置以提高识别准确度")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    if vocabularyStorage.vocabularies.isEmpty {
+                        HStack {
+                            Text("暂无词汇表")
+                                .foregroundColor(.secondary)
+                                .padding(.vertical, 8)
+
+                            Spacer()
+
+                            Button(action: {
+                                // 打开词汇表管理（在 SettingsWindow 中实现）
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus.circle")
+                                    Text("创建词汇表")
+                                }
+                                .font(.caption)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 4) {
+                                ForEach(vocabularyStorage.vocabularies) { vocabulary in
+                                    HStack {
+                                        Toggle(isOn: Binding(
+                                            get: { selectedVocabularyIDs.contains(vocabulary.id) },
+                                            set: { isSelected in
+                                                if isSelected {
+                                                    selectedVocabularyIDs.insert(vocabulary.id)
+                                                } else {
+                                                    selectedVocabularyIDs.remove(vocabulary.id)
+                                                }
+                                            }
+                                        )) {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(vocabulary.name)
+                                                    .fontWeight(.medium)
+
+                                                if !vocabulary.description.isEmpty {
+                                                    Text(vocabulary.description)
+                                                        .font(.caption)
+                                                        .foregroundColor(.secondary)
+                                                        .lineLimit(1)
+                                                }
+                                            }
+                                        }
+                                        .toggleStyle(.checkbox)
+
+                                        Spacer()
+
+                                        Text("\(vocabulary.entryCount) 词条")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .padding(.vertical, 4)
+                                    .padding(.horizontal, 8)
+                                    .background(selectedVocabularyIDs.contains(vocabulary.id) ? Color.accentColor.opacity(0.1) : Color.clear)
+                                    .cornerRadius(4)
+                                }
+                            }
+                        }
+                        .frame(maxHeight: 150)
                     }
                 }
 
@@ -528,6 +608,7 @@ private struct SceneProfileEditor: View {
         enablePolish = profile.enablePolish
         polishStyle = profile.polishStyle
         customPrompt = profile.customPrompt ?? ""
+        selectedVocabularyIDs = Set(profile.vocabularyRuleIDs)
 
         // 加载提示词状态
         useCustomPrompt = promptManager.isUsingCustomPrompt(for: sceneType.rawValue)
@@ -553,7 +634,8 @@ private struct SceneProfileEditor: View {
             enablePolish: enablePolish,
             polishStyle: polishStyle,
             enabledPluginIDs: [],
-            customPrompt: useCustomPrompt ? editablePrompt : nil
+            customPrompt: useCustomPrompt ? editablePrompt : nil,
+            vocabularyRuleIDs: Array(selectedVocabularyIDs)
         )
         sceneManager.updateProfile(profile)
     }

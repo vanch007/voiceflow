@@ -267,7 +267,8 @@ async def vad_streaming_transcribe(
     silence_duration_ms: int = 300,
     check_interval_ms: int = 100,
     subtitle_mode: bool = False,
-    subtitle_interval_s: float = 1.5
+    subtitle_interval_s: float = 1.5,
+    hotwords: List[str] = None
 ):
     """
     基于 VAD 的流式转录：仅在检测到停顿时触发转录
@@ -282,6 +283,7 @@ async def vad_streaming_transcribe(
         check_interval_ms: 检查间隔 (毫秒)
         subtitle_mode: 字幕模式，启用定时转录
         subtitle_interval_s: 字幕模式下定时转录间隔 (秒)
+        hotwords: 热词列表，用于ASR偏向识别
     """
     silence_frames = 0
     frames_needed = silence_duration_ms // check_interval_ms
@@ -314,7 +316,7 @@ async def vad_streaming_transcribe(
 
                 def transcribe_window():
                     with model_lock:
-                        return model.transcribe((window_samples, 16000), language)
+                        return model.transcribe((window_samples, 16000), language, hotwords)
 
                 result = await asyncio.to_thread(transcribe_window)
                 text = extract_text(result).strip()
@@ -353,7 +355,7 @@ async def vad_streaming_transcribe(
                 # 语音输入模式：转录全部音频（保持原有行为）
                 def transcribe_with_lock():
                     with model_lock:
-                        return model.transcribe((samples, 16000), language)
+                        return model.transcribe((samples, 16000), language, hotwords)
 
                 result = await asyncio.to_thread(transcribe_with_lock)
                 text = extract_text(result)
@@ -471,6 +473,7 @@ async def handle_client(websocket):
     session_language = None
     session_scene = None  # 场景信息
     session_denoise = False  # 降噪开关
+    session_hotwords = []  # 自定义词汇表/热词列表
     transcription_task: asyncio.Task = None
 
     try:
@@ -612,12 +615,15 @@ async def handle_client(websocket):
                     active_app = data.get("active_app", {})  # 解析活跃应用信息
                     session_denoise = data.get("enable_denoise", False)  # 解析降噪开关
                     session_mode = data.get("mode", "voice_input")  # 录音模式: voice_input / subtitle
+                    session_hotwords = data.get("hotwords", [])  # 解析自定义词汇表/热词列表
 
                     # 将 active_app 信息合并到 session_scene
                     if active_app:
                         session_scene["active_app"] = active_app
 
-                    logger.info(f"🎤 开始录音. Mode: {session_mode}, Polish: {enable_polish}, LLM: {use_llm_polish}, Timestamps: {use_timestamps}, Denoise: {session_denoise}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}")
+                    # 记录热词信息
+                    hotwords_info = f"{len(session_hotwords)} terms" if session_hotwords else "none"
+                    logger.info(f"🎤 开始录音. Mode: {session_mode}, Polish: {enable_polish}, LLM: {use_llm_polish}, Timestamps: {use_timestamps}, Denoise: {session_denoise}, Model: {session_model_id}, Language: {lang_code} -> {session_language}, Scene: {session_scene.get('type', 'auto')}, App: {active_app.get('name', 'unknown')}, Hotwords: {hotwords_info}")
 
                     # 确保模型已加载
                     if session_model_id:
@@ -635,7 +641,8 @@ async def handle_client(websocket):
                             get_model(session_model_id),
                             session_language,
                             subtitle_mode=is_subtitle,
-                            silence_duration_ms=200 if is_subtitle else 300
+                            silence_duration_ms=200 if is_subtitle else 300,
+                            hotwords=session_hotwords
                         )
                     )
 
@@ -678,7 +685,8 @@ async def handle_client(websocket):
                                 with model_lock:
                                     return model.transcribe_with_timestamps(
                                         audio=(samples, 16000),
-                                        language=language
+                                        language=language,
+                                        hotwords=session_hotwords
                                     )
 
                             result = await asyncio.wait_for(
@@ -690,7 +698,11 @@ async def handle_client(websocket):
                             # 使用普通模式
                             def transcribe_with_lock():
                                 with model_lock:
-                                    return model.transcribe(audio=(samples, 16000), language=language)
+                                    return model.transcribe(
+                                        audio=(samples, 16000),
+                                        language=language,
+                                        hotwords=session_hotwords
+                                    )
 
                             result = await asyncio.wait_for(
                                 asyncio.to_thread(transcribe_with_lock),
