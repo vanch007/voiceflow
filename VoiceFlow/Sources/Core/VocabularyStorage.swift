@@ -205,7 +205,7 @@ final class VocabularyStorage: ObservableObject {
         for (index, line) in lines.enumerated() {
             guard index > 0, !line.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
 
-            let columns = line.components(separatedBy: ",")
+            let columns = parseCSVLine(line)
             guard !columns.isEmpty else { continue }
 
             let term = columns[0].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -252,10 +252,10 @@ final class VocabularyStorage: ObservableObject {
         var csvString = "term,pronunciation,mapping,category\n"
 
         for entry in vocabulary.entries {
-            let term = entry.term
-            let pronunciation = entry.pronunciation ?? ""
-            let mapping = entry.mapping ?? ""
-            let category = entry.category ?? ""
+            let term = escapeCSVField(entry.term)
+            let pronunciation = escapeCSVField(entry.pronunciation ?? "")
+            let mapping = escapeCSVField(entry.mapping ?? "")
+            let category = escapeCSVField(entry.category ?? "")
             csvString += "\(term),\(pronunciation),\(mapping),\(category)\n"
         }
 
@@ -266,6 +266,57 @@ final class VocabularyStorage: ObservableObject {
 
         NSLog("[VocabularyStorage] Exported vocabulary '\(vocabulary.name)' to CSV (\(vocabulary.entryCount) entries)")
         return data
+    }
+
+    // MARK: - CSV Helpers
+
+    /// Parse a single CSV line, handling quoted fields properly
+    private func parseCSVLine(_ line: String) -> [String] {
+        var fields: [String] = []
+        var currentField = ""
+        var insideQuotes = false
+        var index = line.startIndex
+
+        while index < line.endIndex {
+            let char = line[index]
+
+            if char == "\"" {
+                if insideQuotes {
+                    // Check for escaped quote ("")
+                    let nextIndex = line.index(after: index)
+                    if nextIndex < line.endIndex && line[nextIndex] == "\"" {
+                        currentField.append("\"")
+                        index = nextIndex
+                    } else {
+                        insideQuotes = false
+                    }
+                } else {
+                    insideQuotes = true
+                }
+            } else if char == "," && !insideQuotes {
+                fields.append(currentField)
+                currentField = ""
+            } else {
+                currentField.append(char)
+            }
+
+            index = line.index(after: index)
+        }
+
+        // Add the last field
+        fields.append(currentField)
+
+        return fields
+    }
+
+    /// Escape a CSV field by adding quotes if needed
+    private func escapeCSVField(_ field: String) -> String {
+        // Need quotes if field contains comma, quote, or newline
+        if field.contains(",") || field.contains("\"") || field.contains("\n") || field.contains("\r") {
+            let escaped = field.replacingOccurrences(of: "\"", with: "\"\"")
+            return "\"\(escaped)\""
+        }
+        return field
     }
 
     // MARK: - Persistence
