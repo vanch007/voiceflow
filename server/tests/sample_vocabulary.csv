@@ -1,0 +1,17 @@
+term,pronunciation,mapping,category
+React,,,framework
+Kubernetes,,,infrastructure
+TypeScript,,,language
+PostgreSQL,,,database
+GraphQL,,,api
+Django,,,framework
+Docker,,,infrastructure
+MongoDB,,,database
+FastAPI,,,framework
+Terraform,,,infrastructure
+李明,lǐ míng,Li Ming,name
+王芳,wáng fāng,Wang Fang,name
+北京,běi jīng,Beijing,place
+上海,shàng hǎi,Shanghai,place
+acetaminophen,,,medication
+electrocardiogram,,,procedure
