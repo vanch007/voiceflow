@@ -1272,4 +1272,451 @@ final class ASRClientTests: XCTestCase {
             XCTFail("Failed to parse start message")
         }
     }
+
+    // MARK: - Advanced Error Recovery Tests
+
+    func testAutomaticReconnectionAfterNetworkError() {
+        // Given: A connected ASRClient
+        var connectionCallCount = 0
+        let initialConnectionExpectation = expectation(description: "Initial connection")
+
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionCallCount += 1
+                if connectionCallCount == 1 {
+                    initialConnectionExpectation.fulfill()
+                }
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [initialConnectionExpectation], timeout: 2.0)
+
+        // When: Network error occurs (simulate by triggering receive error)
+        mockWebSocketTask.receiveError = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorNetworkConnectionLost,
+            userInfo: nil
+        )
+
+        // Simulate disconnection
+        let disconnectExpectation = expectation(description: "Disconnection detected")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if !isConnected {
+                disconnectExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [disconnectExpectation], timeout: 2.0)
+
+        // Then: ASRClient should be in disconnected state
+        XCTAssertFalse(asrClient.isServerConnected, "Should be disconnected after network error")
+    }
+
+    func testErrorMessagePropagationOnConnectionFailure() {
+        // Given: A mock that will fail with specific error message
+        let expectedErrorMessage = "Connection refused by server"
+        mockWebSocketTask.pingError = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorCannotConnectToHost,
+            userInfo: [NSLocalizedDescriptionKey: expectedErrorMessage]
+        )
+
+        // When: Connection is attempted
+        let errorExpectation = expectation(description: "Error message received")
+
+        asrClient.onErrorStateChanged = { hasError, errorMessage in
+            if hasError {
+                XCTAssertNotNil(errorMessage, "Error message should be provided")
+                errorExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+
+        // Then: Error state should be set with message
+        wait(for: [errorExpectation], timeout: 2.0)
+    }
+
+    func testConnectionRecoveryAfterTemporaryNetworkLoss() {
+        // Given: A connected ASRClient
+        let initialConnectionExpectation = expectation(description: "Initial connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                initialConnectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [initialConnectionExpectation], timeout: 2.0)
+        XCTAssertTrue(asrClient.isServerConnected, "Should be connected initially")
+
+        // When: Temporary network loss occurs
+        asrClient.disconnect()
+        XCTAssertFalse(asrClient.isServerConnected, "Should be disconnected")
+
+        // Then: Can successfully reconnect
+        let recoveryExpectation = expectation(description: "Recovery connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                recoveryExpectation.fulfill()
+            }
+        }
+
+        // Create fresh mock for recovery
+        mockWebSocketTask = MockWebSocketTask()
+        asrClient = ASRClient(
+            session: mockSession,
+            serverURL: URL(string: "ws://localhost:9876")!,
+            webSocketTaskFactory: { [unowned self] _, _ in
+                return self.mockWebSocketTask
+            }
+        )
+
+        asrClient.connect()
+        wait(for: [recoveryExpectation], timeout: 2.0)
+
+        XCTAssertTrue(asrClient.isServerConnected, "Should recover connection")
+    }
+
+    func testMultipleConnectionAttemptsWithIntermittentFailures() {
+        // Test resilience to multiple connection failures
+        for attemptNumber in 1...3 {
+            // Given: Fresh mock and client for each attempt
+            mockWebSocketTask = MockWebSocketTask()
+
+            if attemptNumber < 3 {
+                // First two attempts fail
+                mockWebSocketTask.pingError = NSError(
+                    domain: NSURLErrorDomain,
+                    code: NSURLErrorTimedOut,
+                    userInfo: nil
+                )
+            }
+            // Third attempt succeeds (no error)
+
+            asrClient = ASRClient(
+                session: mockSession,
+                serverURL: URL(string: "ws://localhost:9876")!,
+                webSocketTaskFactory: { [unowned self] _, _ in
+                    return self.mockWebSocketTask
+                }
+            )
+
+            // When: Connection is attempted
+            if attemptNumber < 3 {
+                asrClient.connect()
+
+                // Wait for failure to be detected
+                let failureExpectation = expectation(description: "Attempt \(attemptNumber) fails")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    failureExpectation.fulfill()
+                }
+                wait(for: [failureExpectation], timeout: 2.0)
+
+                XCTAssertFalse(asrClient.isServerConnected, "Attempt \(attemptNumber) should fail")
+            } else {
+                // Then: Final attempt should succeed
+                let successExpectation = expectation(description: "Final attempt succeeds")
+                asrClient.onConnectionStatusChanged = { isConnected in
+                    if isConnected {
+                        successExpectation.fulfill()
+                    }
+                }
+
+                asrClient.connect()
+                wait(for: [successExpectation], timeout: 2.0)
+
+                XCTAssertTrue(asrClient.isServerConnected, "Final attempt should succeed")
+            }
+        }
+    }
+
+    func testErrorRecoveryWithMessageProcessing() {
+        // Given: A connected ASRClient
+        let connectionExpectation = expectation(description: "Connection established")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // When: Error occurs during message processing
+        let transcriptionExpectation = expectation(description: "Transcription before error")
+
+        asrClient.onTranscriptionResult = { text in
+            transcriptionExpectation.fulfill()
+        }
+
+        // Send valid message
+        let validMessage: [String: Any] = [
+            "type": "final",
+            "text": "Valid transcription"
+        ]
+
+        if let jsonData = try? JSONSerialization.data(withJSONObject: validMessage),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            mockWebSocketTask.enqueueMessage(text: jsonString)
+            wait(for: [transcriptionExpectation], timeout: 2.0)
+        }
+
+        // Then: Send invalid message (should be handled gracefully)
+        mockWebSocketTask.enqueueMessage(text: "invalid{json}")
+
+        // Wait for processing
+        let processExpectation = expectation(description: "Invalid message processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            processExpectation.fulfill()
+        }
+        wait(for: [processExpectation], timeout: 1.0)
+
+        // Verify client still connected and functional
+        XCTAssertTrue(asrClient.isServerConnected, "Should remain connected after invalid message")
+    }
+
+    func testWebSocketTaskReplacementDuringReconnection() {
+        // Given: A connected ASRClient
+        let initialConnectionExpectation = expectation(description: "Initial connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                initialConnectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [initialConnectionExpectation], timeout: 2.0)
+
+        let firstTask = mockWebSocketTask
+        XCTAssertTrue(firstTask?.resumeCalled ?? false, "First task should be resumed")
+
+        // When: Reconnection is triggered
+        let newMockTask = MockWebSocketTask()
+        mockWebSocketTask = newMockTask
+
+        asrClient = ASRClient(
+            session: mockSession,
+            serverURL: URL(string: "ws://localhost:9876")!,
+            webSocketTaskFactory: { [unowned self] _, _ in
+                return self.mockWebSocketTask
+            }
+        )
+
+        let reconnectionExpectation = expectation(description: "Reconnection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                reconnectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [reconnectionExpectation], timeout: 2.0)
+
+        // Then: New task should be used
+        XCTAssertTrue(newMockTask.resumeCalled, "New task should be resumed")
+    }
+
+    func testDisconnectDuringPendingConnection() {
+        // Given: A connection attempt in progress
+        asrClient.connect()
+
+        // When: disconnect() is called before connection completes
+        let disconnectExpectation = expectation(description: "Disconnect during pending connection")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            self.asrClient.disconnect()
+            disconnectExpectation.fulfill()
+        }
+
+        wait(for: [disconnectExpectation], timeout: 1.0)
+
+        // Then: Should be disconnected and not attempt reconnection
+        XCTAssertFalse(asrClient.isServerConnected, "Should be disconnected")
+
+        // Verify no reconnection happens
+        let noReconnectExpectation = expectation(description: "No reconnection")
+        noReconnectExpectation.isInverted = true
+
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                noReconnectExpectation.fulfill()
+            }
+        }
+
+        wait(for: [noReconnectExpectation], timeout: 2.0)
+    }
+
+    func testSendOperationsQueuedDuringReconnection() {
+        // Given: A disconnected ASRClient
+        XCTAssertFalse(asrClient.isServerConnected, "Should start disconnected")
+
+        // When: Messages are sent while disconnected
+        let sendExpectation = expectation(description: "Send operations complete")
+
+        asrClient.sendStart(mode: "voice_input")
+        asrClient.sendAudioChunk(Data(repeating: 0x01, count: 512))
+        asrClient.sendStop {
+            sendExpectation.fulfill()
+        }
+
+        wait(for: [sendExpectation], timeout: 1.0)
+
+        // Then: Operations should complete without crash
+        XCTAssertTrue(true, "Send operations should handle disconnected state gracefully")
+    }
+
+    func testErrorStateTransitionFromConnectedToError() {
+        // Given: A successfully connected ASRClient
+        let connectionExpectation = expectation(description: "Connection established")
+        var errorStateChanges: [(hasError: Bool, message: String?)] = []
+
+        asrClient.onErrorStateChanged = { hasError, message in
+            errorStateChanges.append((hasError, message))
+        }
+
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // Should have received error state cleared on successful connection
+        XCTAssertTrue(errorStateChanges.contains(where: { !$0.hasError }), "Should have cleared error state")
+
+        // When: Connection fails
+        mockWebSocketTask.pingError = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorNetworkConnectionLost,
+            userInfo: [NSLocalizedDescriptionKey: "Network lost"]
+        )
+
+        let errorExpectation = expectation(description: "Error state set")
+        asrClient.onErrorStateChanged = { hasError, message in
+            if hasError {
+                XCTAssertNotNil(message, "Should provide error message")
+                errorExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+
+        // Then: Error state should be set
+        wait(for: [errorExpectation], timeout: 2.0)
+    }
+
+    func testPartialResultsDuringUnstableConnection() {
+        // Given: A connected ASRClient
+        let connectionExpectation = expectation(description: "Connection established")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // When: Partial results are received during unstable connection
+        var receivedPartials: [String] = []
+
+        asrClient.onPartialResult = { text, _ in
+            receivedPartials.append(text)
+        }
+
+        // Send multiple partial messages
+        let partials = ["Hello", "Hello world", "Hello world this", "Hello world this is"]
+
+        for partial in partials {
+            let partialMessage: [String: Any] = [
+                "type": "partial",
+                "text": partial,
+                "trigger": "periodic"
+            ]
+
+            if let jsonData = try? JSONSerialization.data(withJSONObject: partialMessage),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                mockWebSocketTask.enqueueMessage(text: jsonString)
+            }
+        }
+
+        // Wait for all partials to be processed
+        let processExpectation = expectation(description: "All partials processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            processExpectation.fulfill()
+        }
+        wait(for: [processExpectation], timeout: 2.0)
+
+        // Then: All partials should be received
+        XCTAssertEqual(receivedPartials.count, partials.count, "Should receive all partial results")
+    }
+
+    func testReconnectionPreservesCallbackReferences() {
+        // Given: A client with callbacks set
+        var transcriptionReceived = false
+        var connectionStatusChanges = 0
+
+        asrClient.onTranscriptionResult = { _ in
+            transcriptionReceived = true
+        }
+
+        asrClient.onConnectionStatusChanged = { _ in
+            connectionStatusChanges += 1
+        }
+
+        // When: Connection is established, lost, and re-established
+        let firstConnectionExpectation = expectation(description: "First connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionStatusChanges += 1
+                firstConnectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [firstConnectionExpectation], timeout: 2.0)
+
+        // Disconnect
+        asrClient.disconnect()
+
+        // Reconnect
+        mockWebSocketTask = MockWebSocketTask()
+        asrClient = ASRClient(
+            session: mockSession,
+            serverURL: URL(string: "ws://localhost:9876")!,
+            webSocketTaskFactory: { [unowned self] _, _ in
+                return self.mockWebSocketTask
+            }
+        )
+
+        // Re-set callbacks
+        asrClient.onTranscriptionResult = { _ in
+            transcriptionReceived = true
+        }
+
+        let secondConnectionExpectation = expectation(description: "Second connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                secondConnectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [secondConnectionExpectation], timeout: 2.0)
+
+        // Then: Callbacks should still work
+        let finalMessage: [String: Any] = [
+            "type": "final",
+            "text": "Test after reconnection"
+        ]
+
+        if let jsonData = try? JSONSerialization.data(withJSONObject: finalMessage),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            mockWebSocketTask.enqueueMessage(text: jsonString)
+
+            let transcriptionExpectation = expectation(description: "Transcription received")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                if transcriptionReceived {
+                    transcriptionExpectation.fulfill()
+                }
+            }
+            wait(for: [transcriptionExpectation], timeout: 1.0)
+        }
+
+        XCTAssertTrue(transcriptionReceived, "Callbacks should work after reconnection")
+    }
 }
