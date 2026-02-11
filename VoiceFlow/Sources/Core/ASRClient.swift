@@ -3,31 +3,13 @@ import AppKit
 
 /// Protocol abstraction for URLSessionWebSocketTask to enable testing
 protocol WebSocketTaskProtocol: AnyObject {
-    /// Resume the WebSocket task
     func resume()
-
-    /// Cancel the WebSocket task
-    /// - Parameters:
-    ///   - closeCode: The close code to send
-    ///   - reason: Optional reason data
     func cancel(with closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?)
-
-    /// Send a ping frame
-    /// - Parameter pongReceiveHandler: Completion handler called when pong is received
     func sendPing(pongReceiveHandler: @escaping (Error?) -> Void)
-
-    /// Send a WebSocket message
-    /// - Parameters:
-    ///   - message: The message to send
-    ///   - completionHandler: Completion handler called when send completes
     func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping (Error?) -> Void)
-
-    /// Receive a WebSocket message
-    /// - Parameter completionHandler: Completion handler called when a message is received
     func receive(completionHandler: @escaping (Result<URLSessionWebSocketTask.Message, Error>) -> Void)
 }
 
-/// Extension to make URLSessionWebSocketTask conform to the protocol
 extension URLSessionWebSocketTask: WebSocketTaskProtocol {}
 
 private enum ASRMessageType: String, Decodable {
@@ -61,9 +43,9 @@ final class ASRClient {
     var onPromptSaved: ((String, Bool) -> Void)?  // 提示词保存结果 (sceneType, success)
 
     private var webSocketTask: WebSocketTaskProtocol?
-    private let session: URLSession = URLSession(configuration: .default)
+    private let session: URLSession
     private var reconnectTask: Task<Void, Never>?
-    private let serverURL = URL(string: "ws://localhost:9876")!
+    private let serverURL: URL
     private var isConnected = false
 
     /// 公开的连接状态（供外部检查 ASR 服务器是否可用）
@@ -81,8 +63,21 @@ final class ASRClient {
     // 引用 SettingsManager 获取配置
     private let settingsManager: SettingsManager
 
-    init(settingsManager: SettingsManager = .shared) {
+    // WebSocket task factory for dependency injection
+    private let webSocketTaskFactory: (URLSession, URL) -> WebSocketTaskProtocol
+
+    init(
+        settingsManager: SettingsManager = .shared,
+        session: URLSession = URLSession(configuration: .default),
+        serverURL: URL = URL(string: "ws://localhost:9876")!,
+        webSocketTaskFactory: @escaping (URLSession, URL) -> WebSocketTaskProtocol = { session, url in
+            session.webSocketTask(with: url)
+        }
+    ) {
         self.settingsManager = settingsManager
+        self.session = session
+        self.serverURL = serverURL
+        self.webSocketTaskFactory = webSocketTaskFactory
 
         // Observe voice settings changes
         NotificationCenter.default.addObserver(
@@ -99,22 +94,22 @@ final class ASRClient {
         reconnectTask = nil
 
         // 清理旧连接
-        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask?.cancel(with: .goingAway, reason: nil as Data?)
         webSocketTask = nil
 
         shouldReconnect = true
         currentReconnectInterval = reconnectInterval
 
-        let task = session.webSocketTask(with: serverURL)
+        let task = webSocketTaskFactory(session, serverURL)
         webSocketTask = task
         task.resume()
 
         // 延迟发送 ping，等待 WebSocket 握手完成
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            guard let self = self, self.webSocketTask === task else { return }
+            guard let self = self, self.webSocketTask as AnyObject === task as AnyObject else { return }
 
             task.sendPing { [weak self] error in
-                guard let self = self, self.webSocketTask === task else { return }
+                guard let self = self, self.webSocketTask as AnyObject === task as AnyObject else { return }
 
                 if let error {
                     print("[ASRClient] Ping failed after connect: \(error)")
@@ -137,7 +132,7 @@ final class ASRClient {
 
     func disconnect() {
         shouldReconnect = false
-        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask?.cancel(with: .goingAway, reason: nil as Data?)
         webSocketTask = nil
         if isConnected {
             isConnected = false
@@ -231,7 +226,7 @@ final class ASRClient {
         sendLock.unlock()
 
         let message = URLSessionWebSocketTask.Message.data(data)
-        webSocketTask?.send(message) { [weak self] error in
+        webSocketTask?.send(message) { [weak self] (error: Error?) in
             if let error {
                 print("[ASRClient] Send audio error: \(error)")
             }
@@ -266,7 +261,7 @@ final class ASRClient {
             return
         }
         let message = URLSessionWebSocketTask.Message.string(str)
-        webSocketTask?.send(message) { error in
+        webSocketTask?.send(message) { (error: Error?) in
             if let error {
                 print("[ASRClient] Send JSON error: \(error)")
             }
@@ -275,7 +270,7 @@ final class ASRClient {
     }
 
     private func listenForMessages() {
-        webSocketTask?.receive { [weak self] result in
+        webSocketTask?.receive { [weak self] (result: Result<URLSessionWebSocketTask.Message, Error>) in
             guard let self else { return }
             switch result {
             case .success(let message):

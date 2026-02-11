@@ -1,7 +1,7 @@
 import Foundation
 
 /// Protocol abstraction for URLSessionWebSocketTask to enable testing
-protocol WebSocketTaskProtocol {
+protocol WebSocketTaskProtocol: AnyObject {
     /// Resume the WebSocket task
     func resume()
 
