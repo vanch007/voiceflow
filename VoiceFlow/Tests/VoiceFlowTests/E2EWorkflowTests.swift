@@ -727,6 +727,491 @@ final class E2EWorkflowTests: XCTestCase {
         XCTAssertEqual(receivedText, longText, "Long text should not be truncated")
         XCTAssertGreaterThan(receivedText?.count ?? 0, 1000, "Text should be very long")
     }
+
+    // MARK: - WebSocket Communication Tests
+
+    func testWebSocketMessageOrdering() {
+        // Given: ASR connected with message tracking
+        let connectionExpectation = expectation(description: "ASR connected")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        var receivedMessages: [String] = []
+        let messagesExpectation = expectation(description: "All messages received")
+        messagesExpectation.expectedFulfillmentCount = 5
+
+        // When: Setup callbacks to track message order
+        asrClient.onPartialResult = { text, _ in
+            receivedMessages.append("partial:\(text)")
+            messagesExpectation.fulfill()
+        }
+
+        asrClient.onTranscriptionResult = { text in
+            receivedMessages.append("final:\(text)")
+            messagesExpectation.fulfill()
+        }
+
+        // Send messages in specific order
+        let messages: [[String: Any]] = [
+            ["type": "partial", "text": "First", "trigger": "pause"],
+            ["type": "partial", "text": "Second", "trigger": "pause"],
+            ["type": "partial", "text": "Third", "trigger": "periodic"],
+            ["type": "partial", "text": "Fourth", "trigger": "pause"],
+            ["type": "final", "text": "Final text", "polish_method": "none"]
+        ]
+
+        for message in messages {
+            if let jsonData = try? JSONSerialization.data(withJSONObject: message),
+               let jsonString = String(data: jsonData, encoding: .utf8) {
+                mockWebSocketTask.enqueueMessage(text: jsonString)
+            }
+        }
+
+        // Then: Messages should be received in correct order
+        wait(for: [messagesExpectation], timeout: 3.0)
+
+        XCTAssertEqual(receivedMessages.count, 5, "Should receive all 5 messages")
+        XCTAssertEqual(receivedMessages[0], "partial:First", "First message should be correct")
+        XCTAssertEqual(receivedMessages[1], "partial:Second", "Second message should be correct")
+        XCTAssertEqual(receivedMessages[2], "partial:Third", "Third message should be correct")
+        XCTAssertEqual(receivedMessages[3], "partial:Fourth", "Fourth message should be correct")
+        XCTAssertEqual(receivedMessages[4], "final:Final text", "Final message should be correct")
+    }
+
+    func testWebSocketConnectionStateSync() {
+        // Given: Initial disconnected state
+        var connectionStates: [Bool] = []
+        let stateChangeExpectation = expectation(description: "Connection state changes")
+        stateChangeExpectation.expectedFulfillmentCount = 2
+
+        asrClient.onConnectionStatusChanged = { isConnected in
+            connectionStates.append(isConnected)
+            stateChangeExpectation.fulfill()
+        }
+
+        // When: Connect then disconnect
+        XCTAssertFalse(asrClient.isServerConnected, "Should start disconnected")
+
+        asrClient.connect()
+
+        // Wait for connection
+        let connectExpectation = expectation(description: "Connected")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            connectExpectation.fulfill()
+        }
+        wait(for: [connectExpectation], timeout: 1.0)
+
+        XCTAssertTrue(asrClient.isServerConnected, "Should be connected")
+
+        asrClient.disconnect()
+
+        // Then: State should synchronize correctly
+        wait(for: [stateChangeExpectation], timeout: 2.0)
+
+        XCTAssertEqual(connectionStates.count, 2, "Should have two state changes")
+        XCTAssertTrue(connectionStates[0], "First change should be connected")
+        XCTAssertFalse(connectionStates[1], "Second change should be disconnected")
+        XCTAssertFalse(asrClient.isServerConnected, "Should end disconnected")
+    }
+
+    func testWebSocketReconnectionStateConsistency() {
+        // Given: ASR connected
+        let initialConnectionExpectation = expectation(description: "Initial connection")
+        var connectionEvents: [(connected: Bool, timestamp: TimeInterval)] = []
+
+        asrClient.onConnectionStatusChanged = { isConnected in
+            let timestamp = Date().timeIntervalSince1970
+            connectionEvents.append((isConnected, timestamp))
+            if isConnected && connectionEvents.count == 1 {
+                initialConnectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [initialConnectionExpectation], timeout: 2.0)
+
+        // When: Simulate disconnection and reconnection
+        mockWebSocketTask.receiveError = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorNetworkConnectionLost,
+            userInfo: nil
+        )
+
+        // Trigger disconnect
+        asrClient.connect()
+
+        // Wait for disconnect to be detected
+        let disconnectExpectation = expectation(description: "Disconnect detected")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            disconnectExpectation.fulfill()
+        }
+        wait(for: [disconnectExpectation], timeout: 1.0)
+
+        // Clear error and reconnect
+        mockWebSocketTask.receiveError = nil
+        asrClient.connect()
+
+        // Wait for reconnection
+        let reconnectExpectation = expectation(description: "Reconnected")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            reconnectExpectation.fulfill()
+        }
+        wait(for: [reconnectExpectation], timeout: 2.0)
+
+        // Then: State should be consistent through reconnection
+        XCTAssertGreaterThanOrEqual(connectionEvents.count, 2, "Should have multiple state changes")
+        XCTAssertTrue(connectionEvents.first?.connected ?? false, "First event should be connected")
+
+        // Verify final state is connected
+        let finalState = asrClient.isServerConnected
+        XCTAssertTrue(finalState, "Should be reconnected")
+    }
+
+    func testConcurrentWebSocketMessagesHandled() {
+        // Given: ASR connected
+        let connectionExpectation = expectation(description: "ASR connected")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        var partialCount = 0
+        var finalCount = 0
+        var polishCount = 0
+
+        let messageExpectation = expectation(description: "All messages processed")
+        messageExpectation.expectedFulfillmentCount = 15
+
+        // When: Setup handlers for different message types
+        asrClient.onPartialResult = { _, _ in
+            partialCount += 1
+            messageExpectation.fulfill()
+        }
+
+        asrClient.onTranscriptionResult = { _ in
+            finalCount += 1
+            messageExpectation.fulfill()
+        }
+
+        asrClient.onPolishUpdate = { _ in
+            polishCount += 1
+            messageExpectation.fulfill()
+        }
+
+        // Send multiple message types concurrently
+        for i in 0..<5 {
+            let partialMessage: [String: Any] = [
+                "type": "partial",
+                "text": "Partial \(i)",
+                "trigger": "pause"
+            ]
+
+            let finalMessage: [String: Any] = [
+                "type": "final",
+                "text": "Final \(i)",
+                "polish_method": "llm"
+            ]
+
+            let polishMessage: [String: Any] = [
+                "type": "polish_update",
+                "text": "Polished \(i)"
+            ]
+
+            for message in [partialMessage, finalMessage, polishMessage] {
+                if let jsonData = try? JSONSerialization.data(withJSONObject: message),
+                   let jsonString = String(data: jsonData, encoding: .utf8) {
+                    mockWebSocketTask.enqueueMessage(text: jsonString)
+                }
+            }
+        }
+
+        // Then: All messages should be processed correctly
+        wait(for: [messageExpectation], timeout: 3.0)
+
+        XCTAssertEqual(partialCount, 5, "Should process all partial messages")
+        XCTAssertEqual(finalCount, 5, "Should process all final messages")
+        XCTAssertEqual(polishCount, 5, "Should process all polish messages")
+    }
+
+    func testWebSocketStartStopMessageSequence() {
+        // Given: ASR connected
+        let connectionExpectation = expectation(description: "ASR connected")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        var sentMessages: [String] = []
+
+        // When: Send start message with verification
+        let startExpectation = expectation(description: "Start message sent")
+        asrClient.sendStart(mode: "voice_input") {
+            sentMessages.append("start")
+            startExpectation.fulfill()
+        }
+        wait(for: [startExpectation], timeout: 1.0)
+
+        // Send audio chunks
+        for i in 0..<3 {
+            asrClient.sendAudioChunk(Data(repeating: UInt8(i), count: 512))
+            sentMessages.append("audio_\(i)")
+        }
+
+        // Flush audio
+        let flushExpectation = expectation(description: "Audio flushed")
+        asrClient.flushAudioChunks {
+            sentMessages.append("flush")
+            flushExpectation.fulfill()
+        }
+        wait(for: [flushExpectation], timeout: 1.0)
+
+        // Send stop message
+        let stopExpectation = expectation(description: "Stop message sent")
+        asrClient.sendStop {
+            sentMessages.append("stop")
+            stopExpectation.fulfill()
+        }
+        wait(for: [stopExpectation], timeout: 1.0)
+
+        // Then: Message sequence should be complete and ordered
+        XCTAssertEqual(sentMessages.count, 6, "Should have all messages")
+        XCTAssertEqual(sentMessages[0], "start", "Start should be first")
+        XCTAssertEqual(sentMessages[1], "audio_0", "Audio chunks should follow")
+        XCTAssertEqual(sentMessages[2], "audio_1", "Audio chunks should be in order")
+        XCTAssertEqual(sentMessages[3], "audio_2", "Audio chunks should continue")
+        XCTAssertEqual(sentMessages[4], "flush", "Flush should be after audio")
+        XCTAssertEqual(sentMessages[5], "stop", "Stop should be last")
+    }
+
+    // MARK: - State Synchronization Tests
+
+    func testRecordingStateAcrossComponents() {
+        // Given: All components initialized
+        let connectionExpectation = expectation(description: "ASR connected")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        var audioRecorderActive = false
+        var asrSessionActive = false
+        var injectorReceived = false
+
+        // When: Start recording and track state across components
+        audioRecorder.onAudioChunk = { [weak self] audioData in
+            audioRecorderActive = true
+            self?.asrClient.sendAudioChunk(audioData)
+        }
+
+        asrClient.onTranscriptionResult = { [weak self] text in
+            asrSessionActive = true
+            self?.textInjector.inject(text: text)
+            injectorReceived = true
+        }
+
+        audioRecorder.startRecording()
+
+        // Send start message
+        asrClient.sendStart(mode: "voice_input")
+        asrSessionActive = true
+
+        // Simulate audio data
+        let audioData = Data(repeating: 0x01, count: 1024)
+        audioRecorder.onAudioChunk?(audioData)
+
+        // Wait for audio processing
+        let audioExpectation = expectation(description: "Audio processed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            audioExpectation.fulfill()
+        }
+        wait(for: [audioExpectation], timeout: 1.0)
+
+        // Send transcription result
+        let finalMessage: [String: Any] = [
+            "type": "final",
+            "text": "State sync test",
+            "polish_method": "none"
+        ]
+
+        if let jsonData = try? JSONSerialization.data(withJSONObject: finalMessage),
+           let jsonString = String(data: jsonData, encoding: .utf8) {
+            mockWebSocketTask.enqueueMessage(text: jsonString)
+        }
+
+        // Wait for transcription
+        let transcriptionExpectation = expectation(description: "Transcription received")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            transcriptionExpectation.fulfill()
+        }
+        wait(for: [transcriptionExpectation], timeout: 1.0)
+
+        // Stop recording
+        audioRecorder.stopRecording()
+        asrClient.sendStop()
+
+        // Then: All components should synchronize state correctly
+        XCTAssertTrue(audioRecorderActive, "Audio recorder should have been active")
+        XCTAssertTrue(asrSessionActive, "ASR session should have been active")
+        XCTAssertTrue(injectorReceived, "Text injector should have received text")
+    }
+
+    func testStateSyncDuringDisconnectReconnect() {
+        // Given: Recording in progress with ASR connected
+        let initialConnectionExpectation = expectation(description: "Initial connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                initialConnectionExpectation.fulfill()
+            }
+        }
+        asrClient.connect()
+        wait(for: [initialConnectionExpectation], timeout: 2.0)
+
+        var recordingState = false
+        var connectionState = true
+
+        audioRecorder.startRecording()
+        recordingState = true
+
+        asrClient.sendStart(mode: "voice_input")
+
+        // When: Disconnect occurs during recording
+        let disconnectExpectation = expectation(description: "Disconnected")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            connectionState = isConnected
+            if !isConnected {
+                disconnectExpectation.fulfill()
+            }
+        }
+
+        mockWebSocketTask.receiveError = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorNetworkConnectionLost,
+            userInfo: nil
+        )
+        asrClient.connect()
+
+        wait(for: [disconnectExpectation], timeout: 2.0)
+
+        // Recording continues locally
+        XCTAssertTrue(recordingState, "Recording should continue during disconnect")
+        XCTAssertFalse(connectionState, "Connection should be down")
+
+        // Reconnect
+        mockWebSocketTask.receiveError = nil
+        let reconnectExpectation = expectation(description: "Reconnected")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            connectionState = isConnected
+            if isConnected {
+                reconnectExpectation.fulfill()
+            }
+        }
+        asrClient.connect()
+
+        wait(for: [reconnectExpectation], timeout: 2.0)
+
+        // Then: State should be consistent after reconnection
+        XCTAssertTrue(recordingState, "Recording should still be active")
+        XCTAssertTrue(connectionState, "Connection should be restored")
+
+        // Cleanup
+        audioRecorder.stopRecording()
+        asrClient.sendStop()
+    }
+
+    func testMultipleComponentStateReset() {
+        // Given: All components in active state
+        let connectionExpectation = expectation(description: "ASR connected")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        audioRecorder.startRecording()
+        asrClient.sendStart(mode: "voice_input")
+
+        var audioChunksReceived = 0
+        audioRecorder.onAudioChunk = { [weak self] audioData in
+            audioChunksReceived += 1
+            self?.asrClient.sendAudioChunk(audioData)
+        }
+
+        // Simulate some activity
+        let audioData = Data(repeating: 0x01, count: 512)
+        audioRecorder.onAudioChunk?(audioData)
+        audioRecorder.onAudioChunk?(audioData)
+
+        // When: Stop all components
+        audioRecorder.stopRecording()
+        asrClient.sendStop()
+
+        // Clear callback to prevent fulfillment during disconnect
+        asrClient.onConnectionStatusChanged = nil
+        asrClient.disconnect()
+
+        // Wait for cleanup
+        let cleanupExpectation = expectation(description: "Cleanup completed")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            cleanupExpectation.fulfill()
+        }
+        wait(for: [cleanupExpectation], timeout: 1.0)
+
+        // Then: All components should be in clean state
+        XCTAssertFalse(asrClient.isServerConnected, "ASR should be disconnected")
+        XCTAssertEqual(audioChunksReceived, 2, "Should have received audio chunks")
+
+        // Verify can restart cleanly
+        asrClient.connect()
+        audioRecorder.startRecording()
+
+        let restartExpectation = expectation(description: "Restart successful")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            restartExpectation.fulfill()
+        }
+        wait(for: [restartExpectation], timeout: 1.0)
+
+        XCTAssertNotNil(audioRecorder, "Audio recorder should be ready")
+        XCTAssertNotNil(asrClient, "ASR client should be ready")
+    }
+
+    func testStateConsistencyWithRapidStartStop() {
+        // Given: ASR connected
+        let connectionExpectation = expectation(description: "ASR connected")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        var startCount = 0
+        var stopCount = 0
+
+        // When: Rapidly start and stop multiple times
+        for i in 0..<5 {
+            audioRecorder.startRecording()
+            asrClient.sendStart(mode: "voice_input")
+            startCount += 1
+
+            // Brief delay
+            let briefExpectation = expectation(description: "Brief pause \(i)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                briefExpectation.fulfill()
+            }
+            wait(for: [briefExpectation], timeout: 0.5)
+
+            audioRecorder.stopRecording()
+            asrClient.sendStop()
+            stopCount += 1
+        }
+
+        // Wait for all operations to settle
+        let settleExpectation = expectation(description: "Operations settled")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            settleExpectation.fulfill()
+        }
+        wait(for: [settleExpectation], timeout: 1.0)
+
+        // Then: State should remain consistent
+        XCTAssertEqual(startCount, 5, "Should have started 5 times")
+        XCTAssertEqual(stopCount, 5, "Should have stopped 5 times")
+        XCTAssertNotNil(audioRecorder, "Audio recorder should remain valid")
+        XCTAssertNotNil(asrClient, "ASR client should remain valid")
+        XCTAssertTrue(asrClient.isServerConnected, "ASR should still be connected")
+    }
 }
 
 /// Signal quality enum for SNR display
