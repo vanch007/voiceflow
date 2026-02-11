@@ -136,6 +136,204 @@ final class HotkeyManagerTests: XCTestCase {
         XCTAssertNotNil(hotkeyManager, "Manager should exist when enabled")
     }
 
+    // MARK: - Callback Registration Tests
+
+    func testLongPressCallbackRegistration() {
+        // Given: A callback expectation
+        let expectation = XCTestExpectation(description: "Long press callback should be called")
+
+        // When: Register callback
+        hotkeyManager.onLongPress = {
+            expectation.fulfill()
+        }
+
+        // Then: Callback should be registered
+        XCTAssertNotNil(hotkeyManager.onLongPress, "Long press callback should be registered")
+
+        // Trigger callback manually to verify it works
+        hotkeyManager.onLongPress?()
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testLongPressEndCallbackRegistration() {
+        // Given: A callback expectation
+        let expectation = XCTestExpectation(description: "Long press end callback should be called")
+
+        // When: Register callback
+        hotkeyManager.onLongPressEnd = {
+            expectation.fulfill()
+        }
+
+        // Then: Callback should be registered
+        XCTAssertNotNil(hotkeyManager.onLongPressEnd, "Long press end callback should be registered")
+
+        // Trigger callback manually to verify it works
+        hotkeyManager.onLongPressEnd?()
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testToggleRecordingCallbackRegistration() {
+        // Given: A callback expectation
+        let expectation = XCTestExpectation(description: "Toggle recording callback should be called")
+
+        // When: Register callback
+        hotkeyManager.onToggleRecording = {
+            expectation.fulfill()
+        }
+
+        // Then: Callback should be registered
+        XCTAssertNotNil(hotkeyManager.onToggleRecording, "Toggle recording callback should be registered")
+
+        // Trigger callback manually to verify it works
+        hotkeyManager.onToggleRecording?()
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testSystemAudioDoubleTapCallbackRegistration() {
+        // Given: A callback expectation
+        let expectation = XCTestExpectation(description: "System audio double-tap callback should be called")
+
+        // When: Register callback
+        hotkeyManager.onSystemAudioDoubleTap = {
+            expectation.fulfill()
+        }
+
+        // Then: Callback should be registered
+        XCTAssertNotNil(hotkeyManager.onSystemAudioDoubleTap, "System audio double-tap callback should be registered")
+
+        // Trigger callback manually to verify it works
+        hotkeyManager.onSystemAudioDoubleTap?()
+
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testMultipleCallbackRegistration() {
+        // Given: Multiple callback expectations
+        let longPressExpectation = XCTestExpectation(description: "Long press callback")
+        let longPressEndExpectation = XCTestExpectation(description: "Long press end callback")
+        let toggleExpectation = XCTestExpectation(description: "Toggle recording callback")
+        let systemAudioExpectation = XCTestExpectation(description: "System audio callback")
+
+        // When: Register all callbacks
+        hotkeyManager.onLongPress = { longPressExpectation.fulfill() }
+        hotkeyManager.onLongPressEnd = { longPressEndExpectation.fulfill() }
+        hotkeyManager.onToggleRecording = { toggleExpectation.fulfill() }
+        hotkeyManager.onSystemAudioDoubleTap = { systemAudioExpectation.fulfill() }
+
+        // Then: All callbacks should be registered
+        XCTAssertNotNil(hotkeyManager.onLongPress, "Long press callback should be registered")
+        XCTAssertNotNil(hotkeyManager.onLongPressEnd, "Long press end callback should be registered")
+        XCTAssertNotNil(hotkeyManager.onToggleRecording, "Toggle recording callback should be registered")
+        XCTAssertNotNil(hotkeyManager.onSystemAudioDoubleTap, "System audio callback should be registered")
+
+        // Trigger all callbacks
+        hotkeyManager.onLongPress?()
+        hotkeyManager.onLongPressEnd?()
+        hotkeyManager.onToggleRecording?()
+        hotkeyManager.onSystemAudioDoubleTap?()
+
+        wait(for: [longPressExpectation, longPressEndExpectation, toggleExpectation, systemAudioExpectation], timeout: 1.0)
+    }
+
+    func testCallbackExecutionWithState() {
+        // Given: Callback with state tracking
+        var callbackExecuted = false
+
+        // When: Register callback that modifies state
+        hotkeyManager.onLongPress = {
+            callbackExecuted = true
+        }
+
+        // Then: State should not be modified until callback is executed
+        XCTAssertFalse(callbackExecuted, "Callback should not execute on registration")
+
+        // When: Execute callback
+        hotkeyManager.onLongPress?()
+
+        // Then: State should be modified
+        XCTAssertTrue(callbackExecuted, "Callback should execute when triggered")
+    }
+
+    func testCallbackReplacement() {
+        // Given: Initial callback
+        var firstCallbackExecuted = false
+        var secondCallbackExecuted = false
+
+        hotkeyManager.onLongPress = {
+            firstCallbackExecuted = true
+        }
+
+        // When: Replace with new callback
+        hotkeyManager.onLongPress = {
+            secondCallbackExecuted = true
+        }
+
+        // Then: Only new callback should execute
+        hotkeyManager.onLongPress?()
+
+        XCTAssertFalse(firstCallbackExecuted, "First callback should not execute after replacement")
+        XCTAssertTrue(secondCallbackExecuted, "Second callback should execute")
+    }
+
+    func testCallbackUnregistration() {
+        // Given: Registered callback
+        var callbackExecuted = false
+
+        hotkeyManager.onLongPress = {
+            callbackExecuted = true
+        }
+
+        // When: Unregister callback
+        hotkeyManager.onLongPress = nil
+
+        // Then: Callback should be nil
+        XCTAssertNil(hotkeyManager.onLongPress, "Callback should be unregistered")
+
+        // When: Try to execute nil callback
+        hotkeyManager.onLongPress?()
+
+        // Then: No crash and state should not change
+        XCTAssertFalse(callbackExecuted, "Nil callback should not execute")
+    }
+
+    func testCallbackExecutionCount() {
+        // Given: Counter for callback executions
+        var executionCount = 0
+
+        hotkeyManager.onToggleRecording = {
+            executionCount += 1
+        }
+
+        // When: Execute callback multiple times
+        hotkeyManager.onToggleRecording?()
+        hotkeyManager.onToggleRecording?()
+        hotkeyManager.onToggleRecording?()
+
+        // Then: Counter should reflect all executions
+        XCTAssertEqual(executionCount, 3, "Callback should execute exactly 3 times")
+    }
+
+    func testCallbacksIndependence() {
+        // Given: Independent callback states
+        var longPressCount = 0
+        var toggleCount = 0
+
+        hotkeyManager.onLongPress = { longPressCount += 1 }
+        hotkeyManager.onToggleRecording = { toggleCount += 1 }
+
+        // When: Execute callbacks independently
+        hotkeyManager.onLongPress?()
+        hotkeyManager.onToggleRecording?()
+        hotkeyManager.onToggleRecording?()
+
+        // Then: Each should maintain independent state
+        XCTAssertEqual(longPressCount, 1, "Long press should execute once")
+        XCTAssertEqual(toggleCount, 2, "Toggle should execute twice")
+    }
+
     // MARK: - Conflict Detection Tests
 
     func testSpotlightConflictDetection() {
