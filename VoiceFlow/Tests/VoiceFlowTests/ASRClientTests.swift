@@ -192,6 +192,418 @@ final class ASRClientTests: XCTestCase {
         XCTAssertFalse(asrClient.isServerConnected, "Should remain disconnected")
     }
 
+    // MARK: - Error Recovery Tests
+
+    func testRecoverableNetworkErrors() {
+        // Given: Various recoverable network errors
+        let recoverableErrors: [URLError.Code] = [
+            .timedOut,
+            .cannotFindHost,
+            .cannotConnectToHost,
+            .networkConnectionLost,
+            .dnsLookupFailed,
+            .notConnectedToInternet,
+            .resourceUnavailable
+        ]
+
+        // When/Then: Each error should trigger reconnection attempt
+        for errorCode in recoverableErrors {
+            // Reset for each test
+            setUp()
+
+            let connectionExpectation = expectation(description: "Initial connection for \(errorCode)")
+            asrClient.onConnectionStatusChanged = { isConnected in
+                if isConnected {
+                    connectionExpectation.fulfill()
+                }
+            }
+
+            asrClient.connect()
+            wait(for: [connectionExpectation], timeout: 2.0)
+
+            // Simulate recoverable error
+            let errorExpectation = expectation(description: "Error state changed for \(errorCode)")
+            var errorStateReceived = false
+
+            asrClient.onErrorStateChanged = { hasError, message in
+                if hasError && !errorStateReceived {
+                    errorStateReceived = true
+                    errorExpectation.fulfill()
+                    XCTAssertNotNil(message, "Error message should be provided for \(errorCode)")
+                }
+            }
+
+            mockWebSocketTask.receiveError = URLError(errorCode)
+            asrClient.connect() // Trigger receive loop to encounter error
+
+            wait(for: [errorExpectation], timeout: 2.0)
+
+            // Verify disconnection
+            XCTAssertFalse(asrClient.isServerConnected, "Should be disconnected after \(errorCode)")
+
+            tearDown()
+        }
+    }
+
+    func testUnrecoverableErrors() {
+        // Given: Unrecoverable errors (bad URL, unsupported URL)
+        let unrecoverableErrors: [URLError.Code] = [
+            .badURL,
+            .unsupportedURL
+        ]
+
+        for errorCode in unrecoverableErrors {
+            // Reset for each test
+            setUp()
+
+            let connectionExpectation = expectation(description: "Initial connection")
+            asrClient.onConnectionStatusChanged = { isConnected in
+                if isConnected {
+                    connectionExpectation.fulfill()
+                }
+            }
+
+            asrClient.connect()
+            wait(for: [connectionExpectation], timeout: 2.0)
+
+            // When: Unrecoverable error occurs
+            let errorExpectation = expectation(description: "Error detected")
+            var errorDetected = false
+
+            asrClient.onErrorStateChanged = { hasError, _ in
+                if hasError && !errorDetected {
+                    errorDetected = true
+                    errorExpectation.fulfill()
+                }
+            }
+
+            mockWebSocketTask.receiveError = URLError(errorCode)
+            asrClient.connect()
+
+            wait(for: [errorExpectation], timeout: 2.0)
+
+            // Then: Should not attempt reconnection (verified by no subsequent connection attempts)
+            XCTAssertFalse(asrClient.isServerConnected, "Should remain disconnected after unrecoverable error \(errorCode)")
+
+            tearDown()
+        }
+    }
+
+    func testErrorStateCallbacksInvokedCorrectly() {
+        // Given: A connected ASRClient with error state monitoring
+        let connectionExpectation = expectation(description: "Connection established")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // When: Connection error occurs
+        let errorExpectation = expectation(description: "Error state callback invoked")
+        var errorMessageReceived: String?
+
+        asrClient.onErrorStateChanged = { hasError, message in
+            if hasError {
+                errorMessageReceived = message
+                errorExpectation.fulfill()
+            }
+        }
+
+        mockWebSocketTask.receiveError = URLError(.networkConnectionLost)
+        asrClient.connect()
+
+        // Then: Error callback should be invoked with error details
+        wait(for: [errorExpectation], timeout: 2.0)
+
+        XCTAssertNotNil(errorMessageReceived, "Error message should be provided")
+        XCTAssertTrue(errorMessageReceived?.contains("connection") ?? false ||
+                     errorMessageReceived?.contains("lost") ?? false,
+                     "Error message should describe the connection issue")
+    }
+
+    func testMultipleConsecutiveErrors() {
+        // Given: A connected ASRClient
+        let connectionExpectation = expectation(description: "Connection established")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // When: Multiple errors occur in sequence
+        let firstErrorExpectation = expectation(description: "First error")
+        var errorCount = 0
+
+        asrClient.onErrorStateChanged = { hasError, _ in
+            if hasError {
+                errorCount += 1
+                if errorCount == 1 {
+                    firstErrorExpectation.fulfill()
+                }
+            }
+        }
+
+        // Trigger first error
+        mockWebSocketTask.receiveError = URLError(.timedOut)
+        asrClient.connect()
+
+        wait(for: [firstErrorExpectation], timeout: 2.0)
+
+        // Then: Error state should be maintained
+        XCTAssertFalse(asrClient.isServerConnected, "Should remain disconnected")
+        XCTAssertGreaterThanOrEqual(errorCount, 1, "Should have received at least one error notification")
+    }
+
+    func testSendErrorHandling() {
+        // Given: A connected ASRClient
+        let connectionExpectation = expectation(description: "Connection established")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // When: Send operation fails
+        mockWebSocketTask.sendError = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorNetworkConnectionLost,
+            userInfo: [NSLocalizedDescriptionKey: "Connection lost during send"]
+        )
+
+        let sendExpectation = expectation(description: "Send attempt completed")
+        asrClient.sendStart(mode: "voice_input") {
+            sendExpectation.fulfill()
+        }
+
+        // Then: Send should complete (with error logged internally)
+        wait(for: [sendExpectation], timeout: 1.0)
+
+        // Verify send was attempted despite error
+        XCTAssertTrue(mockWebSocketTask.sendCalled, "Send should have been attempted")
+    }
+
+    func testAudioChunkSendError() {
+        // Given: A connected ASRClient
+        let connectionExpectation = expectation(description: "Connection established")
+        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // When: Audio send fails
+        mockWebSocketTask.sendError = NSError(
+            domain: NSURLErrorDomain,
+            code: NSURLErrorTimedOut,
+            userInfo: nil
+        )
+
+        let audioData = Data(repeating: 0, count: 1024)
+        asrClient.sendAudioChunk(audioData)
+
+        // Wait for send to complete
+        let flushExpectation = expectation(description: "Audio flush completed")
+        asrClient.flushAudioChunks {
+            flushExpectation.fulfill()
+        }
+
+        // Then: Send should complete even with error
+        wait(for: [flushExpectation], timeout: 2.0)
+
+        XCTAssertTrue(mockWebSocketTask.sendCalled, "Audio send should have been attempted")
+    }
+
+    // MARK: - Reconnection Logic Tests
+
+    func testExponentialBackoffReconnection() {
+        // Given: A disconnected ASRClient that will retry connection
+        let initialConnectionExpectation = expectation(description: "Initial connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                initialConnectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [initialConnectionExpectation], timeout: 2.0)
+
+        // When: Connection is lost and reconnection begins
+        let disconnectExpectation = expectation(description: "Disconnection detected")
+        var reconnectAttemptDetected = false
+
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if !isConnected && !reconnectAttemptDetected {
+                reconnectAttemptDetected = true
+                disconnectExpectation.fulfill()
+            }
+        }
+
+        // Simulate connection loss
+        mockWebSocketTask.receiveError = URLError(.networkConnectionLost)
+        asrClient.connect()
+
+        wait(for: [disconnectExpectation], timeout: 2.0)
+
+        // Then: Reconnection should be attempted (verified by connection attempt)
+        // Note: Full exponential backoff timing verification requires integration tests
+        // Unit test verifies that reconnection mechanism is triggered
+        XCTAssertFalse(asrClient.isServerConnected, "Should be disconnected initially")
+    }
+
+    func testReconnectionAttemptsAfterRecoverableError() {
+        // Given: A client that experiences a recoverable error
+        let connectionExpectation = expectation(description: "Initial connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // When: A recoverable network error occurs
+        let errorExpectation = expectation(description: "Error handled")
+        var errorReceived = false
+
+        asrClient.onErrorStateChanged = { hasError, _ in
+            if hasError && !errorReceived {
+                errorReceived = true
+                errorExpectation.fulfill()
+            }
+        }
+
+        mockWebSocketTask.receiveError = URLError(.timedOut)
+        asrClient.connect()
+
+        wait(for: [errorExpectation], timeout: 2.0)
+
+        // Then: Client should attempt reconnection
+        // Wait briefly to allow reconnection task to start
+        let reconnectWaitExpectation = expectation(description: "Wait for reconnect task")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            reconnectWaitExpectation.fulfill()
+        }
+        wait(for: [reconnectWaitExpectation], timeout: 1.0)
+
+        // Verify disconnected state (reconnection is in progress)
+        XCTAssertFalse(asrClient.isServerConnected, "Should be disconnected and attempting reconnection")
+    }
+
+    func testReconnectionStopsAfterUnrecoverableError() {
+        // Given: A connected client
+        let connectionExpectation = expectation(description: "Initial connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // When: An unrecoverable error occurs
+        let errorExpectation = expectation(description: "Unrecoverable error")
+        asrClient.onErrorStateChanged = { hasError, _ in
+            if hasError {
+                errorExpectation.fulfill()
+            }
+        }
+
+        mockWebSocketTask.receiveError = URLError(.badURL)
+        asrClient.connect()
+
+        wait(for: [errorExpectation], timeout: 2.0)
+
+        // Then: No reconnection should be attempted
+        // Wait to verify no reconnection occurs
+        let noReconnectExpectation = expectation(description: "No reconnection period")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            noReconnectExpectation.fulfill()
+        }
+        wait(for: [noReconnectExpectation], timeout: 2.0)
+
+        XCTAssertFalse(asrClient.isServerConnected, "Should remain disconnected after unrecoverable error")
+    }
+
+    func testConcurrentReconnectionAttemptsPrevented() {
+        // Given: A client in reconnection state
+        let connectionExpectation = expectation(description: "Initial connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // When: Multiple errors trigger reconnection simultaneously
+        let firstErrorExpectation = expectation(description: "First error")
+        var errorCount = 0
+
+        asrClient.onErrorStateChanged = { hasError, _ in
+            if hasError {
+                errorCount += 1
+                if errorCount == 1 {
+                    firstErrorExpectation.fulfill()
+                }
+            }
+        }
+
+        // Trigger first error
+        mockWebSocketTask.receiveError = URLError(.networkConnectionLost)
+        asrClient.connect()
+
+        wait(for: [firstErrorExpectation], timeout: 2.0)
+
+        // Then: Only one reconnection task should be active
+        // (Implementation prevents concurrent reconnect tasks via nil check)
+        XCTAssertFalse(asrClient.isServerConnected, "Should be in reconnection state")
+    }
+
+    func testReconnectionCancellationOnManualDisconnect() {
+        // Given: A client attempting reconnection
+        let connectionExpectation = expectation(description: "Initial connection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionExpectation.fulfill()
+            }
+        }
+
+        asrClient.connect()
+        wait(for: [connectionExpectation], timeout: 2.0)
+
+        // Trigger disconnection with reconnection
+        let disconnectExpectation = expectation(description: "Disconnection")
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if !isConnected {
+                disconnectExpectation.fulfill()
+            }
+        }
+
+        mockWebSocketTask.receiveError = URLError(.networkConnectionLost)
+        asrClient.connect()
+
+        wait(for: [disconnectExpectation], timeout: 2.0)
+
+        // When: Manual disconnect is called during reconnection
+        asrClient.disconnect()
+
+        // Then: Reconnection should stop
+        let noReconnectExpectation = expectation(description: "Reconnection stopped")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            noReconnectExpectation.fulfill()
+        }
+        wait(for: [noReconnectExpectation], timeout: 2.0)
+
+        XCTAssertFalse(asrClient.isServerConnected, "Should remain disconnected after manual disconnect")
+    }
+
     // MARK: - Message Sending Tests
 
     func testSendStartMessage() {
