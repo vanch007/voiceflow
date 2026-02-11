@@ -83,7 +83,7 @@ final class ASRClient {
         reconnectTask = nil
 
         // 清理旧连接
-        webSocketTask?.cancel(with: .goingAway, reason: nil as Data?)
+        webSocketTask?.cancel(with: URLSessionWebSocketTask.CloseCode.goingAway, reason: nil as Data?)
         webSocketTask = nil
 
         shouldReconnect = true
@@ -121,7 +121,7 @@ final class ASRClient {
 
     func disconnect() {
         shouldReconnect = false
-        webSocketTask?.cancel(with: .goingAway, reason: nil as Data?)
+        webSocketTask?.cancel(with: URLSessionWebSocketTask.CloseCode.goingAway, reason: nil)
         webSocketTask = nil
         if isConnected {
             isConnected = false

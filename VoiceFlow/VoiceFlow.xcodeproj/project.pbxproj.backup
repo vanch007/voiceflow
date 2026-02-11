@@ -36,7 +36,6 @@
 		'A1000015' = {isa = PBXBuildFile; fileRef = B1000015; };
 		'A1000016' = {isa = PBXBuildFile; fileRef = B1000016; };
 		'A1000018' = {isa = PBXBuildFile; fileRef = B1000018; };
-		'A1000019' = {isa = PBXBuildFile; fileRef = B1000019; };
 		AFE940EEA3F48EF7D1586D99 /* SubtitlePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CDA4898A46F447760FD3694 /* SubtitlePanel.swift */; };
 		B21F432C854255547898F29A /* TranscriptStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35064EE9899C18DF9AB66E54 /* TranscriptStorage.swift */; };
 		'C2000001' = {isa = PBXBuildFile; fileRef = D2000001; };
@@ -96,7 +95,6 @@
 		'B1000015' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginManager.swift; sourceTree = "<group>"; };
 		'B1000016' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeyConfig.swift; sourceTree = "<group>"; };
 		'B1000018' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HotkeySettingsWindow.swift; sourceTree = "<group>"; };
-		'B1000019' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVCaptureSessionProtocol.swift; sourceTree = "<group>"; };
 		'C1000001' = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VoiceFlow.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		'CT000002' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CursorTracker.swift; sourceTree = "<group>"; };
 		'D2000001' = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneType.swift; sourceTree = "<group>"; };
@@ -193,7 +191,6 @@
 			isa = PBXGroup;
 			children = (
 				E2000001,
-				E1000008,
 				B1000016,
 				508E63952F3075870016E8CD /* UserDefaults+VoiceFlow.swift */,
 				508E63932F3075780016E8CD /* TextReplacementEngine.swift */,
@@ -273,14 +270,6 @@
 			path = Scene;
 			sourceTree = "<group>";
 		};
-		'E1000008' = {
-			isa = PBXGroup;
-			children = (
-				B1000019,
-			);
-			path = Protocols;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -341,8 +330,6 @@
 			files = (
 				A1000016,
 				A1000018,
-			A1000018,
-			A1000019,
 				A1000001,
 				A1000002,
 				A1000003,

@@ -9,7 +9,7 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
     var onDeviceChanged: ((String) -> Void)?
     var onSilenceDetected: (() -> Void)?  // 静音检测回调（自由说话模式）
 
-    private var captureSession: AVCaptureSession?
+    private var captureSession: AVCaptureSessionProtocol?
     private var audioOutput: AVCaptureAudioDataOutput?
     private let sessionQueue = DispatchQueue(label: "com.voiceflow.capture")
     private let targetSampleRate: Double = 16000
@@ -17,6 +17,20 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
     private var currentDeviceID: String?
     private var selectedDeviceID: String?  // User-selected device (nil = system default)
     private var savedOutputVolume: Float32?
+
+    // Session factory for dependency injection (enables testing)
+    private let sessionFactory: () -> AVCaptureSessionProtocol
+
+    /// Initialize with custom session factory (for testing)
+    init(sessionFactory: @escaping () -> AVCaptureSessionProtocol) {
+        self.sessionFactory = sessionFactory
+        super.init()
+    }
+
+    /// Initialize with default AVCaptureSession (for production)
+    override convenience init() {
+        self.init(sessionFactory: { AVCaptureSession() })
+    }
 
     // 静音检测相关
     private var silenceThreshold: Float = 0.005  // RMS 阈值
@@ -233,7 +247,7 @@ final class AudioRecorder: NSObject, AVCaptureAudioDataOutputSampleBufferDelegat
                 self.audioOutput = nil
             }
 
-            let session = AVCaptureSession()
+            let session = self.sessionFactory()
 
             // Use selected device, or fall back to system default
             let device: AVCaptureDevice?
