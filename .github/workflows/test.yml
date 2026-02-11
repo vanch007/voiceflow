@@ -1,0 +1,87 @@
+name: Swift Tests
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Run Swift Tests
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Build VoiceFlow
+        run: |
+          cd VoiceFlow
+          xcodebuild -scheme VoiceFlow -configuration Debug build
+
+      - name: Run unit tests
+        run: |
+          cd VoiceFlow
+          swift test
+
+      - name: Run integration tests with coverage
+        run: |
+          xcodebuild -enableCodeCoverage YES test \
+            -scheme VoiceFlow \
+            -destination 'platform=macOS' \
+            -resultBundlePath TestResults.xcresult
+
+      - name: Generate coverage report
+        run: |
+          xcrun xccov view --report --json TestResults.xcresult > coverage.json
+          echo "Coverage report generated"
+
+      - name: Parse and display coverage summary
+        run: |
+          if [ -f coverage.json ]; then
+            echo "=== Coverage Summary ==="
+            cat coverage.json | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          if 'targets' in data:
+              for target in data['targets']:
+                  print(f\"Target: {target['name']}\")
+                  print(f\"  Line Coverage: {target['lineCoverage']:.2%}\")
+                  if 'files' in target:
+                      for file in target['files']:
+                          if 'ASRClient' in file['name']:
+                              print(f\"  ASRClient Coverage: {file['lineCoverage']:.2%}\")
+          " || echo "Coverage data format may have changed"
+          else
+            echo "Coverage file not found"
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults.xcresult
+          retention-days: 30
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.json
+          retention-days: 30
+
+      - name: Check test status
+        run: |
+          echo "✅ All tests completed successfully"
