@@ -59,6 +59,10 @@ final class MockWebSocketTask: WebSocketTaskProtocol {
     /// Delay in seconds before calling ping completion handler
     var pingDelay: TimeInterval = 0.0
 
+    /// Queue of pending receive completion handlers (for async message delivery)
+    private var pendingReceiveHandlers: [(Result<URLSessionWebSocketTask.Message, Error>) -> Void] = []
+    private let handlerLock = NSLock()
+
     // MARK: - WebSocketTaskProtocol Implementation
 
     func resume() {
@@ -100,7 +104,10 @@ final class MockWebSocketTask: WebSocketTaskProtocol {
         receiveCallCount += 1
 
         let executeCompletion = {
-            // If receiveError is set, return error
+            self.handlerLock.lock()
+            defer { self.handlerLock.unlock() }
+
+            // If receiveError is set, return error immediately
             if let error = self.receiveError {
                 completionHandler(.failure(error))
                 return
@@ -113,13 +120,8 @@ final class MockWebSocketTask: WebSocketTaskProtocol {
                 return
             }
 
-            // Otherwise, return a generic error (no message available)
-            let error = NSError(
-                domain: "MockWebSocketTask",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "No messages available in mock queue"]
-            )
-            completionHandler(.failure(error))
+            // Otherwise, hold the handler for later delivery (like real WebSocket)
+            self.pendingReceiveHandlers.append(completionHandler)
         }
 
         if receiveDelay > 0 {
@@ -127,7 +129,10 @@ final class MockWebSocketTask: WebSocketTaskProtocol {
                 executeCompletion()
             }
         } else {
-            executeCompletion()
+            // Execute on a background queue to simulate async behavior
+            DispatchQueue.global().async {
+                executeCompletion()
+            }
         }
     }
 
@@ -151,18 +156,50 @@ final class MockWebSocketTask: WebSocketTaskProtocol {
         receiveDelay = 0.0
         sendDelay = 0.0
         pingDelay = 0.0
+
+        handlerLock.lock()
+        pendingReceiveHandlers.removeAll()
+        handlerLock.unlock()
     }
 
     /// Enqueue a text message to be returned by the next receive() call
     /// - Parameter text: The text content of the message
     func enqueueMessage(text: String) {
-        messagesToReceive.append(.string(text))
+        handlerLock.lock()
+        defer { handlerLock.unlock() }
+
+        let message = URLSessionWebSocketTask.Message.string(text)
+
+        // If there's a pending receive handler, deliver immediately
+        if !pendingReceiveHandlers.isEmpty {
+            let handler = pendingReceiveHandlers.removeFirst()
+            DispatchQueue.global().async {
+                handler(.success(message))
+            }
+        } else {
+            // Otherwise queue for later
+            messagesToReceive.append(message)
+        }
     }
 
     /// Enqueue a data message to be returned by the next receive() call
     /// - Parameter data: The binary data content of the message
     func enqueueMessage(data: Data) {
-        messagesToReceive.append(.data(data))
+        handlerLock.lock()
+        defer { handlerLock.unlock() }
+
+        let message = URLSessionWebSocketTask.Message.data(data)
+
+        // If there's a pending receive handler, deliver immediately
+        if !pendingReceiveHandlers.isEmpty {
+            let handler = pendingReceiveHandlers.removeFirst()
+            DispatchQueue.global().async {
+                handler(.success(message))
+            }
+        } else {
+            // Otherwise queue for later
+            messagesToReceive.append(message)
+        }
     }
 
     /// Get all sent text messages (filters out data messages)
