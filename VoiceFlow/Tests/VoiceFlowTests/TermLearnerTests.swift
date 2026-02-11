@@ -41,7 +41,7 @@ final class TermLearnerTests: XCTestCase {
         // Add entries to history
         let addExpectation = expectation(description: "Add entries")
         for text in sampleTexts {
-            recordingHistory.addEntry(text: text)
+            recordingHistory.addEntry(text: text, duration: 1.0)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -88,7 +88,7 @@ final class TermLearnerTests: XCTestCase {
         // Add entries to history
         let addExpectation = expectation(description: "Add entries")
         for text in sampleTexts {
-            recordingHistory.addEntry(text: text)
+            recordingHistory.addEntry(text: text, duration: 1.0)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -133,7 +133,7 @@ final class TermLearnerTests: XCTestCase {
         // Add entries to history
         let addExpectation = expectation(description: "Add entries")
         for text in sampleTexts {
-            recordingHistory.addEntry(text: text)
+            recordingHistory.addEntry(text: text, duration: 1.0)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -176,7 +176,7 @@ final class TermLearnerTests: XCTestCase {
         // Add entries and generate suggestions
         let addExpectation = expectation(description: "Add entries")
         for text in sampleTexts {
-            recordingHistory.addEntry(text: text)
+            recordingHistory.addEntry(text: text, duration: 1.0)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -284,7 +284,7 @@ final class TermLearnerTests: XCTestCase {
 
         let addExpectation = expectation(description: "Add entries")
         for text in sampleTexts {
-            recordingHistory.addEntry(text: text)
+            recordingHistory.addEntry(text: text, duration: 1.0)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -363,7 +363,7 @@ final class TermLearnerTests: XCTestCase {
 
         let addExpectation = expectation(description: "Add entries")
         for text in sampleTexts {
-            recordingHistory.addEntry(text: text)
+            recordingHistory.addEntry(text: text, duration: 1.0)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -404,7 +404,7 @@ final class TermLearnerTests: XCTestCase {
 
         let addExpectation = expectation(description: "Add entries")
         for text in sampleTexts {
-            recordingHistory.addEntry(text: text)
+            recordingHistory.addEntry(text: text, duration: 1.0)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -460,7 +460,7 @@ final class TermLearnerTests: XCTestCase {
 
         let addExpectation = expectation(description: "Add entries")
         for text in sampleTexts {
-            recordingHistory.addEntry(text: text)
+            recordingHistory.addEntry(text: text, duration: 1.0)
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
