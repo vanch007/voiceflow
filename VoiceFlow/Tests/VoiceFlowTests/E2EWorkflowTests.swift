@@ -517,9 +517,16 @@ final class E2EWorkflowTests: XCTestCase {
     func testWorkflowCleanupOnComponentFailure() {
         // Given: Recording in progress
         let connectionExpectation = expectation(description: "ASR connected")
-        asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
+        asrClient.onConnectionStatusChanged = { isConnected in
+            if isConnected {
+                connectionExpectation.fulfill()
+            }
+        }
         asrClient.connect()
         wait(for: [connectionExpectation], timeout: 2.0)
+
+        // Clear callback to prevent double-fulfillment on disconnect
+        asrClient.onConnectionStatusChanged = nil
 
         audioRecorder.startRecording()
         asrClient.sendStart(mode: "voice_input")
