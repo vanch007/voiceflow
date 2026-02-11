@@ -384,7 +384,7 @@ final class ASRClientTests: XCTestCase {
         wait(for: [sendExpectation], timeout: 1.0)
 
         // Verify send was attempted despite error
-        XCTAssertTrue(mockWebSocketTask.sendCalled, "Send should have been attempted")
+        XCTAssertGreaterThan(mockWebSocketTask.sendCallCount, 0, "Send should have been attempted")
     }
 
     func testAudioChunkSendError() {
@@ -414,7 +414,7 @@ final class ASRClientTests: XCTestCase {
         // Then: Send should complete even with error
         wait(for: [flushExpectation], timeout: 2.0)
 
-        XCTAssertTrue(mockWebSocketTask.sendCalled, "Audio send should have been attempted")
+        XCTAssertGreaterThan(mockWebSocketTask.sendCallCount, 0, "Audio send should have been attempted")
     }
 
     // MARK: - Reconnection Logic Tests
@@ -967,7 +967,7 @@ final class ASRClientTests: XCTestCase {
 
     // MARK: - Error Handling Tests
 
-    func testSendErrorHandling() {
+    func testSendErrorHandlingWithStop() {
         // Given: A connected ASRClient with mock configured to fail sends
         let connectionExpectation = expectation(description: "Connection established")
         asrClient.onConnectionStatusChanged = { _ in connectionExpectation.fulfill() }
