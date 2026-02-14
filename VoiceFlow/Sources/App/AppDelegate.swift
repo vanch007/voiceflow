@@ -26,9 +26,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return envPath
         }
 
-        // Priority 2: Search upwards from bundle path for .venv directory
+        // Priority 2: Check common locations relative to home directory
+        let homeDir = NSHomeDirectory()
+        let commonPythonPaths = [
+            "\(homeDir)/voiceflow/.venv/bin/python3",
+            "\(homeDir)/VoiceFlow/.venv/bin/python3",
+            "\(homeDir)/Projects/voiceflow/.venv/bin/python3"
+        ]
+        for path in commonPythonPaths {
+            if FileManager.default.fileExists(atPath: path) {
+                _cachedPythonPath = path
+                return path
+            }
+        }
+
+        // Priority 3: Search upwards from bundle path for .venv directory
         var searchPath = projectRoot
-        for _ in 0..<6 {  // Search up to 6 levels (increased from 3)
+        for _ in 0..<6 {
             let venvPath = (searchPath as NSString).appendingPathComponent(".venv/bin/python3")
             if FileManager.default.fileExists(atPath: venvPath) {
                 _cachedPythonPath = venvPath
@@ -37,7 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             searchPath = (searchPath as NSString).deletingLastPathComponent
         }
 
-        // Priority 3: Fallback to projectRoot calculation
+        // Priority 4: Fallback to projectRoot calculation
         let fallbackPath = (projectRoot as NSString).appendingPathComponent(".venv/bin/python3")
         _cachedPythonPath = fallbackPath
         return fallbackPath
