@@ -220,7 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         PromptManager.shared.configure(with: asrClient)
         termLearner = TermLearner()
         // Connect RecordingHistory changes to TermLearner auto-refresh
-        recordingHistory.onEntriesChanged = { [weak self] in
+        NotificationCenter.default.addObserver(forName: RecordingHistory.entriesDidChangeNotification, object: recordingHistory, queue: .main) { [weak self] _ in
             guard let self = self else { return }
             self.termLearner.analyzeAndRefresh(from: self.recordingHistory)
         }
@@ -409,11 +409,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Initialize hotkey settings window
         hotkeySettingsWindow = HotkeySettingsWindow()
-        hotkeySettingsWindow.onSave = { [weak self] config in
-            self?.hotkeyManager.saveConfig(config)
-        }
-        hotkeySettingsWindow.onReset = { [weak self] in
-            self?.hotkeyManager.resetToDefault()
+        hotkeySettingsWindow.onSave = { [weak self] voiceConfig, systemAudioConfig in
+            self?.hotkeyManager.saveConfig(voiceConfig)
+            self?.hotkeyManager.saveSystemAudioConfig(systemAudioConfig)
         }
 
         // Setup hotkey settings action (separate from main settings)

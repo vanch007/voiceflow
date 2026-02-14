@@ -11,6 +11,38 @@ struct HotkeyPracticeView: View {
     @State private var lastDetectionTime: Date?
     @State private var hotkeyManager: HotkeyManager?
 
+    // 动态读取当前热键配置
+    private var voiceInputConfig: HotkeyConfig {
+        if let data = UserDefaults.standard.data(forKey: "voiceflow.hotkeyConfig"),
+           let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
+            return config
+        }
+        return HotkeyConfig.default
+    }
+
+    private var systemAudioConfig: HotkeyConfig {
+        if let data = UserDefaults.standard.data(forKey: "voiceflow.systemAudioHotkeyConfig"),
+           let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
+            return config
+        }
+        return HotkeyConfig.systemAudioDefault
+    }
+
+    private var voiceInputInstruction: String {
+        switch voiceInputConfig.triggerType {
+        case .longPress:
+            return "按住 \(voiceInputConfig.displayString.replacingOccurrences(of: " 长按", with: "")) 键开始录音，释放后停止"
+        case .doubleTap:
+            return "快速按下并释放 \(voiceInputConfig.displayString.replacingOccurrences(of: " 双击", with: "")) 键两次开始录音"
+        default:
+            return "使用 \(voiceInputConfig.displayString) 触发录音"
+        }
+    }
+
+    private var encouragementText: String {
+        return "现在试试 \(voiceInputConfig.displayString)"
+    }
+
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
@@ -64,10 +96,10 @@ struct HotkeyPracticeView: View {
                         .foregroundColor(.blue)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Control 双击")
+                        Text("语音输入: \(voiceInputConfig.displayString)")
                             .font(.system(size: 13, weight: .medium))
 
-                        Text("快速按下并释放 Control 键两次")
+                        Text(voiceInputInstruction)
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -78,10 +110,10 @@ struct HotkeyPracticeView: View {
                         .foregroundColor(.blue)
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Option 长按")
+                        Text("系统音频: \(systemAudioConfig.displayString)")
                             .font(.system(size: 13, weight: .medium))
 
-                        Text("按住 Option 键开始录音，释放后停止")
+                        Text("录制电脑播放的声音并生成字幕")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -96,7 +128,7 @@ struct HotkeyPracticeView: View {
                     Image(systemName: "hand.point.up.left.fill")
                         .foregroundColor(.orange)
 
-                    Text("现在试试按 Control 键两次")
+                    Text(encouragementText)
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }

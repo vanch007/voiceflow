@@ -40,6 +40,8 @@ struct RecordingEntry: Codable, Identifiable, Hashable {
 }
 
 final class RecordingHistory {
+    static let entriesDidChangeNotification = Notification.Name("RecordingHistoryEntriesDidChange")
+
     private let maxEntries = 50
     private let userDefaultsKey = "com.voiceflow.recordingHistory"
     private let audioDirectory: URL
@@ -47,8 +49,6 @@ final class RecordingHistory {
     private let queue = DispatchQueue(label: "com.voiceflow.recordinghistory")
 
     private(set) var entries: [RecordingEntry] = []
-
-    var onEntriesChanged: (() -> Void)?
 
     init() {
         // Set up audio directory in Application Support
@@ -85,7 +85,9 @@ final class RecordingHistory {
             }
 
             self.saveEntries()
-            DispatchQueue.main.async { self.onEntriesChanged?() }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: RecordingHistory.entriesDidChangeNotification, object: self)
+            }
             NSLog("[RecordingHistory] Added entry: \(text.prefix(50))... (duration: \(duration)s)")
         }
     }
@@ -97,7 +99,9 @@ final class RecordingHistory {
             let entry = self.entries.remove(at: index)
             self.deleteAudioFile(path: entry.audioPath)
             self.saveEntries()
-            DispatchQueue.main.async { self.onEntriesChanged?() }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: RecordingHistory.entriesDidChangeNotification, object: self)
+            }
             NSLog("[RecordingHistory] Deleted entry: \(id)")
         }
     }
@@ -110,7 +114,9 @@ final class RecordingHistory {
             }
             self.entries.removeAll()
             self.saveEntries()
-            DispatchQueue.main.async { self.onEntriesChanged?() }
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: RecordingHistory.entriesDidChangeNotification, object: self)
+            }
             NSLog("[RecordingHistory] Cleared all entries")
         }
     }

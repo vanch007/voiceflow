@@ -70,11 +70,13 @@ cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
 - `AppDelegate.swift`: Coordinates all managers, spawns Python ASR server, manages both microphone and system audio recording lifecycles
 
 **Core Services** (`Core/`)
-- `HotkeyManager.swift`: Global hotkey detection (Option long-press, Control double-tap for system audio) via CGEvent tap
+- `HotkeyManager.swift`: Global hotkey detection via CGEvent tap, delegates to `HotkeyConfig` for trigger behavior
+- `HotkeyConfig.swift`: Hotkey configuration (trigger type: doubleTap/longPress/freeSpeak, keyCode, modifiers, interval) with preset collections for voice input and system audio
 - `AudioRecorder.swift`: AVCaptureSession-based microphone audio capture with format conversion
 - `SystemAudioRecorder.swift`: System audio capture via BlackHole virtual audio device
 - `ASRClient.swift`: WebSocket client for ASR server communication, supports `voice_input` and `subtitle` modes
 - `TextInjector.swift`: CGEvent-based text injection into active apps
+- `TextReplacementEngine.swift`: Applies scene-aware text replacement rules from ReplacementStorage and converts Chinese numbers to Arabic numbers
 - `SettingsManager.swift`: User preferences management
 - `SystemAudioSettings.swift`: Subtitle style and transcript storage configuration
 - `TranscriptStorage.swift`: Persistent transcript file storage for system audio recordings
@@ -84,12 +86,24 @@ cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
 - `PromptManager.swift`: Scene prompt management (fetches from server)
 - `LLMSettings.swift`: LLM configuration with Keychain storage for API keys
 
+**Scene System** (`Core/Scene/`)
+- `SceneManager.swift`: Detects active app via NSWorkspace observer, auto-switches transcription context (e.g., coding → social → writing)
+- `SceneProfile.swift`: Scene configuration profiles — language, polish rules, LLM prompts per scene
+- `SceneType.swift`: 9 domain-specific scene types (general, social, coding, writing, medical, legal, technical, finance, engineering) with localized names and icons
+- `SceneRule.swift`: Maps app bundle IDs to scene types with built-in rules (e.g., WeChat→social, Xcode→coding, Obsidian→writing)
+
 **UI Layer** (`UI/`)
 - `StatusBarController.swift`: Menu bar item, status management, system audio toggle menu
 - `OverlayPanel.swift`: Visual recording indicator (bottom of screen, for mic recording)
 - `SubtitlePanel.swift`: Real-time subtitle overlay for system audio (auto-splits by punctuation, adaptive width)
-- `SettingsWindow.swift`: Settings UI including system audio transcript settings
+- `SettingsWindow.swift`: Settings UI wrapper
+- `SettingsWindowController.swift`: NSWindowController bridging AppKit window to SwiftUI SettingsContentView with tab navigation
+- `HotkeySettingsWindow.swift`: Dedicated hotkey configuration UI with preset radio buttons and conflict warning
+- `LLMSettingsView.swift`: LLM connection configuration UI (API key, endpoint, model selection)
+- `PluginSettingsView.swift`: Plugin management UI
+- `SceneSettingsView.swift`: Scene configuration UI (profile editing, rule management, prompt customization)
 - `OnboardingWindow.swift`: First-launch permission setup (auto-skips granted permissions)
+- `OnboardingSteps/HotkeyPracticeView.swift`: Onboarding step for hotkey detection practice
 - `PermissionAlertWindow.swift`: Permission alert with auto-detect and restart button
 
 ### Python ASR Server (`server/`)
@@ -165,7 +179,8 @@ HotkeyManager detects double-tap Control
 
 | Task | Files |
 |------|-------|
-| Modify hotkey behavior | `VoiceFlow/Sources/Core/HotkeyManager.swift` |
+| Modify hotkey behavior | `VoiceFlow/Sources/Core/HotkeyManager.swift` + `HotkeyConfig.swift` |
+| Configure hotkey presets | `VoiceFlow/Sources/Core/HotkeyConfig.swift` + `UI/HotkeySettingsWindow.swift` |
 | Change mic audio processing | `VoiceFlow/Sources/Core/AudioRecorder.swift` |
 | Change system audio capture | `VoiceFlow/Sources/Core/SystemAudioRecorder.swift` |
 | Adjust WebSocket protocol | `VoiceFlow/Sources/Core/ASRClient.swift` + `server/main.py` |
@@ -173,7 +188,11 @@ HotkeyManager detects double-tap Control
 | Modify subtitle display | `VoiceFlow/Sources/UI/SubtitlePanel.swift` |
 | Modify ASR model | `server/mlx_asr.py` |
 | Add text post-processing | `server/text_polisher.py` or create new plugin |
-| Configure LLM polish | `VoiceFlow/Sources/Core/LLMSettings.swift` + `server/llm_client.py` |
+| Configure LLM polish | `VoiceFlow/Sources/Core/LLMSettings.swift` + `server/llm_client.py` + `UI/LLMSettingsView.swift` |
+| Modify text replacement | `VoiceFlow/Sources/Core/TextReplacementEngine.swift` + `ReplacementRule.swift` |
+| Add/modify scene types | `VoiceFlow/Sources/Core/Scene/SceneType.swift` + `SceneRule.swift` |
+| Scene detection logic | `VoiceFlow/Sources/Core/Scene/SceneManager.swift` |
+| Settings UI tabs | `VoiceFlow/Sources/UI/SettingsWindowController.swift` |
 | System audio settings | `VoiceFlow/Sources/Core/SystemAudioSettings.swift` + `VoiceFlow/Sources/UI/SettingsWindow.swift` |
 
 ## Debugging
@@ -217,6 +236,8 @@ Check Python server logs for transcription errors:
 - When `language` is "auto", pass `None` to MLX model
 - System audio recording state (`isSystemAudioRecording`) must wait for ASR `final` result before resetting — don't reset on stop, or `onTranscriptionResult` will discard the result
 - SubtitlePanel uses single `fullText` source, splits into two lines at render time by punctuation — never maintain two independent line states
+- Text replacement uses only `TextReplacementEngine` (not `ReplacementStorage.applyReplacements`). The engine supports fuzzy matching by stripping trailing punctuation when exact match fails
+- Python server uses Python 3.9+ built-in generics (`list[str]`, `dict[str, Any]`) — do NOT use `typing.List`, `typing.Dict` etc.
 
 ## Permissions Required
 

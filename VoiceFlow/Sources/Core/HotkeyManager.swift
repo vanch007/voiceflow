@@ -2,15 +2,17 @@ import AppKit
 
 extension Notification.Name {
     static let hotkeyConfigDidChange = Notification.Name("hotkeyConfigDidChange")
+    static let systemAudioHotkeyConfigDidChange = Notification.Name("systemAudioHotkeyConfigDidChange")
 }
 
 final class HotkeyManager {
     var onLongPress: (() -> Void)?
     var onLongPressEnd: (() -> Void)?
     var onToggleRecording: (() -> Void)?  // 自由说话模式：切换录音状态
-    var onSystemAudioDoubleTap: (() -> Void)?  // 双击 Option：系统音频录制切换
+    var onSystemAudioDoubleTap: (() -> Void)?  // 系统音频录制切换
 
     private var currentConfig: HotkeyConfig
+    private var systemAudioConfig: HotkeyConfig
     private var keyIsDown = false
     private var keyPressTime: TimeInterval = 0
     private var longPressTimer: Timer?
@@ -18,26 +20,35 @@ final class HotkeyManager {
     private var keyDownMonitor: Any?
     private var isEnabled = true
     private let userDefaultsKey = "voiceflow.hotkeyConfig"
+    private let systemAudioUserDefaultsKey = "voiceflow.systemAudioHotkeyConfig"
 
     // Double-tap detection (for doubleTap trigger mode)
     private var lastTapTime: TimeInterval = 0
     private var tapCount = 0
 
-    // System audio double-tap Control detection (独立于主热键配置)
-    private var controlLastTapTime: TimeInterval = 0
-    private var controlTapCount = 0
-    private var controlKeyIsDown = false
-    private let controlDoubleTapInterval: TimeInterval = 0.3  // 300ms 双击间隔
+    // System audio hotkey detection (可配置)
+    private var sysAudioLastTapTime: TimeInterval = 0
+    private var sysAudioTapCount = 0
+    private var sysAudioKeyIsDown = false
+    private var sysAudioKeyPressTime: TimeInterval = 0
+    private var sysAudioLongPressTimer: Timer?
 
     init() {
         // Load config from UserDefaults or use default
         currentConfig = HotkeyManager.loadConfig()
+        systemAudioConfig = HotkeyManager.loadSystemAudioConfig()
 
         // Listen for config changes
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleConfigChange(_:)),
             name: .hotkeyConfigDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSystemAudioConfigChange(_:)),
+            name: .systemAudioHotkeyConfigDidChange,
             object: nil
         )
     }
@@ -49,6 +60,16 @@ final class HotkeyManager {
             // Reload from UserDefaults
             currentConfig = HotkeyManager.loadConfig()
             NSLog("[HotkeyManager] Config reloaded: \(currentConfig.displayString)")
+        }
+    }
+
+    @objc private func handleSystemAudioConfigChange(_ notification: Notification) {
+        if let config = notification.userInfo?["config"] as? HotkeyConfig {
+            systemAudioConfig = config
+            NSLog("[HotkeyManager] System audio config updated to: \(config.displayString)")
+        } else {
+            systemAudioConfig = HotkeyManager.loadSystemAudioConfig()
+            NSLog("[HotkeyManager] System audio config reloaded: \(systemAudioConfig.displayString)")
         }
     }
 
@@ -77,7 +98,7 @@ final class HotkeyManager {
             return
         }
 
-        NSLog("[HotkeyManager] 正在创建事件监听器 (\(currentConfig.displayString))...")
+        NSLog("[HotkeyManager] 正在创建事件监听器 (语音输入: \(currentConfig.displayString), 系统音频: \(systemAudioConfig.displayString))...")
 
         // Monitor for modifier key changes (for modifier-based triggers)
         monitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
@@ -90,7 +111,7 @@ final class HotkeyManager {
         }
 
         if monitor != nil {
-            NSLog("[HotkeyManager] 事件监听启动成功！触发方式: \(currentConfig.displayString)")
+            NSLog("[HotkeyManager] 事件监听启动成功！语音输入: \(currentConfig.displayString), 系统音频: \(systemAudioConfig.displayString)")
         } else {
             NSLog("[HotkeyManager] 创建事件监听失败！请检查辅助功能权限。")
         }
@@ -99,10 +120,9 @@ final class HotkeyManager {
     private func handleFlagsChanged(event: NSEvent) {
         guard isEnabled else { return }
 
-        // 始终检测双击 Control（系统音频录制），独立于主热键配置
-        // 如果检测到双击，跳过主热键处理，避免冲突
-        let isDoubleTap = handleSystemAudioDoubleTapControl(event: event)
-        guard !isDoubleTap else { return }
+        // 先检测系统音频热键，如果匹配则跳过主热键处理
+        let isSystemAudioTriggered = handleSystemAudioHotkey(event: event)
+        guard !isSystemAudioTriggered else { return }
 
         switch currentConfig.triggerType {
         case .doubleTap:
@@ -116,44 +136,89 @@ final class HotkeyManager {
         }
     }
 
-    /// 检测双击 Control 用于系统音频录制（独立于主热键配置）
-    /// 返回 true 表示检测到双击，主热键应跳过此事件
-    private func handleSystemAudioDoubleTapControl(event: NSEvent) -> Bool {
+    // MARK: - System Audio Hotkey Detection (可配置)
+
+    /// 检测系统音频热键（根据 systemAudioConfig 动态判断）
+    /// 返回 true 表示检测到触发，主热键应跳过此事件
+    private func handleSystemAudioHotkey(event: NSEvent) -> Bool {
         let keyCode = event.keyCode
+        let targetKeyCode = systemAudioConfig.keyCode
 
-        // 检查是否是 Control 键 (左 Control: 59, 右 Control: 62)
-        guard keyCode == 59 || keyCode == 62 else { return false }
+        // 检查是否是目标键
+        let isTargetKey = isMatchingModifierKey(keyCode: keyCode, targetKeyCode: targetKeyCode)
+        guard isTargetKey else { return false }
 
-        let isControlPressed = event.modifierFlags.contains(.control)
+        let isKeyPressed = isModifierKeyPressed(event: event, keyCode: targetKeyCode)
 
-        if isControlPressed && !controlKeyIsDown {
-            // Control 键按下
-            controlKeyIsDown = true
+        switch systemAudioConfig.triggerType {
+        case .doubleTap:
+            return handleSystemAudioDoubleTap(isKeyPressed: isKeyPressed)
+        case .longPress:
+            return handleSystemAudioLongPress(isKeyPressed: isKeyPressed)
+        default:
+            return false
+        }
+    }
+
+    private func handleSystemAudioDoubleTap(isKeyPressed: Bool) -> Bool {
+        if isKeyPressed && !sysAudioKeyIsDown {
+            sysAudioKeyIsDown = true
             let now = ProcessInfo.processInfo.systemUptime
 
-            // 检查是否为双击
-            if now - controlLastTapTime < controlDoubleTapInterval {
-                controlTapCount += 1
+            if now - sysAudioLastTapTime < systemAudioConfig.interval {
+                sysAudioTapCount += 1
             } else {
-                controlTapCount = 1
+                sysAudioTapCount = 1
             }
-            controlLastTapTime = now
+            sysAudioLastTapTime = now
 
-            if controlTapCount >= 2 {
-                // 双击 Control 检测到，取消长按计时器，阻止主热键
-                controlTapCount = 0
+            if sysAudioTapCount >= 2 {
+                sysAudioTapCount = 0
                 longPressTimer?.invalidate()
                 longPressTimer = nil
-                keyIsDown = false  // 重置主热键状态，防止长按触发
-                NSLog("[HotkeyManager] 双击 Control 检测到")
+                keyIsDown = false
+                NSLog("[HotkeyManager] 系统音频热键触发: \(systemAudioConfig.displayString)")
                 DispatchQueue.main.async { [weak self] in
                     self?.onSystemAudioDoubleTap?()
                 }
                 return true
             }
-        } else if !isControlPressed && controlKeyIsDown {
-            // Control 键释放
-            controlKeyIsDown = false
+        } else if !isKeyPressed && sysAudioKeyIsDown {
+            sysAudioKeyIsDown = false
+        }
+        return false
+    }
+
+    private func handleSystemAudioLongPress(isKeyPressed: Bool) -> Bool {
+        if isKeyPressed && !sysAudioKeyIsDown {
+            sysAudioKeyIsDown = true
+            sysAudioKeyPressTime = ProcessInfo.processInfo.systemUptime
+
+            sysAudioLongPressTimer = Timer.scheduledTimer(withTimeInterval: systemAudioConfig.interval, repeats: false) { [weak self] _ in
+                guard let self = self, self.sysAudioKeyIsDown else { return }
+                if self.isEnabled {
+                    NSLog("[HotkeyManager] 系统音频长按触发: \(self.systemAudioConfig.displayString)")
+                    // 重置主热键状态
+                    self.longPressTimer?.invalidate()
+                    self.longPressTimer = nil
+                    self.keyIsDown = false
+                    DispatchQueue.main.async {
+                        self.onSystemAudioDoubleTap?()
+                    }
+                }
+            }
+            // 长按模式不立即返回 true，要等计时器触发
+            // 但需要标记此键正在被系统音频监控
+        } else if !isKeyPressed && sysAudioKeyIsDown {
+            sysAudioKeyIsDown = false
+            let pressDuration = ProcessInfo.processInfo.systemUptime - sysAudioKeyPressTime
+            sysAudioLongPressTimer?.invalidate()
+            sysAudioLongPressTimer = nil
+
+            // 如果长按时间已超过阈值，说明已经触发过，返回 true 阻止主热键
+            if pressDuration >= systemAudioConfig.interval {
+                return true
+            }
         }
         return false
     }
@@ -365,6 +430,8 @@ final class HotkeyManager {
             return keyCode == 56 || keyCode == 60
         case 55, 54: // Command
             return keyCode == 55 || keyCode == 54
+        case 63: // Fn
+            return keyCode == 63
         default:
             return keyCode == targetKeyCode
         }
@@ -381,6 +448,8 @@ final class HotkeyManager {
             return flags.contains(.shift)
         case 55, 54: // Command
             return flags.contains(.command)
+        case 63: // Fn
+            return flags.contains(.function)
         default:
             return false
         }
@@ -388,11 +457,12 @@ final class HotkeyManager {
 
     private func isModifierKeyCode(_ keyCode: UInt16) -> Bool {
         // Check if keyCode is a modifier key
-        return [54, 55, 56, 58, 59, 60, 61, 62].contains(keyCode)
+        return [54, 55, 56, 58, 59, 60, 61, 62, 63].contains(keyCode)
     }
 
     deinit {
         longPressTimer?.invalidate()
+        sysAudioLongPressTimer?.invalidate()
         if let monitor = monitor {
             NSEvent.removeMonitor(monitor)
         }
@@ -412,6 +482,14 @@ final class HotkeyManager {
         return config
     }
 
+    private static func loadSystemAudioConfig() -> HotkeyConfig {
+        guard let savedData = UserDefaults.standard.data(forKey: "voiceflow.systemAudioHotkeyConfig"),
+              let config = try? JSONDecoder().decode(HotkeyConfig.self, from: savedData) else {
+            return HotkeyConfig.systemAudioDefault
+        }
+        return config
+    }
+
     func saveConfig(_ config: HotkeyConfig) {
         guard let encoded = try? JSONEncoder().encode(config) else {
             NSLog("[HotkeyManager] Failed to encode config")
@@ -422,17 +500,37 @@ final class HotkeyManager {
         NSLog("[HotkeyManager] Config saved: \(config.displayString)")
     }
 
+    func saveSystemAudioConfig(_ config: HotkeyConfig) {
+        guard let encoded = try? JSONEncoder().encode(config) else {
+            NSLog("[HotkeyManager] Failed to encode system audio config")
+            return
+        }
+        UserDefaults.standard.set(encoded, forKey: systemAudioUserDefaultsKey)
+        systemAudioConfig = config
+        NSLog("[HotkeyManager] System audio config saved: \(config.displayString)")
+    }
+
     func resetToDefault() {
         UserDefaults.standard.removeObject(forKey: userDefaultsKey)
         currentConfig = HotkeyConfig.default
         NSLog("[HotkeyManager] Config reset to default: \(currentConfig.displayString)")
     }
 
+    func resetSystemAudioToDefault() {
+        UserDefaults.standard.removeObject(forKey: systemAudioUserDefaultsKey)
+        systemAudioConfig = HotkeyConfig.systemAudioDefault
+        NSLog("[HotkeyManager] System audio config reset to default: \(systemAudioConfig.displayString)")
+    }
+
     func getCurrentConfig() -> HotkeyConfig {
         return currentConfig
     }
 
-    // MARK: - Hotkey Conflict Detection (阶段4.3)
+    func getSystemAudioConfig() -> HotkeyConfig {
+        return systemAudioConfig
+    }
+
+    // MARK: - Hotkey Conflict Detection
 
     /// 检测快捷键冲突
     struct HotkeyConflict {

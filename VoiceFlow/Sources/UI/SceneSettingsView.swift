@@ -3,6 +3,7 @@ import SwiftUI
 
 /// 场景设置标签页
 struct SceneSettingsTab: View {
+    @ObservedObject var replacementStorage: ReplacementStorage
     @ObservedObject private var sceneManager = SceneManager.shared
     @State private var selectedSceneType: SceneType = .general
     @State private var editingProfile: SceneProfile?
@@ -73,6 +74,7 @@ struct SceneSettingsTab: View {
             SceneProfileEditor(
                 sceneType: selectedSceneType,
                 sceneManager: sceneManager,
+                replacementStorage: replacementStorage,
                 showingAddRuleSheet: $showingAddRuleSheet
             )
         }
@@ -90,10 +92,8 @@ struct SceneSettingsTab: View {
 private struct SceneProfileEditor: View {
     let sceneType: SceneType
     @ObservedObject var sceneManager: SceneManager
+    @ObservedObject var replacementStorage: ReplacementStorage
     @Binding var showingAddRuleSheet: Bool
-
-    // 使用统一的 ReplacementStorage
-    @ObservedObject private var replacementStorage = ReplacementStorage()
 
     // 提示词管理器
     @ObservedObject private var promptManager = PromptManager.shared
@@ -914,6 +914,6 @@ private struct AddSceneRuleSheet: View {
 // MARK: - Preview
 
 #Preview("Scene Settings") {
-    SceneSettingsTab()
+    SceneSettingsTab(replacementStorage: ReplacementStorage())
         .frame(width: 700, height: 500)
 }

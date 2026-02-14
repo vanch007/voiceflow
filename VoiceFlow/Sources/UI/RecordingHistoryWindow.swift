@@ -200,11 +200,9 @@ private struct RecordingHistoryContentView: View {
     }
 
     private func setupEntriesChangedCallback() {
-        recordingHistory.onEntriesChanged = { [weak recordingHistory] in
+        NotificationCenter.default.addObserver(forName: RecordingHistory.entriesDidChangeNotification, object: recordingHistory, queue: .main) { [weak recordingHistory] _ in
             guard let recordingHistory = recordingHistory else { return }
-            DispatchQueue.main.async {
-                entries = recordingHistory.entries
-            }
+            entries = recordingHistory.entries
         }
     }
 

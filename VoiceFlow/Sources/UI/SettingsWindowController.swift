@@ -91,7 +91,7 @@ private struct SettingsContentView: View {
                 .tag(SettingsTab.llm)
 
             // 场景设置标签页
-            SceneSettingsTab()
+            SceneSettingsTab(replacementStorage: replacementStorage)
                 .tabItem { Label("场景", systemImage: "sparkles.rectangle.stack") }
                 .tag(SettingsTab.scene)
 
@@ -150,8 +150,8 @@ private struct GeneralSettingsTab: View {
     var body: some View {
         Form {
             Section("热键设置") {
-                Toggle("启用长按 Option 录音", isOn: $settingsManager.hotkeyEnabled)
-                Text("长按左侧或右侧 Option (⌥) 键开始录音，松开停止")
+                Toggle("启用快捷键录音", isOn: $settingsManager.hotkeyEnabled)
+                Text("使用快捷键触发语音输入和系统音频录制，可在快捷键设置中自定义")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -1338,7 +1338,7 @@ private struct RecordingHistoryTab: View {
         }
         .onAppear {
             entries = recordingHistory.entries
-            recordingHistory.onEntriesChanged = {
+            NotificationCenter.default.addObserver(forName: RecordingHistory.entriesDidChangeNotification, object: recordingHistory, queue: .main) { _ in
                 entries = recordingHistory.entries
             }
         }

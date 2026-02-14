@@ -268,7 +268,7 @@ async def vad_streaming_transcribe(
     check_interval_ms: int = 100,
     subtitle_mode: bool = False,
     subtitle_interval_s: float = 1.5,
-    hotwords: List[str] = None
+    hotwords: list[str] = None
 ):
     """
     基于 VAD 的流式转录：仅在检测到停顿时触发转录

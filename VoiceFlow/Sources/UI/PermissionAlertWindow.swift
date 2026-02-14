@@ -382,9 +382,9 @@ final class PermissionAlertWindow: NSObject {
                 "zh": "在列表中找到 VoiceFlow"
             ],
             "instruction_toggle_off_on": [
-                "ko": "스위치를 끄고 다시 켜기 (재컴파일 후 필수)",
-                "en": "Toggle the switch OFF then ON (required after rebuild)",
-                "zh": "将开关切换为关闭然后再打开（重新编译后必需）"
+                "ko": "VoiceFlow를 선택하고 - 버튼으로 삭제한 후 + 버튼으로 다시 추가 (재컴파일 후 필수)",
+                "en": "Select VoiceFlow, click - to remove it, then click + to re-add (required after rebuild)",
+                "zh": "选中 VoiceFlow，点击 - 按钮删除，再点击 + 按钮重新添加（重新编译后必需）"
             ],
             "instruction_enable": [
                 "ko": "VoiceFlow 권한 활성화",

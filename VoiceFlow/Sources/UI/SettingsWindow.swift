@@ -73,8 +73,8 @@ private struct GeneralSettingsTab: View {
     var body: some View {
         Form {
             Section {
-                Toggle("启用长按 Option 录音", isOn: $settingsManager.hotkeyEnabled)
-                Text("长按左侧或右侧 Option (⌥) 键开始录音，松开停止")
+                Toggle("启用快捷键录音", isOn: $settingsManager.hotkeyEnabled)
+                Text("使用快捷键触发语音输入和系统音频录制，可在快捷键设置中自定义")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } header: {

@@ -1,6 +1,6 @@
 import AppKit
 
-struct HotkeyConfig: Codable {
+struct HotkeyConfig: Codable, Equatable {
     enum TriggerType: String, Codable {
         case doubleTap
         case combination
@@ -13,12 +13,44 @@ struct HotkeyConfig: Codable {
     let modifiers: NSEvent.ModifierFlags
     let interval: TimeInterval
 
+    // MARK: - 语音输入模式默认配置
     static let `default` = HotkeyConfig(
         triggerType: .longPress,
         keyCode: 58, // Left Option
         modifiers: [],
         interval: 0.3  // 长按阈值 0.3 秒
     )
+
+    // MARK: - 系统音频录制默认配置
+    static let systemAudioDefault = HotkeyConfig(
+        triggerType: .doubleTap,
+        keyCode: 59, // Left Control
+        modifiers: [],
+        interval: 0.3
+    )
+
+    // MARK: - 语音输入预设方案
+    static let voiceInputPresets: [(title: String, config: HotkeyConfig)] = [
+        ("长按 Option (默认)", HotkeyConfig(triggerType: .longPress, keyCode: 58, modifiers: [], interval: 0.3)),
+        ("长按 Fn", HotkeyConfig(triggerType: .longPress, keyCode: 63, modifiers: [], interval: 0.3)),
+        ("双击 Option", HotkeyConfig(triggerType: .doubleTap, keyCode: 58, modifiers: [], interval: 0.3)),
+        ("双击 Fn", HotkeyConfig(triggerType: .doubleTap, keyCode: 63, modifiers: [], interval: 0.3)),
+    ]
+
+    // MARK: - 系统音频录制预设方案
+    static let systemAudioPresets: [(title: String, config: HotkeyConfig)] = [
+        ("双击 Control (默认)", HotkeyConfig(triggerType: .doubleTap, keyCode: 59, modifiers: [], interval: 0.3)),
+        ("双击 Option", HotkeyConfig(triggerType: .doubleTap, keyCode: 58, modifiers: [], interval: 0.3)),
+        ("双击 Fn", HotkeyConfig(triggerType: .doubleTap, keyCode: 63, modifiers: [], interval: 0.3)),
+        ("长按 Fn", HotkeyConfig(triggerType: .longPress, keyCode: 63, modifiers: [], interval: 0.3)),
+    ]
+
+    // MARK: - Equatable
+    static func == (lhs: HotkeyConfig, rhs: HotkeyConfig) -> Bool {
+        return lhs.triggerType == rhs.triggerType
+            && lhs.keyCode == rhs.keyCode
+            && lhs.modifiers.rawValue == rhs.modifiers.rawValue
+    }
 
     var displayString: String {
         switch triggerType {
@@ -48,6 +80,7 @@ struct HotkeyConfig: Codable {
         case 55: return "Cmd"
         case 58: return "Option"
         case 56: return "Shift"
+        case 63: return "Fn"
         default: return "Key \(keyCode)"
         }
     }

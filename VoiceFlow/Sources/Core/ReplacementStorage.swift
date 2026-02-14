@@ -107,20 +107,6 @@ final class ReplacementStorage: ObservableObject {
         }
     }
 
-    /// Apply replacement rules to text (scene-aware)
-    func applyReplacements(to text: String, scene: SceneType? = nil) -> String {
-        let applicableRules = getRules(for: scene)
-        var result = text
-
-        for rule in applicableRules {
-            let options: String.CompareOptions = rule.caseSensitive
-                ? [.literal]
-                : [.caseInsensitive, .literal]
-            result = result.replacingOccurrences(of: rule.trigger, with: rule.replacement, options: options)
-        }
-        return result
-    }
-
     // MARK: - Preset Import
 
     /// Import default glossaries from SceneProfile if not already imported
