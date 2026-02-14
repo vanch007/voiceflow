@@ -318,7 +318,10 @@ async def vad_streaming_transcribe(
                     with model_lock:
                         return model.transcribe((window_samples, 16000), language, hotwords)
 
-                result = await asyncio.to_thread(transcribe_window)
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(transcribe_window),
+                    timeout=30.0  # 字幕 partial 转录超时保护
+                )
                 text = extract_text(result).strip()
                 last_transcribed_length = len(samples)
 
@@ -357,7 +360,10 @@ async def vad_streaming_transcribe(
                     with model_lock:
                         return model.transcribe((samples, 16000), language, hotwords)
 
-                result = await asyncio.to_thread(transcribe_with_lock)
+                result = await asyncio.wait_for(
+                    asyncio.to_thread(transcribe_with_lock),
+                    timeout=30.0  # partial 转录超时保护
+                )
                 text = extract_text(result)
 
                 if text and text != last_text:
@@ -689,9 +695,11 @@ async def handle_client(websocket):
                                         hotwords=session_hotwords
                                     )
 
+                            is_large_model = session_model_id and "1.7B" in session_model_id
+                            ts_timeout = 120.0 if is_large_model else 60.0
                             result = await asyncio.wait_for(
                                 asyncio.to_thread(transcribe_with_timestamps_lock),
-                                timeout=60.0  # 时间戳模式需要更长超时（两个模型）
+                                timeout=ts_timeout  # 时间戳模式需要更长超时（两个模型）
                             )
                             # result 是字典: {"text": "...", "words": [...]}
                         else:
@@ -704,13 +712,22 @@ async def handle_client(websocket):
                                         hotwords=session_hotwords
                                     )
 
+                            # 根据模型大小动态超时：1.7B 模型需要更长时间
+                            is_large_model = session_model_id and "1.7B" in session_model_id
+                            normal_timeout = 90.0 if is_large_model else 30.0
                             result = await asyncio.wait_for(
                                 asyncio.to_thread(transcribe_with_lock),
-                                timeout=30.0
+                                timeout=normal_timeout
                             )
 
                     except asyncio.TimeoutError:
-                        timeout_msg = "60s" if use_timestamps else "30s"
+                        is_large_model = session_model_id and "1.7B" in session_model_id
+                        if use_timestamps:
+                            timeout_msg = "60s"
+                        elif is_large_model:
+                            timeout_msg = "90s"
+                        else:
+                            timeout_msg = "30s"
                         logger.error(f"❌ ASR 转录超时 ({timeout_msg})")
                         await websocket.send(json.dumps({
                             "type": "final",
