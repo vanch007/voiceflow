@@ -74,7 +74,7 @@ final class HotkeySettingsWindow: NSWindow {
             let button = NSButton(title: preset.title, target: self, action: #selector(selectVoicePreset(_:)))
             button.bezelStyle = .rounded
             button.tag = index
-            button.setButtonType(.momentaryPushIn)
+            button.setButtonType(.onOff)
             voicePresetButtons.append(button)
             voiceStackView.addArrangedSubview(button)
         }
@@ -101,7 +101,7 @@ final class HotkeySettingsWindow: NSWindow {
             let button = NSButton(title: preset.title, target: self, action: #selector(selectSystemAudioPreset(_:)))
             button.bezelStyle = .rounded
             button.tag = index
-            button.setButtonType(.momentaryPushIn)
+            button.setButtonType(.onOff)
             systemAudioPresetButtons.append(button)
             systemStackView.addArrangedSubview(button)
         }

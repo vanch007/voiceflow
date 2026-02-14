@@ -603,6 +603,12 @@ final class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
+        // 快捷键设置
+        let hotkeyItem = NSMenuItem(title: localized("hotkey_settings"), action: #selector(hotkeySettingsAction), keyEquivalent: "k")
+        hotkeyItem.target = self
+        hotkeyItem.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: nil)
+        menu.addItem(hotkeyItem)
+
         let historyItem = NSMenuItem(title: localized("recording_history"), action: #selector(showHistoryAction), keyEquivalent: "h")
         historyItem.target = self
         historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
@@ -624,6 +630,14 @@ final class StatusBarController {
 
     @objc private func settingsAction() {
         onSettings?()
+    }
+
+    @objc private func hotkeySettingsAction() {
+        onHotkeySettings?()
+    }
+
+    @objc private func textReplacementAction() {
+        onTextReplacement?()
     }
 
     @objc private func showHistoryAction() {
