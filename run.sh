@@ -10,7 +10,7 @@ APP_PATH="/Applications/VoiceFlow.app"
 # 如果 /Applications/ 中没有，先编译安装
 if [ ! -d "$APP_PATH" ]; then
     echo "📦 首次运行，先编译安装..."
-    "$PROJECT_ROOT/scripts/build.sh"
+    "$PROJECT_ROOT/scripts/build-spm.sh"
 fi
 
 echo "🚀 Starting VoiceFlow..."
