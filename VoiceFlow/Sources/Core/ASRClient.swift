@@ -18,7 +18,7 @@ private struct ASRMessage: Decodable {
     let polish_method: String?  // LLM 润色方法: "llm", "rules", "none"
 }
 
-final class ASRClient {
+final class ASRClient: ASRBackend {
     var onTranscriptionResult: ((String) -> Void)?
     var onPartialResult: ((String, String) -> Void)?  // 实时部分结果回调 (text, trigger: "pause"/"periodic")
     var onOriginalTextReceived: ((String) -> Void)?  // 原始文本回调
@@ -38,6 +38,9 @@ final class ASRClient {
     private var reconnectTask: Task<Void, Never>?
     private let serverURL = URL(string: "ws://localhost:9876")!
     private var isConnected = false
+
+    /// ASRBackend 协议要求的就绪状态
+    var isReady: Bool { isConnected }
 
     /// 公开的连接状态（供外部检查 ASR 服务器是否可用）
     var isServerConnected: Bool { isConnected }
@@ -445,6 +448,30 @@ final class ASRClient {
 
             // 任务结束时清理自身引用
             self.reconnectTask = nil
+        }
+    }
+
+    // MARK: - ASRBackend Protocol Adapters
+
+    /// ASRBackend 协议: 开始会话
+    func startSession(config: ASRSessionConfig, completion: @escaping () -> Void) {
+        sendStart(mode: config.mode.rawValue, completion: completion)
+    }
+
+    /// ASRBackend 协议: 停止会话
+    func stopSession(completion: @escaping () -> Void) {
+        sendStop(completion: completion)
+    }
+
+    /// ASRBackend 协议: 喂入音频数据
+    func feedAudioChunk(_ data: Data) {
+        sendAudioChunk(data)
+    }
+
+    /// ASRBackend 协议: 等待音频发送完成后停止
+    func flushAndStop(completion: @escaping () -> Void) {
+        flushAudioChunks {
+            self.sendStop(completion: completion)
         }
     }
 
