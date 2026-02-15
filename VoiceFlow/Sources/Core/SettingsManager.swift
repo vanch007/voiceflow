@@ -193,6 +193,26 @@ final class SettingsManager: ObservableObject {
         }
     }
 
+    @Published var asrBackendType: ASRBackendType {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(asrBackendType) {
+                UserDefaults.standard.set(encoded, forKey: Keys.asrBackendType)
+                NSLog("[SettingsManager] ASR backend changed to: \(asrBackendType.rawValue)")
+                notifySettingsChanged(category: "asr", key: "backendType", value: asrBackendType.rawValue)
+            }
+        }
+    }
+
+    @Published var nativeModelId: NativeModelID {
+        didSet {
+            if let encoded = try? JSONEncoder().encode(nativeModelId) {
+                UserDefaults.standard.set(encoded, forKey: Keys.nativeModelId)
+                NSLog("[SettingsManager] Native model changed to: \(nativeModelId.rawValue)")
+                notifySettingsChanged(category: "asr", key: "nativeModelId", value: nativeModelId.rawValue)
+            }
+        }
+    }
+
     // MARK: - General Settings (from 016- branch)
 
     var language: String {
@@ -318,6 +338,9 @@ final class SettingsManager: ObservableObject {
         static let voiceSensitivity = "settings.voice.sensitivity"
         // LLM settings keys
         static let llmSettings = "settings.llm"
+        // ASR backend settings keys
+        static let asrBackendType = "settings.asr.backendType"
+        static let nativeModelId = "settings.asr.nativeModelId"
     }
 
     private enum Defaults {
@@ -361,6 +384,23 @@ final class SettingsManager: ObservableObject {
             self.asrLanguage = decoded
         } else {
             self.asrLanguage = .auto
+        }
+
+        // Load ASR backend type (default: native)
+        if let data = UserDefaults.standard.data(forKey: Keys.asrBackendType),
+           let decoded = try? JSONDecoder().decode(ASRBackendType.self, from: data) {
+            self.asrBackendType = decoded
+        } else {
+            // TODO: 修复 MLX Metal 库加载问题后改回 .native
+            self.asrBackendType = .native
+        }
+
+        // Load native model ID (default: 0.6B-4bit)
+        if let data = UserDefaults.standard.data(forKey: Keys.nativeModelId),
+           let decoded = try? JSONDecoder().decode(NativeModelID.self, from: data) {
+            self.nativeModelId = decoded
+        } else {
+            self.nativeModelId = .qwen3_0_6B_4bit
         }
 
         // Register defaults for general settings

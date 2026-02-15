@@ -109,7 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeySettingsWindow: HotkeySettingsWindow!
     private var recordingHistoryWindow: RecordingHistoryWindow!
     private var audioRecorder: AudioRecorder!
-    private var asrClient: ASRClient!
+    private var asrManager: ASRManager!
     private var textInjector: TextInjector!
     private var overlayPanel: OverlayPanel!
     private var settingsManager: SettingsManager!
@@ -145,6 +145,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[AppDelegate] applicationDidFinishLaunching called!")
+        NSLog("[AppDelegate] Model cache directory: ~/Library/Caches/qwen3-speech")
+
         // Hide dock icon
         NSApp.setActivationPolicy(.accessory)
 
@@ -172,13 +174,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             permissionAlertWindow.show()
         }
 
-        // Launch ASR server
-        startASRServer()
-
         // Load sounds via AudioServices (bypasses AVCaptureSession output blocking)
         loadSounds()
 
         setupManagers()
+
+        // 根据后端类型条件化启动 Python 服务器
+        // WebSocket 模式需要启动服务器，Native 模式直接使用本地模型
+        if asrManager.backendType == .websocket {
+            startASRServer()
+        } else {
+            NSLog("[AppDelegate] Using Native ASR backend, skipping Python server startup")
+        }
+
         setupAudioPipeline()
         setupUIComponents()
         setupEventHandlers()
@@ -198,14 +206,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         replacementEngine = TextReplacementEngine(storage: replacementStorage)
         recordingHistory = RecordingHistory()
 
-        // Initialize ASRClient early so it can be passed to SettingsWindowController
-        asrClient = ASRClient()
+        // Initialize ASRManager for both Native and WebSocket backends
+        asrManager = ASRManager(settingsManager: settingsManager)
 
         settingsWindowController = SettingsWindowController(
             settingsManager: settingsManager,
             replacementStorage: replacementStorage,
             recordingHistory: recordingHistory,
-            asrClient: asrClient
+            asrManager: asrManager
         )
 
         // Initialize plugin system
@@ -230,8 +238,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayPanel = OverlayPanel()
         textInjector = TextInjector()
 
-        // ASRClient already initialized in setupManagers for SettingsWindowController
-        PromptManager.shared.configure(with: asrClient)
+        // ASRManager already initialized in setupManagers for SettingsWindowController
+        // PromptManager 仅用于 WebSocket 模式（需要从 Python 服务器获取提示词）
+        if asrManager.backendType == .websocket {
+            PromptManager.shared.configure(with: asrManager.websocketClient)
+        }
         termLearner = TermLearner()
         // Connect RecordingHistory changes to TermLearner auto-refresh
         NotificationCenter.default.addObserver(forName: RecordingHistory.entriesDidChangeNotification, object: recordingHistory, queue: .main) { [weak self] _ in
@@ -240,7 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         audioRecorder = AudioRecorder()
         audioRecorder.onAudioChunk = { [weak self] data in
-            self?.asrClient.sendAudioChunk(data)
+            self?.asrManager.activeBackend.feedAudioChunk(data)
         }
         audioRecorder.onVolumeLevel = { [weak self] volume in
             DispatchQueue.main.async {
@@ -267,7 +278,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        asrClient.onTranscriptionResult = { [weak self] text in
+        asrManager.onTranscriptionResult = { [weak self] text in
             guard let self else { return }
             DispatchQueue.main.async {
                 // Apply text replacement rules
@@ -323,7 +334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        asrClient.onPartialResult = { [weak self] text, trigger in
+        asrManager.onPartialResult = { [weak self] text, trigger in
             guard let self else { return }
             DispatchQueue.main.async {
                 // 系统音频录制时：只更新字幕面板，不更新 overlayPanel
@@ -337,11 +348,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        asrClient.onOriginalTextReceived = { originalText in
+        asrManager.onOriginalTextReceived = { originalText in
             NSLog("[AppDelegate] Original text received: %@", originalText)
         }
 
-        asrClient.onPolishUpdate = { [weak self] updatedText in
+        asrManager.onPolishUpdate = { [weak self] updatedText in
             guard let self else { return }
             DispatchQueue.main.async {
                 NSLog("[AppDelegate] Received polish update: %@", updatedText)
@@ -355,21 +366,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        asrClient.onConnectionStatusChanged = { [weak self] connected in
+        asrManager.onConnectionStatusChanged = { [weak self] connected in
             DispatchQueue.main.async {
                 self?.statusBarController.updateConnectionStatus(connected: connected)
                 // 连接成功后自动同步 LLM 配置到服务器
                 if connected, let self = self {
                     let llmSettings = self.settingsManager.llmSettings
-                    if llmSettings.isEnabled {
-                        self.asrClient.configureLLM(llmSettings)
-                        NSLog("[AppDelegate] Auto-synced LLM config on connect: model=%@", llmSettings.model)
+                    if llmSettings.isEnabled && self.asrManager.backendType == .websocket {
+                        // 仅 WebSocket 模式需要配置远程 LLM
+                        self.asrManager.activeBackend.connect()
                     }
+                    NSLog("[AppDelegate] Auto-synced LLM config on connect: model=%@", llmSettings.model)
                 }
             }
         }
 
-        asrClient.onErrorStateChanged = { [weak self] hasError, errorMessage in
+        asrManager.onErrorStateChanged = { [weak self] hasError, errorMessage in
             DispatchQueue.main.async {
                 self?.statusBarController.updateErrorState(hasError: hasError, message: errorMessage)
             }
@@ -466,10 +478,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             audioRecorder.prepare()
         }
 
-        // Wait briefly for ASR server to start, then connect
+        // Wait briefly for ASR server to start (if using WebSocket), then connect
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
             guard let self else { return }
-            self.asrClient.connect()
+
+            // 根据后端类型处理
+            if self.asrManager.backendType == .websocket {
+                // WebSocket 模式：已在 startASRServer() 中启动了 Python 服务器
+                self.asrManager.connect()
+            } else {
+                // Native 模式：启动时加载模型
+                Task {
+                    await self.asrManager.loadNativeModel()
+                }
+            }
         }
 
         // Show onboarding wizard on first launch
@@ -481,7 +503,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         pluginManager.unloadAll()
         NotificationCenter.default.removeObserver(self)
-        stopASRServer()
+
+        // 根据后端类型清理资源
+        asrManager.disconnect()
+
+        // 仅 WebSocket 模式需要停止 Python 服务器
+        if asrManager.backendType == .websocket {
+            stopASRServer()
+        }
     }
 
     // MARK: - Settings Observer
@@ -499,10 +528,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        // Sync LLM settings to ASR server
+        // Sync LLM settings - handled by LLMPolisher for both Native and WebSocket modes
         if category == "llm" && key == "settings" {
-            asrClient.configureLLM(settingsManager.llmSettings)
-            NSLog("[Settings] LLM config synced to server: model=%@", settingsManager.llmSettings.model)
+            NSLog("[Settings] LLM config updated: model=%@", settingsManager.llmSettings.model)
+            // LLM 润色现在由 LLMPolisher 直接处理，无需同步到服务器
         }
     }
 
@@ -705,7 +734,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController.updateStatus(.recording)
 
         // 修复时序：先发送 start 消息，等待后再启动录音
-        asrClient.sendStart { [weak self] in
+        let config = asrManager.buildSessionConfig(mode: .voiceInput)
+        asrManager.activeBackend.startSession(config: config) { [weak self] in
             self?.audioRecorder.startRecording {
                 NSLog("[Recording] Audio capture fully started after start message sent")
             }
@@ -753,10 +783,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 修复时序：停止录音 → 等待音频发送完成 → 发送 stop
         audioRecorder.stopRecording { [weak self] in
-            self?.asrClient.flushAudioChunks {
-                self?.asrClient.sendStop {
-                    NSLog("[Recording] Stop sent after all audio flushed")
-                }
+            self?.asrManager.activeBackend.flushAndStop {
+                NSLog("[Recording] Stop sent after all audio flushed")
             }
         }
     }
@@ -776,7 +804,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         overlayPanel.showRecording(partialText: "")
         overlayPanel.setFreeSpeakMode(true)  // 启用自由说话模式显示
         statusBarController.updateStatus(.recording)
-        asrClient.sendStart()
+
+        let config = asrManager.buildSessionConfig(mode: .voiceInput)
+        asrManager.activeBackend.startSession(config: config)
+
         audioRecorder.enableSilenceDetection(threshold: 0.005, duration: 2.0)
         audioRecorder.startRecording()
     }
@@ -845,7 +876,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if chunkCount <= 5 || chunkCount % 50 == 0 {
                 self?.debugLog("onAudioChunk #\(chunkCount), size=\(data.count)")
             }
-            self?.asrClient.sendAudioChunk(data)
+            self?.asrManager.activeBackend.feedAudioChunk(data)
         }
 
         // 音量回调 → 系统音频不需要显示音量
@@ -857,9 +888,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // 不自动停止，只记录错误；权限错误不应杀死整个会话
         }
 
-        // 检查 ASR 连接状态
-        guard self.asrClient.isServerConnected else {
-            debugLog("BLOCKED: ASR server not connected")
+        // 检查 ASR 连接状态 (Native 模式始终就绪，WebSocket 需要检查连接)
+        guard self.asrManager.activeBackend.isReady else {
+            debugLog("BLOCKED: ASR not ready (backend: \(self.asrManager.backendType.rawValue))")
             self.isSystemAudioRecording = false
             self.systemAudioStartTime = nil
             self.subtitlePanel.hide()
@@ -867,12 +898,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        debugLog("ASR connected, sending start and beginning recording")
+        debugLog("ASR ready (backend: \(self.asrManager.backendType.rawValue)), sending start and beginning recording")
         self.playSound(self.startSoundID, name: "startSound")
         self.statusBarController.updateSystemAudioRecordingStatus(recording: true)
 
         // 发送 ASR 开始消息（字幕模式，启用定时转录）
-        self.asrClient.sendStart(mode: "subtitle")
+        let config = asrManager.buildSessionConfig(mode: .subtitle)
+        self.asrManager.activeBackend.startSession(config: config)
 
         // 直接开始录制（跳过 prepare，权限由 startRecording 内部处理）
         recorder.startRecording { [weak self] success in
@@ -909,20 +941,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
 
             // 发送 ASR 停止消息
-            self.asrClient.flushAudioChunks {
-                self.asrClient.sendStop {
-                    NSLog("[SystemAudio] Stop sent after all audio flushed")
-                    // sendStop 完成后，等待 final 结果返回
-                    // 设置一个超时：5秒后如果还没收到结果，强制重置状态
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                        if self.isSystemAudioRecording {
-                            NSLog("[SystemAudio] Timeout waiting for final result, resetting state")
-                            self.isSystemAudioRecording = false
-                            self.subtitlePanel.stopRecording()
-                            self.statusBarController.updateStatus(.idle)
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                                self.subtitlePanel.hide()
-                            }
+            self.asrManager.activeBackend.flushAndStop {
+                NSLog("[SystemAudio] Stop sent after all audio flushed")
+                // flushAndStop 完成后，等待 final 结果返回
+                // 设置一个超时：5秒后如果还没收到结果，强制重置状态
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                    if self.isSystemAudioRecording {
+                        NSLog("[SystemAudio] Timeout waiting for final result, resetting state")
+                        self.isSystemAudioRecording = false
+                        self.subtitlePanel.stopRecording()
+                        self.statusBarController.updateStatus(.idle)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+                            self.subtitlePanel.hide()
                         }
                     }
                 }
