@@ -4,7 +4,7 @@ import Foundation
 /// LLM 设置视图
 struct LLMSettingsView: View {
     @ObservedObject var settingsManager: SettingsManager
-    let asrClient: ASRClient
+    var asrClient: ASRClient?  // 可选，WebSocket 模式需要
     @State private var isTestingConnection = false
     @State private var connectionTestResult: ConnectionTestResult?
     @State private var showAPIKey = false
@@ -286,6 +286,8 @@ struct LLMSettingsView: View {
     }
 
     private func setupASRClientCallbacks() {
+        guard let asrClient = asrClient else { return }
+
         // 设置 LLM 连接测试结果回调
         asrClient.onLLMConnectionTestResult = { [self] success, latency in
             DispatchQueue.main.async {
@@ -320,13 +322,29 @@ struct LLMSettingsView: View {
         // 先保存当前设置
         saveSettings()
 
-        // 使用 ASRClient 测试 LLM 连接
+        // 使用 ASRClient 或 LLMPolisher 测试 LLM 连接
         Task {
             // 等待一下让设置保存生效
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
 
-            DispatchQueue.main.async {
-                asrClient.testLLMConnection()
+            if let asrClient = asrClient {
+                // WebSocket 模式：通过 ASRClient 测试
+                DispatchQueue.main.async {
+                    asrClient.testLLMConnection()
+                }
+            } else {
+                // Native 模式：直接使用 LLMPolisher 测试
+                let (success, latency) = await LLMPolisher.shared.testConnection(settings: settingsManager.llmSettings)
+                await MainActor.run {
+                    self.isTestingConnection = false
+                    if success {
+                        self.connectionTestResult = .success(latencyMs: latency ?? 0)
+                    } else {
+                        let suggestion = self.getConnectionFailureSuggestion()
+                        self.connectionTestResult = .failure(message: "连接失败", suggestion: suggestion)
+                    }
+                }
+                return
             }
 
             // 设置超时保护
@@ -407,6 +425,40 @@ struct LLMSettingsView: View {
         }
     }
 
+    /// Native 模式下获取 Ollama 模型列表
+    private func fetchOllamaModels() {
+        guard let url = URL(string: "\(apiURL)/api/tags") else {
+            isLoadingModels = false
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(for: request)
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let models = json["models"] as? [[String: Any]] {
+                    let modelNames = models.compactMap { $0["name"] as? String }
+                        .filter { !$0.contains(":") }  // 过滤掉 tag 部分
+                    await MainActor.run {
+                        self.availableModels = modelNames
+                        self.isLoadingModels = false
+                    }
+                } else {
+                    await MainActor.run {
+                        self.isLoadingModels = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoadingModels = false
+                }
+            }
+        }
+    }
+
     private func refreshModels() {
         isLoadingModels = true
 
@@ -414,7 +466,12 @@ struct LLMSettingsView: View {
         let backend = detectBackend(from: apiURL)
 
         // 请求模型列表
-        asrClient.listAvailableModels(backend: backend)
+        if let asrClient = asrClient {
+            asrClient.listAvailableModels(backend: backend)
+        } else {
+            // Native 模式：Ollama 模型列表通过直接 API 调用获取
+            fetchOllamaModels()
+        }
 
         // 设置超时保护
         Task {

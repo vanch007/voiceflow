@@ -1,9 +1,11 @@
 import AppKit
 import SwiftUI
+import Foundation
 
 /// 设置窗口 Tab 枚举
 enum SettingsTab: Hashable {
     case general
+    case asrEngine
     case llm
     case scene
     case recordingHistory
@@ -21,14 +23,14 @@ final class SettingsWindowController: NSWindowController {
     private let settingsManager: SettingsManager
     private let replacementStorage: ReplacementStorage
     private let recordingHistory: RecordingHistory
-    private let asrClient: ASRClient
+    private let asrManager: ASRManager
     private let tabSelection = TabSelectionModel()
 
-    init(settingsManager: SettingsManager, replacementStorage: ReplacementStorage, recordingHistory: RecordingHistory, asrClient: ASRClient) {
+    init(settingsManager: SettingsManager, replacementStorage: ReplacementStorage, recordingHistory: RecordingHistory, asrManager: ASRManager) {
         self.settingsManager = settingsManager
         self.replacementStorage = replacementStorage
         self.recordingHistory = recordingHistory
-        self.asrClient = asrClient
+        self.asrManager = asrManager
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
@@ -47,7 +49,7 @@ final class SettingsWindowController: NSWindowController {
                 settingsManager: settingsManager,
                 replacementStorage: replacementStorage,
                 recordingHistory: recordingHistory,
-                asrClient: asrClient,
+                asrManager: asrManager,
                 tabSelection: tabSelection
             )
         )
@@ -74,19 +76,56 @@ private struct SettingsContentView: View {
     @ObservedObject var settingsManager: SettingsManager
     @ObservedObject var replacementStorage: ReplacementStorage
     let recordingHistory: RecordingHistory
-    let asrClient: ASRClient
+    let asrManager: ASRManager
     @ObservedObject var tabSelection: TabSelectionModel
     @State private var pluginInfoList: [PluginInfo] = []
 
+    /// 当前引擎和模型信息
+    private var currentEngineInfo: String {
+        let engine = settingsManager.asrBackendType.displayName
+        if settingsManager.asrBackendType == .native {
+            let model = settingsManager.nativeModelId.displayName
+            return "\(engine) · \(model)"
+        }
+        return engine
+    }
+
+    private var engineStatusColor: Color {
+        if settingsManager.asrBackendType == .native {
+            return asrManager.isModelLoaded ? .green : .orange
+        }
+        return asrManager.activeBackend.isReady ? .green : .orange
+    }
+
     var body: some View {
-        TabView(selection: $tabSelection.selectedTab) {
+        VStack(spacing:0) {
+            // 顶部状态栏
+            HStack {
+                Circle()
+                    .fill(engineStatusColor)
+                    .frame(width: 8, height: 8)
+                Text(currentEngineInfo)
+                    .font(.headline)
+                Spacer()
+            }
+            .padding()
+            .background(Color(NSColor.controlBackgroundColor))
+
+            Divider()
+
+            TabView(selection: $tabSelection.selectedTab) {
             // 通用设置标签页
             GeneralSettingsTab(settingsManager: settingsManager)
                 .tabItem { Label("通用", systemImage: "gear") }
                 .tag(SettingsTab.general)
 
+            // ASR 引擎设置标签页
+            ASRSettingsTab(asrManager: asrManager, settingsManager: settingsManager)
+                .tabItem { Label("ASR 引擎", systemImage: "waveform.badge.mic") }
+                .tag(SettingsTab.asrEngine)
+
             // LLM 设置标签页
-            LLMSettingsView(settingsManager: settingsManager, asrClient: asrClient)
+            LLMSettingsView(settingsManager: settingsManager, asrClient: nil)
                 .tabItem { Label("LLM", systemImage: "brain") }
                 .tag(SettingsTab.llm)
 
@@ -140,6 +179,160 @@ private struct SettingsContentView: View {
             PluginManager.shared.onPluginUnloaded = nil
             PluginManager.shared.onPluginStateChanged = nil
         }
+        }
+    }
+}
+
+// ASR 引擎设置标签页
+private struct ASRSettingsTab: View {
+    let asrManager: ASRManager
+    @ObservedObject var settingsManager: SettingsManager
+    @State private var isReloadingModel = false
+    @State private var isDownloadingModel = false
+    @State private var isModelDownloaded = false
+
+    var body: some View {
+        Form {
+            Section("ASR 后端") {
+                Picker("引擎类型", selection: $settingsManager.asrBackendType) {
+                    ForEach(ASRBackendType.allCases, id: \.self) { type in
+                        Text(type.displayName).tag(type)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                .onChange(of: settingsManager.asrBackendType) { newType in
+                    // 切换后端时自动处理
+                    NSLog("[ASRSettingsTab] Backend changed to: %@", newType.rawValue)
+                }
+
+                Text(backendDescription)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            if settingsManager.asrBackendType == .native {
+                Section("模型选择") {
+                    Picker("模型尺寸", selection: $settingsManager.nativeModelId) {
+                        ForEach(NativeModelID.allCases, id: \.self) { model in
+                            HStack {
+                                Text(model.displayName)
+                                Spacer()
+                                Text(model.modelSize)
+                                    .foregroundColor(.secondary)
+                            }
+                            .tag(model)
+                        }
+                    }
+                    .pickerStyle(.radioGroup)
+                    .onAppear {
+                        isModelDownloaded = asrManager.checkModelDownloaded()
+                    }
+                    .onChange(of: settingsManager.nativeModelId) { _ in
+                        isModelDownloaded = asrManager.checkModelDownloaded()
+                    }
+
+                    // 下载/重新加载按钮
+                    if !isModelDownloaded {
+                        Button(action: downloadModel) {
+                            HStack {
+                                if isDownloadingModel {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                }
+                                Text("下载模型")
+                            }
+                        }
+                        .disabled(isDownloadingModel)
+
+                        Text("点击下载选中的模型（约 \(settingsManager.nativeModelId.modelSize)）")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Button(action: reloadModel) {
+                            HStack {
+                                if isReloadingModel {
+                                    ProgressView()
+                                        .scaleEffect(0.7)
+                                }
+                                Text("重新加载模型")
+                            }
+                        }
+                        .disabled(isReloadingModel || settingsManager.asrBackendType != .native)
+
+                        Text("0.6B 模型：最快实时转录\n1.7B 模型：更高精度")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Section("模型状态") {
+                    HStack {
+                        Circle()
+                            .fill(asrManager.isModelLoaded ? Color.green : (isModelDownloaded ? Color.yellow : Color.red))
+                            .frame(width: 10, height: 10)
+                        Text(asrManager.isModelLoaded ? "已加载" : (isModelDownloaded ? "已下载" : "未下载"))
+                    }
+
+                    if !asrManager.modelLoadProgress.isEmpty {
+                        Text(asrManager.modelLoadProgress)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            } else {
+                Section("WebSocket 服务器") {
+                    HStack {
+                        Circle()
+                            .fill(asrManager.activeBackend.isReady ? Color.green : Color.orange)
+                            .frame(width: 10, height: 10)
+                        Text(asrManager.activeBackend.isReady ? "已连接" : "未连接")
+                    }
+
+                    Text("WebSocket 模式需要启动 Python ASR 服务器")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var backendDescription: String {
+        switch settingsManager.asrBackendType {
+        case .native:
+            return "使用 mlx-audio-swift 原生 Qwen3-ASR 模型，无需 Python 服务器，低延迟"
+        case .websocket:
+            return "使用 Python WebSocket 服务器，支持更多配置选项，需要启动服务器进程"
+        }
+    }
+
+    private func reloadModel() {
+        isReloadingModel = true
+        Task {
+            await asrManager.loadNativeModel()
+
+            // 延迟重置状态，确保 UI 有足够时间更新
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+
+            await MainActor.run {
+                isReloadingModel = false
+            }
+        }
+    }
+
+    private func downloadModel() {
+        isDownloadingModel = true
+        Task {
+            await asrManager.downloadNativeModel()
+
+            // 延迟重置状态
+            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5秒
+
+            await MainActor.run {
+                isDownloadingModel = false
+                isModelDownloaded = asrManager.isModelDownloaded
+            }
+        }
     }
 }
 
@@ -154,15 +347,6 @@ private struct GeneralSettingsTab: View {
                 Text("使用快捷键触发语音输入和系统音频录制，可在快捷键设置中自定义")
                     .font(.caption)
                     .foregroundColor(.secondary)
-            }
-
-            Section("模型选择") {
-                Picker("识别模型", selection: $settingsManager.modelSize) {
-                    ForEach(ModelSize.allCases, id: \.self) { size in
-                        Text(size.displayName).tag(size)
-                    }
-                }
-                .pickerStyle(.radioGroup)
             }
 
             Section("语言设置") {
@@ -1647,7 +1831,7 @@ private struct PluginDetailView: View {
         settingsManager: SettingsManager.shared,
         replacementStorage: ReplacementStorage(),
         recordingHistory: RecordingHistory(),
-        asrClient: ASRClient(),
+        asrManager: ASRManager(settingsManager: SettingsManager.shared),
         tabSelection: TabSelectionModel()
     )
 }

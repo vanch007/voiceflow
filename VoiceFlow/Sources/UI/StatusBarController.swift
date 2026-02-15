@@ -405,22 +405,35 @@ final class StatusBarController {
     private func buildMenu() {
         let menu = NSMenu()
 
-        // ASR server status
-        let statusTitle = isConnected ? localized("asr_connected") : localized("asr_disconnected")
+        // ASR engine and model status
+        let engine = SettingsManager.shared.asrBackendType
+        var statusTitle: String
+        var statusColor: NSColor
+
+        if engine == .native {
+            let model = SettingsManager.shared.nativeModelId
+            let modelName = model.displayName
+            if isConnected {
+                statusTitle = "✅ \(modelName)"
+                statusColor = .systemGreen
+            } else {
+                statusTitle = "🔄 \(modelName)"
+                statusColor = .systemOrange
+            }
+        } else {
+            statusTitle = isConnected ? "✅ WebSocket" : "🔄 WebSocket"
+            statusColor = isConnected ? .systemGreen : .systemOrange
+        }
+
         let connItem = NSMenuItem(title: statusTitle, action: nil, keyEquivalent: "")
         connItem.isEnabled = false
         let statusImage = NSImage(
-            systemSymbolName: isConnected ? "circle.fill" : "circle",
+            systemSymbolName: isConnected ? "waveform.circle.fill" : "waveform.circle",
             accessibilityDescription: nil
         )
         statusImage?.isTemplate = false
-        if isConnected {
-            let config = NSImage.SymbolConfiguration(paletteColors: [.systemGreen])
-            connItem.image = statusImage?.withSymbolConfiguration(config)
-        } else {
-            let config = NSImage.SymbolConfiguration(paletteColors: [.systemRed])
-            connItem.image = statusImage?.withSymbolConfiguration(config)
-        }
+        let config = NSImage.SymbolConfiguration(paletteColors: [statusColor])
+        connItem.image = statusImage?.withSymbolConfiguration(config)
         menu.addItem(connItem)
 
         menu.addItem(NSMenuItem.separator())
