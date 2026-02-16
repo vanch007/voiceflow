@@ -1,4 +1,5 @@
 import Foundation
+import MLX
 import Qwen3ASR
 
 /// 原生 ASR 引擎，使用 qwen3-asr-swift 进行本地语音识别
@@ -172,7 +173,10 @@ final class NativeASREngine: ASRBackend {
         audioBuffer.removeAll()
         audioLock.unlock()
 
-        guard !finalAudio.isEmpty, let model = self.model else {
+        // 最少需要 0.5 秒音频 (16kHz * 0.5s = 8000 样本)，否则 MLX 数组索引可能越界崩溃
+        let minSamples = 8000
+        guard finalAudio.count >= minSamples, let model = self.model else {
+            NSLog("[NativeASR] Audio too short (%d samples, need %d) or model nil, skipping", finalAudio.count, minSamples)
             DispatchQueue.main.async { [weak self] in
                 self?.onTranscriptionResult?("")
             }
@@ -182,8 +186,19 @@ final class NativeASREngine: ASRBackend {
 
         Task.detached { [weak self] in
             guard let self = self else { return }
-            let text = model.transcribe(audio: finalAudio, sampleRate: 16000)
-            self.processFinalResult(text: text, config: config, completion: completion)
+            do {
+                let text = try withError {
+                    model.transcribe(audio: finalAudio, sampleRate: 16000)
+                }
+                self.processFinalResult(text: text, config: config, completion: completion)
+            } catch {
+                NSLog("[NativeASR] Transcription error: %@", error.localizedDescription)
+                DispatchQueue.main.async { [weak self] in
+                    self?.onTranscriptionResult?("")
+                    self?.onErrorStateChanged?(true, "转录失败: \(error.localizedDescription)")
+                }
+                completion()
+            }
         }
     }
 
@@ -292,12 +307,18 @@ final class NativeASREngine: ASRBackend {
         audioLock.unlock()
 
         Task.detached { [weak self] in
-            let text = model.transcribe(audio: previewAudio, sampleRate: 16000)
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            do {
+                let text = try withError {
+                    model.transcribe(audio: previewAudio, sampleRate: 16000)
+                }
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-            NSLog("[NativeASR] Preview: %@", text)
-            DispatchQueue.main.async {
-                self?.onPartialResult?(text, "preview")
+                NSLog("[NativeASR] Preview: %@", text)
+                DispatchQueue.main.async {
+                    self?.onPartialResult?(text, "preview")
+                }
+            } catch {
+                NSLog("[NativeASR] Preview transcription error: %@", error.localizedDescription)
             }
         }
     }
@@ -331,7 +352,8 @@ final class NativeASREngine: ASRBackend {
         guard isSessionActive, let model = self.model else { return }
 
         audioLock.lock()
-        guard !audioBuffer.isEmpty else {
+        let minSamples = 8000
+        guard audioBuffer.count >= minSamples else {
             audioLock.unlock()
             return
         }
@@ -341,11 +363,17 @@ final class NativeASREngine: ASRBackend {
         audioLock.unlock()
 
         Task.detached { [weak self] in
-            let text = model.transcribe(audio: windowAudio, sampleRate: 16000)
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            do {
+                let text = try withError {
+                    model.transcribe(audio: windowAudio, sampleRate: 16000)
+                }
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-            DispatchQueue.main.async {
-                self?.onPartialResult?(text, "periodic")
+                DispatchQueue.main.async {
+                    self?.onPartialResult?(text, "periodic")
+                }
+            } catch {
+                NSLog("[NativeASR] Periodic transcription error: %@", error.localizedDescription)
             }
         }
     }

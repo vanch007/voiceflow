@@ -22,14 +22,8 @@ VoiceFlow is a macOS menu bar app for voice-to-text transcription. It captures a
 # Quick start (builds if needed, then launches from /Applications/)
 ./run.sh
 
-# Build and install to /Applications/VoiceFlow.app
-scripts/build.sh
-
-# Build only (without install)
-cd VoiceFlow && xcodebuild -scheme VoiceFlow -configuration Debug build
-
-# Open in Xcode
-open VoiceFlow/VoiceFlow.xcodeproj
+# Build and install to /Applications/VoiceFlow.app (using Swift Package Manager)
+scripts/build-spm.sh
 
 # Python environment setup (first time)
 scripts/setup.sh
@@ -38,7 +32,11 @@ scripts/setup.sh
 scripts/start-server.sh
 ```
 
-**Important:** `run.sh` uses `open` command to launch from `/Applications/` (ensures TCC permissions work). Environment variables are passed via `launchctl setenv`.
+**Important:**
+- `run.sh` automatically calls `build-spm.sh` on first run if app doesn't exist
+- `run.sh` uses `open` command to launch from `/Applications/` (ensures TCC permissions work)
+- Environment variables are passed via `launchctl setenv`
+- Project uses **Swift Package Manager (SPM)** for building (migrated Feb 16, 2026)
 
 **Requirements:**
 - macOS 14.0+ (Sonoma)
@@ -47,6 +45,19 @@ scripts/start-server.sh
 - Accessibility permissions (for global hotkey monitoring)
 - Microphone permissions (for audio recording)
 - Screen capture permissions (for system audio recording, optional)
+
+## Build System Details
+
+### Build Scripts
+
+| Script | Purpose | Details |
+|--------|---------|---------|
+| `run.sh` | Quick start with auto-build | Checks if app exists in `/Applications/`, builds if missing, then launches via `open` command |
+| `scripts/build-spm.sh` | Build with SPM & install | Builds with `swift build -c debug`, creates app bundle, handles MLX metallib files |
+| `scripts/setup.sh` | Python environment setup | Creates `.venv` and installs server dependencies (`requirements.txt`) |
+| `scripts/start-server.sh` | Start ASR server only | Activates venv and runs `server/main.py` |
+
+**Migration Note:** Project migrated from Xcode `xcodebuild` to **Swift Package Manager (SPM)** on Feb 16, 2026. The old `xcodebuild` approach is deprecated.
 
 ## Testing
 
@@ -57,8 +68,8 @@ cd server && pytest tests/
 # Python single test
 cd server && pytest tests/test_file.py::test_function -v
 
-# Swift tests (via Xcode)
-cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
+# Swift tests (via SPM)
+cd VoiceFlow && swift test
 ```
 
 ## Architecture
@@ -110,11 +121,15 @@ cd VoiceFlow && xcodebuild test -scheme VoiceFlow -destination 'platform=macOS'
 
 - `main.py`: WebSocket server (ws://localhost:9876), handles audio streaming, VAD transcription, and subtitle mode with periodic transcription
 - `mlx_asr.py`: MLX-based Qwen3-ASR wrapper for Apple Silicon GPU acceleration
-- `text_polisher.py`: AI text enhancement using LLM
+- `audio_denoiser.py`: Audio preprocessing and noise reduction before transcription
+- `text_polisher.py`: AI text enhancement using LLM and rule-based polishing
+- `scene_polisher.py`: Scene-aware context application (applies scene-specific text transformations)
 - `llm_client.py`: OpenAI-compatible LLM client (supports Ollama, vLLM, OpenAI)
-- `llm_polisher.py`: LLM-based text polisher with rule fallback
+- `llm_polisher.py`: LLM-based text polisher with rule fallback and app-aware context
 - `prompt_config.py`: User custom prompt persistence
 - `history_analyzer.py`: Recording history analysis for keyword extraction
+- `plugin_loader.py`: Dynamic plugin loading system (`importlib`-based)
+- `plugin_api.py`: Plugin interface and execution API
 
 ### Plugin System (`Plugins/`)
 
@@ -129,9 +144,13 @@ Extensible post-ASR processing plugins. Each plugin has a `manifest.json` descri
 HotkeyManager triggers recording
   → AudioRecorder captures mic input → resamples to 16kHz Float32
   → ASRClient sends audio chunks via WebSocket (mode: "voice_input")
-  → Python server transcribes with Qwen3-ASR (MLX)
-  → Optional: Text polish with LLM + Plugin processing
-  → TextInjector pastes text into active app
+  → Python server:
+    - audio_denoiser: Preprocesses audio (noise reduction)
+    - mlx_asr: Transcribes with Qwen3-ASR (MLX)
+    - scene_polisher: Applies scene-aware transformations
+    - text_polisher: Optional LLM enhancement + rule-based polish
+    - Plugins: Sequential plugin pipeline processing
+  → TextInjector pastes final text into active app
 ```
 
 **System Audio Subtitle (Control double-tap):**
@@ -139,7 +158,11 @@ HotkeyManager triggers recording
 HotkeyManager detects double-tap Control
   → SystemAudioRecorder captures via BlackHole virtual device
   → ASRClient sends audio chunks via WebSocket (mode: "subtitle")
-  → Python server transcribes with sliding window (6s) + periodic trigger (1.5s)
+  → Python server:
+    - Sliding window (6s) + periodic trigger (1.5s)
+    - audio_denoiser: Preprocesses audio
+    - mlx_asr: Real-time transcription
+    - scene_polisher + text_polisher: Polish (if enabled)
   → SubtitlePanel displays real-time subtitle overlay
   → TranscriptStorage saves transcript to disk
 ```
@@ -187,13 +210,16 @@ HotkeyManager detects double-tap Control
 | Add UI elements to menu bar | `VoiceFlow/Sources/UI/StatusBarController.swift` |
 | Modify subtitle display | `VoiceFlow/Sources/UI/SubtitlePanel.swift` |
 | Modify ASR model | `server/mlx_asr.py` |
+| Audio denoising & preprocessing | `server/audio_denoiser.py` |
 | Add text post-processing | `server/text_polisher.py` or create new plugin |
+| Scene-aware text transformation | `server/scene_polisher.py` |
 | Configure LLM polish | `VoiceFlow/Sources/Core/LLMSettings.swift` + `server/llm_client.py` + `UI/LLMSettingsView.swift` |
 | Modify text replacement | `VoiceFlow/Sources/Core/TextReplacementEngine.swift` + `ReplacementRule.swift` |
 | Add/modify scene types | `VoiceFlow/Sources/Core/Scene/SceneType.swift` + `SceneRule.swift` |
 | Scene detection logic | `VoiceFlow/Sources/Core/Scene/SceneManager.swift` |
 | Settings UI tabs | `VoiceFlow/Sources/UI/SettingsWindowController.swift` |
 | System audio settings | `VoiceFlow/Sources/Core/SystemAudioSettings.swift` + `VoiceFlow/Sources/UI/SettingsWindow.swift` |
+| Plugin loading & management | `server/plugin_loader.py` + `server/plugin_api.py` |
 
 ## Debugging
 
@@ -219,7 +245,7 @@ Verify Accessibility permissions in System Settings → Privacy & Security → A
 [HotkeyManager] FAILED to create event tap! Check permissions.
 ```
 
-**Important:** After each rebuild with `scripts/build.sh`, accessibility permissions need re-authorization: System Settings → Privacy & Security → Accessibility → remove VoiceFlow (- button) → re-add (+ button).
+**Important:** After each rebuild with `scripts/build-spm.sh`, accessibility permissions need re-authorization: System Settings → Privacy & Security → Accessibility → remove VoiceFlow (- button) → re-add (+ button).
 
 ### ASR Server
 Check Python server logs for transcription errors:
