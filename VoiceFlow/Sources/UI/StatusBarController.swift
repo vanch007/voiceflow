@@ -16,6 +16,7 @@ private enum IconStyle: String {
 final class StatusBarController {
     var onQuit: (() -> Void)?
     var onSettings: (() -> Void)?
+    var onShowOnboarding: (() -> Void)?
     var onShowHistory: (() -> Void)?
     var onTextReplacement: (() -> Void)?
     var onDeviceSelected: ((String?) -> Void)?  // nil = system default
@@ -109,6 +110,11 @@ final class StatusBarController {
                 "ko": "설정...",
                 "en": "Settings...",
                 "zh": "设置..."
+            ],
+            "restart_onboarding": [
+                "ko": "설정 마법사 다시 시작",
+                "en": "Restart Setup",
+                "zh": "重新开始引导"
             ],
             "hotkey_settings": [
                 "ko": "단축키 설정...",
@@ -627,6 +633,12 @@ final class StatusBarController {
         historyItem.image = NSImage(systemSymbolName: "clock.arrow.circlepath", accessibilityDescription: nil)
         menu.addItem(historyItem)
 
+        // 重新开始引导
+        let onboardingItem = NSMenuItem(title: localized("restart_onboarding"), action: #selector(showOnboardingAction), keyEquivalent: "")
+        onboardingItem.target = self
+        onboardingItem.image = NSImage(systemSymbolName: "arrow.counterclockwise", accessibilityDescription: nil)
+        menu.addItem(onboardingItem)
+
         let settingsItem = NSMenuItem(title: localized("settings"), action: #selector(settingsAction), keyEquivalent: ",")
         settingsItem.target = self
         settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
@@ -643,6 +655,10 @@ final class StatusBarController {
 
     @objc private func settingsAction() {
         onSettings?()
+    }
+
+    @objc private func showOnboardingAction() {
+        onShowOnboarding?()
     }
 
     @objc private func hotkeySettingsAction() {

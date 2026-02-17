@@ -1,7 +1,7 @@
 import SwiftUI
 import AVFoundation
 
-/// Microphone Permission screen - Request microphone access for audio recording
+/// Microphone Permission screen (Static, no animation)
 struct MicrophonePermissionView: View {
     let onNext: () -> Void
     let onBack: () -> Void
@@ -12,99 +12,104 @@ struct MicrophonePermissionView: View {
     private let poller = PermissionPoller()
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
+        ZStack {
+            // Static gradient background
+            GradientBackground()
 
-            // Microphone icon
-            Image(systemName: "mic.fill")
-                .font(.system(size: 80))
-                .foregroundColor(.blue)
+            VStack(spacing: 20) {
+                Spacer()
 
-            // Title
-            Text("麦克风权限")
-                .font(.system(size: 28, weight: .bold))
-
-            // Description
-            Text("需要麦克风权限来录制您的语音")
-                .font(.system(size: 18))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-
-            Spacer()
-                .frame(height: 20)
-
-            // Permission status indicator
-            HStack(spacing: 12) {
-                Image(systemName: statusIcon)
-                    .font(.system(size: 20))
+                // Static microphone icon
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 80))
                     .foregroundColor(statusColor)
 
-                Text(statusText)
-                    .font(.system(size: 14))
-                    .foregroundColor(.primary)
-            }
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(8)
-            .padding(.horizontal, 40)
+                // Title
+                Text("麦克风权限")
+                    .font(DesignToken.Typography.title)
+                    .foregroundColor(DesignToken.Colors.textPrimary)
 
-            Spacer()
+                // Description
+                Text("需要麦克风权限来录制您的语音")
+                    .font(DesignToken.Typography.subtitle)
+                    .foregroundColor(DesignToken.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
 
-            // Explanation text
-            VStack(alignment: .leading, spacing: 8) {
-                Text("为什么需要此权限？")
-                    .font(.system(size: 14, weight: .medium))
+                Spacer()
+                    .frame(height: 20)
 
-                Text("• 实时录制您的语音输入")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                // GlassCard for permission status indicator
+                GlassCard {
+                    HStack(spacing: 12) {
+                        Image(systemName: statusIcon)
+                            .font(.system(size: 20))
+                            .foregroundColor(statusColor)
 
-                Text("• 将音频发送到语音识别引擎")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 40)
+                        Text(statusText)
+                            .font(DesignToken.Typography.body)
+                            .foregroundColor(DesignToken.Colors.textPrimary)
+                    }
+                }
+                .padding(.horizontal, 40)
 
-            Spacer()
+                Spacer()
 
-            // Action buttons
-            VStack(spacing: 12) {
-                if permissionStatus != .granted {
-                    Button(action: requestPermission) {
-                        Text(isRequesting ? "请求中..." : "授予权限")
+                // Explanation text
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("为什么需要此权限？")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(DesignToken.Colors.textPrimary)
+
+                    Text("• 实时录制您的语音输入")
+                        .font(DesignToken.Typography.caption)
+                        .foregroundColor(DesignToken.Colors.textSecondary)
+
+                    Text("• 将音频发送到语音识别引擎")
+                        .font(DesignToken.Typography.caption)
+                        .foregroundColor(DesignToken.Colors.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 40)
+
+                Spacer()
+
+                // Action buttons
+                VStack(spacing: 12) {
+                    if permissionStatus != .granted {
+                        Button(action: requestPermission) {
+                            Text(isRequesting ? "请求中..." : "授予权限")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(DesignToken.Colors.primary)
+                                .foregroundColor(.white)
+                                .cornerRadius(DesignToken.CornerRadius.small)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isRequesting)
+                    }
+
+                    Button(action: onNext) {
+                        Text(permissionStatus == .granted ? "继续" : "跳过")
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
+                            .background(permissionStatus == .granted ? DesignToken.Colors.accent : Color.gray.opacity(0.3))
+                            .foregroundColor(permissionStatus == .granted ? .white : DesignToken.Colors.textSecondary)
+                            .cornerRadius(DesignToken.CornerRadius.small)
                     }
                     .buttonStyle(.plain)
-                    .disabled(isRequesting)
-                }
 
-                Button(action: onNext) {
-                    Text(permissionStatus == .granted ? "继续" : "跳过")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(permissionStatus == .granted ? Color.blue : Color.gray.opacity(0.3))
-                        .foregroundColor(permissionStatus == .granted ? .white : .primary)
-                        .cornerRadius(8)
+                    Button(action: onBack) {
+                        Text("返回")
+                            .font(DesignToken.Typography.body)
+                            .foregroundColor(DesignToken.Colors.textSecondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-
-                Button(action: onBack) {
-                    Text("返回")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 40)
             }
-            .padding(.horizontal, 40)
         }
-        .padding(40)
+        .padding(DesignToken.Spacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             checkPermissionStatus()
@@ -160,9 +165,9 @@ struct MicrophonePermissionView: View {
 
     private var statusColor: Color {
         switch permissionStatus {
-        case .granted: return .green
-        case .denied: return .red
-        case .undetermined: return .orange
+        case .granted: return DesignToken.Colors.accent
+        case .denied: return DesignToken.Colors.error
+        case .undetermined: return DesignToken.Colors.warning
         }
     }
 
@@ -178,5 +183,5 @@ struct MicrophonePermissionView: View {
 // MARK: - Preview
 #Preview {
     MicrophonePermissionView(onNext: {}, onBack: {})
-        .frame(width: 600, height: 500)
+        .frame(width: 680, height: 540)
 }

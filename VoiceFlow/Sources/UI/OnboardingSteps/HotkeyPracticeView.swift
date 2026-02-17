@@ -11,7 +11,7 @@ struct HotkeyPracticeView: View {
     @State private var lastDetectionTime: Date?
     @State private var hotkeyManager: HotkeyManager?
 
-    // 动态读取当前热键配置
+    // Dynamic hotkey configuration reader
     private var voiceInputConfig: HotkeyConfig {
         if let data = UserDefaults.standard.data(forKey: "voiceflow.hotkeyConfig"),
            let config = try? JSONDecoder().decode(HotkeyConfig.self, from: data) {
@@ -44,137 +44,144 @@ struct HotkeyPracticeView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
+        ZStack {
+            // Gradient background
+            GradientBackground()
 
-            // Keyboard icon
-            Image(systemName: "keyboard.fill")
-                .font(.system(size: 80))
-                .foregroundColor(hasDetectedHotkey ? .green : .blue)
-                .animation(.easeInOut(duration: 0.3), value: hasDetectedHotkey)
+            VStack(spacing: 20) {
+                Spacer()
 
-            // Title
-            Text("热键练习")
-                .font(.system(size: 28, weight: .bold))
+                // Static keyboard icon
+                Image(systemName: "keyboard.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(hasDetectedHotkey ? DesignToken.Colors.accent : DesignToken.Colors.primary)
 
-            // Description
-            Text("尝试使用热键启动录音功能")
-                .font(.system(size: 18))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+                // Title
+                Text("热键练习")
+                    .font(DesignToken.Typography.title)
+                    .foregroundColor(DesignToken.Colors.textPrimary)
 
-            Spacer()
-                .frame(height: 20)
+                // Description
+                Text("尝试使用热键启动录音功能")
+                    .font(DesignToken.Typography.subtitle)
+                    .foregroundColor(DesignToken.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
 
-            // Detection status indicator
-            HStack(spacing: 12) {
-                Image(systemName: statusIcon)
-                    .font(.system(size: 20))
-                    .foregroundColor(statusColor)
+                Spacer()
+                    .frame(height: 20)
 
-                Text(statusText)
-                    .font(.system(size: 14))
-                    .foregroundColor(.primary)
-            }
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(statusBackgroundColor.opacity(0.1))
-            .cornerRadius(8)
-            .padding(.horizontal, 40)
-            .animation(.easeInOut(duration: 0.3), value: hasDetectedHotkey)
+                // GlassCard wrapped status indicator
+                GlassCard {
+                    HStack(spacing: 12) {
+                        Image(systemName: statusIcon)
+                            .font(.system(size: 20))
+                            .foregroundColor(statusColor)
 
-            Spacer()
-
-            // Instructions
-            VStack(alignment: .leading, spacing: 12) {
-                Text("如何使用热键：")
-                    .font(.system(size: 14, weight: .medium))
-
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "1.circle.fill")
-                        .foregroundColor(.blue)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("语音输入: \(voiceInputConfig.displayString)")
-                            .font(.system(size: 13, weight: .medium))
-
-                        Text(voiceInputInstruction)
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                        Text(statusText)
+                            .font(DesignToken.Typography.body)
+                            .foregroundColor(DesignToken.Colors.textPrimary)
                     }
                 }
+                .padding(.horizontal, 40)
 
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "2.circle.fill")
-                        .foregroundColor(.blue)
+                Spacer()
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("系统音频: \(systemAudioConfig.displayString)")
-                            .font(.system(size: 13, weight: .medium))
+                // GlassCard wrapped instructions
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("如何使用热键：")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(DesignToken.Colors.textPrimary)
 
-                        Text("录制电脑播放的声音并生成字幕")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "1.circle.fill")
+                                .foregroundColor(DesignToken.Colors.primary)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("语音输入: \(voiceInputConfig.displayString)")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignToken.Colors.textPrimary)
+
+                                Text(voiceInputInstruction)
+                                    .font(DesignToken.Typography.caption)
+                                    .foregroundColor(DesignToken.Colors.textSecondary)
+                            }
+                        }
+
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "2.circle.fill")
+                                .foregroundColor(DesignToken.Colors.primary)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("系统音频: \(systemAudioConfig.displayString)")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(DesignToken.Colors.textPrimary)
+
+                                Text("录制电脑播放的声音并生成字幕")
+                                    .font(DesignToken.Typography.caption)
+                                    .foregroundColor(DesignToken.Colors.textSecondary)
+                            }
+                        }
                     }
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 40)
-
-            // Encouragement text
-            if !hasDetectedHotkey {
-                HStack(spacing: 8) {
-                    Image(systemName: "hand.point.up.left.fill")
-                        .foregroundColor(.orange)
-
-                    Text(encouragementText)
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, 40)
-            } else {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
 
-                    Text("很好！您已经掌握了热键操作")
-                        .font(.system(size: 12))
-                        .foregroundColor(.green)
+                // Encouragement text
+                if !hasDetectedHotkey {
+                    HStack(spacing: 8) {
+                        Image(systemName: "hand.point.up.left.fill")
+                            .foregroundColor(DesignToken.Colors.warning)
+
+                        Text(encouragementText)
+                            .font(DesignToken.Typography.caption)
+                            .foregroundColor(DesignToken.Colors.textSecondary)
+                    }
+                    .padding(.horizontal, 40)
+                } else {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(DesignToken.Colors.accent)
+
+                        Text("很好！您已经掌握了热键操作")
+                            .font(DesignToken.Typography.caption)
+                            .foregroundColor(DesignToken.Colors.accent)
+                    }
+                    .padding(.horizontal, 40)
+                }
+
+                Spacer()
+
+                // Action buttons
+                VStack(spacing: 12) {
+                    Button(action: onNext) {
+                        Text(hasDetectedHotkey ? "继续" : "跳过")
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(hasDetectedHotkey ? DesignToken.Colors.primary : Color.gray.opacity(0.3))
+                            .foregroundColor(hasDetectedHotkey ? .white : DesignToken.Colors.textSecondary)
+                            .cornerRadius(DesignToken.CornerRadius.small)
+                    }
+                    .buttonStyle(.plain)
+
+                    if hasDetectedHotkey {
+                        Text("检测次数: \(detectionCount)")
+                            .font(.system(size: 11))
+                            .foregroundColor(DesignToken.Colors.textSecondary)
+                    }
+
+                    Button(action: onBack) {
+                        Text("返回")
+                            .font(DesignToken.Typography.body)
+                            .foregroundColor(DesignToken.Colors.textSecondary)
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 40)
             }
-
-            Spacer()
-
-            // Action buttons
-            VStack(spacing: 12) {
-                Button(action: onNext) {
-                    Text(hasDetectedHotkey ? "继续" : "跳过")
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(hasDetectedHotkey ? Color.blue : Color.gray.opacity(0.3))
-                        .foregroundColor(hasDetectedHotkey ? .white : .primary)
-                        .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
-
-                if hasDetectedHotkey {
-                    Text("检测次数: \(detectionCount)")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-
-                Button(action: onBack) {
-                    Text("返回")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 40)
         }
-        .padding(40)
+        .padding(DesignToken.Spacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             setupHotkeyDetection()
@@ -225,11 +232,11 @@ struct HotkeyPracticeView: View {
     }
 
     private var statusColor: Color {
-        hasDetectedHotkey ? .green : .orange
+        hasDetectedHotkey ? DesignToken.Colors.accent : DesignToken.Colors.warning
     }
 
     private var statusBackgroundColor: Color {
-        hasDetectedHotkey ? .green : .gray
+        hasDetectedHotkey ? DesignToken.Colors.accent : Color.gray
     }
 
     private var statusText: String {

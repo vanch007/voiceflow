@@ -397,6 +397,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusBarController.onSettings = { [weak self] in
             self?.settingsWindowController.show()
         }
+        statusBarController.onShowOnboarding = { [weak self] in
+            self?.showOnboarding()
+        }
         statusBarController.onShowHistory = { [weak self] in
             self?.recordingHistoryWindow.show()
         }

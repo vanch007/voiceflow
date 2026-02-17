@@ -27,8 +27,8 @@ final class OnboardingWindow: NSObject {
     }
 
     private func createWindow() {
-        let windowWidth: CGFloat = 600
-        let windowHeight: CGFloat = 500
+        let windowWidth: CGFloat = 680
+        let windowHeight: CGFloat = 540
 
         let frame = NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight)
 
@@ -72,9 +72,10 @@ extension OnboardingWindow: NSWindowDelegate {
 private struct OnboardingContentView: View {
     let onComplete: () -> Void
 
-    @State private var currentStep: OnboardingStep = .microphone
+    @State private var currentStep: OnboardingStep = .welcome
 
     enum OnboardingStep: CaseIterable {
+        case welcome
         case microphone
         case accessibility
         case hotkeyPractice
@@ -84,6 +85,7 @@ private struct OnboardingContentView: View {
     /// 当前流程中实际需要展示的步骤（跳过已授权的）
     private var activeSteps: [OnboardingStep] {
         var steps: [OnboardingStep] = []
+        steps.append(.welcome)  // 欢迎页始终显示
         if PermissionManager.shared.checkMicrophonePermission() != .granted {
             steps.append(.microphone)
         }
@@ -96,65 +98,73 @@ private struct OnboardingContentView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Progress indicator — 动态调整为实际步骤数
-            HStack(spacing: 8) {
-                ForEach(0..<activeSteps.count, id: \.self) { index in
-                    Circle()
-                        .fill(index <= currentActiveIndex ? Color.blue : Color.gray.opacity(0.3))
-                        .frame(width: 8, height: 8)
-                }
-            }
-            .padding(.top, 20)
-            .padding(.bottom, 10)
+        ZStack {
+            GradientBackground()
+            VStack(spacing: 0) {
+                // Animated Progress Bar using DesignSystem
+                AnimatedProgressBar(currentStep: currentActiveIndex, totalSteps: activeSteps.count)
+                    .padding(.top, 24)
+                    .padding(.bottom, 16)
+                    .padding(.horizontal, 8)
 
-            // Current step view
-            Group {
-                switch currentStep {
-                case .microphone:
-                    MicrophonePermissionView(
-                        onNext: {
-                            advanceToNextStep(from: .microphone)
-                        },
-                        onBack: {
-                            // 第一步无需返回
-                        }
-                    )
-                case .accessibility:
-                    AccessibilityPermissionView(
-                        onNext: {
-                            advanceToNextStep(from: .accessibility)
-                        },
-                        onBack: {
-                            currentStep = .microphone
-                        }
-                    )
-                case .hotkeyPractice:
-                    HotkeyPracticeView(
-                        onNext: {
-                            currentStep = .completion
-                        },
-                        onBack: {
-                            currentStep = .accessibility
-                        }
-                    )
-                case .completion:
-                    CompletionView(onComplete: onComplete)
+                // Current step view with transition animation
+                Group {
+                    switch currentStep {
+                    case .welcome:
+                        WelcomeView(
+                            onNext: {
+                                advanceToNextStep(from: .welcome)
+                            }
+                        )
+                    case .microphone:
+                        MicrophonePermissionView(
+                            onNext: {
+                                advanceToNextStep(from: .microphone)
+                            },
+                            onBack: {
+                                currentStep = .welcome
+                            }
+                        )
+                    case .accessibility:
+                        AccessibilityPermissionView(
+                            onNext: {
+                                advanceToNextStep(from: .accessibility)
+                            },
+                            onBack: {
+                                currentStep = .microphone
+                            }
+                        )
+                    case .hotkeyPractice:
+                        HotkeyPracticeView(
+                            onNext: {
+                                currentStep = .completion
+                            },
+                            onBack: {
+                                currentStep = .accessibility
+                            }
+                        )
+                    case .completion:
+                        CompletionView(onComplete: onComplete)
+                    }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            // 初始化时检查麦克风权限，已授权则跳过
-            if PermissionManager.shared.checkMicrophonePermission() == .granted {
-                advanceToNextStep(from: .microphone)
-            }
-        }
     }
 
     /// 步骤切换时检查下一步是否可跳过
     private func advanceToNextStep(from current: OnboardingStep) {
         switch current {
+        case .welcome:
+            if PermissionManager.shared.checkMicrophonePermission() == .granted {
+                if PermissionManager.shared.checkAccessibilityPermission() == .granted {
+                    currentStep = .hotkeyPractice
+                } else {
+                    currentStep = .accessibility
+                }
+            } else {
+                currentStep = .microphone
+            }
         case .microphone:
             if PermissionManager.shared.checkAccessibilityPermission() == .granted {
                 currentStep = .hotkeyPractice

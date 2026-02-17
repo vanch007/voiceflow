@@ -1,7 +1,7 @@
 import SwiftUI
 import AppKit
 
-/// Accessibility Permission screen - Request accessibility access for hotkey monitoring and text injection
+/// Accessibility Permission screen (Static, no animation)
 struct AccessibilityPermissionView: View {
     let onNext: () -> Void
     let onBack: () -> Void
@@ -11,120 +11,127 @@ struct AccessibilityPermissionView: View {
     private let poller = PermissionPoller()
 
     var body: some View {
-        VStack(spacing: 20) {
-            Spacer()
+        ZStack {
+            // Static gradient background
+            GradientBackground()
 
-            // Accessibility icon
-            Image(systemName: "hand.raised.fill")
-                .font(.system(size: 80))
-                .foregroundColor(.blue)
+            VStack(spacing: 20) {
+                Spacer()
 
-            // Title
-            Text("辅助功能权限")
-                .font(.system(size: 28, weight: .bold))
+                // Static accessibility icon
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 80))
+                    .foregroundColor(isPermissionGranted ? DesignToken.Colors.accent : DesignToken.Colors.primary)
 
-            // Description
-            Text("需要辅助功能权限来监听热键和插入转录文本")
-                .font(.system(size: 18))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+                // Title
+                Text("辅助功能权限")
+                    .font(DesignToken.Typography.title)
+                    .foregroundColor(DesignToken.Colors.textPrimary)
 
-            Spacer()
-                .frame(height: 20)
+                // Description
+                Text("需要辅助功能权限来监听热键和插入转录文本")
+                    .font(DesignToken.Typography.subtitle)
+                    .foregroundColor(DesignToken.Colors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
 
-            // Permission status indicator
-            HStack(spacing: 12) {
-                Image(systemName: statusIcon)
-                    .font(.system(size: 20))
-                    .foregroundColor(statusColor)
+                Spacer()
+                    .frame(height: 20)
 
-                Text(statusText)
-                    .font(.system(size: 14))
-                    .foregroundColor(.primary)
-            }
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(8)
-            .padding(.horizontal, 40)
+                // GlassCard for permission status indicator
+                GlassCard {
+                    HStack(spacing: 12) {
+                        Image(systemName: statusIcon)
+                            .font(.system(size: 20))
+                            .foregroundColor(statusColor)
 
-            Spacer()
-
-            // Explanation text
-            VStack(alignment: .leading, spacing: 8) {
-                Text("为什么需要此权限？")
-                    .font(.system(size: 14, weight: .medium))
-
-                Text("• 监听全局热键（Option 长按 / Control 双击）")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-
-                Text("• 将转录文本自动插入到当前应用")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-
-                Text("• 控制录音状态和界面显示")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 40)
-
-            // Warning for denied permission
-            if !isPermissionGranted {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundColor(.orange)
-
-                    Text("此权限是必需的，应用无法正常工作")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                        Text(statusText)
+                            .font(DesignToken.Typography.body)
+                            .foregroundColor(DesignToken.Colors.textPrimary)
+                    }
                 }
                 .padding(.horizontal, 40)
-            }
 
-            Spacer()
+                Spacer()
 
-            // Action buttons
-            VStack(spacing: 12) {
+                // GlassCard for explanation text
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("为什么需要此权限？")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(DesignToken.Colors.textPrimary)
+
+                        Text("• 监听全局热键（Option 长按 / Control 双击）")
+                            .font(DesignToken.Typography.caption)
+                            .foregroundColor(DesignToken.Colors.textSecondary)
+
+                        Text("• 将转录文本自动插入到当前应用")
+                            .font(DesignToken.Typography.caption)
+                            .foregroundColor(DesignToken.Colors.textSecondary)
+
+                        Text("• 控制录音状态和界面显示")
+                            .font(DesignToken.Typography.caption)
+                            .foregroundColor(DesignToken.Colors.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(.horizontal, 40)
+
+                // Warning for denied permission
                 if !isPermissionGranted {
-                    Button(action: requestPermission) {
-                        Text("打开系统设置")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(DesignToken.Colors.warning)
 
-                    // 提示用户授权后会自动前进
-                    Text("授权后将自动继续")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                } else {
-                    Button(action: onNext) {
-                        Text("继续")
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.blue)
-                            .foregroundColor(.white)
-                            .cornerRadius(8)
+                        Text("此权限是必需的，应用无法正常工作")
+                            .font(DesignToken.Typography.caption)
+                            .foregroundColor(DesignToken.Colors.warning)
+                    }
+                    .padding(.horizontal, 40)
+                }
+
+                Spacer()
+
+                // Action buttons
+                VStack(spacing: 12) {
+                    if !isPermissionGranted {
+                        Button(action: requestPermission) {
+                            Text("打开系统设置")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(DesignToken.Colors.primary)
+                                .foregroundColor(.white)
+                                .cornerRadius(DesignToken.CornerRadius.small)
+                        }
+                        .buttonStyle(.plain)
+
+                        // 提示用户授权后会自动前进
+                        Text("授权后将自动继续")
+                            .font(DesignToken.Typography.caption)
+                            .foregroundColor(DesignToken.Colors.textSecondary)
+                    } else {
+                        Button(action: onNext) {
+                            Text("继续")
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(DesignToken.Colors.accent)
+                                .foregroundColor(.white)
+                                .cornerRadius(DesignToken.CornerRadius.small)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button(action: onBack) {
+                        Text("返回")
+                            .font(DesignToken.Typography.body)
+                            .foregroundColor(DesignToken.Colors.textSecondary)
                     }
                     .buttonStyle(.plain)
                 }
-
-                Button(action: onBack) {
-                    Text("返回")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 40)
             }
-            .padding(.horizontal, 40)
         }
-        .padding(40)
+        .padding(DesignToken.Spacing.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             checkPermissionStatus()
@@ -182,7 +189,7 @@ struct AccessibilityPermissionView: View {
     }
 
     private var statusColor: Color {
-        isPermissionGranted ? .green : .red
+        isPermissionGranted ? DesignToken.Colors.accent : DesignToken.Colors.warning
     }
 
     private var statusText: String {
