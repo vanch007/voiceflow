@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VoiceFlow is a macOS menu bar app for voice-to-text transcription. It captures audio via AVCaptureSession, sends it to a local WebSocket ASR server (Qwen3-ASR on MLX), and injects transcription results into the active application. It also supports system audio capture for real-time subtitle display.
+VoiceFlow is a macOS menu bar app for voice-to-text transcription. It captures audio via AVCaptureSession, sends it to a local ASR backend (either Native MLX-based Qwen3-ASR or WebSocket Python server), and injects transcription results into the active application. It also supports system audio capture for real-time subtitle display.
 
 **Key Features:**
 - Option key long-press to start/stop microphone recording
 - Control key double-tap to toggle system audio subtitle mode
 - Real-time audio capture with 16kHz resampling
-- MLX-accelerated Qwen3-ASR for Apple Silicon
-- WebSocket connection to local ASR server with auto-reconnect
+- **Dual ASR Backends**: Native MLX-based Qwen3-ASR (Apple Silicon) or WebSocket Python server
+- WebSocket connection with auto-reconnect
 - Text polish feature with AI enhancement
 - Plugin system for extensible post-ASR processing
 - System audio capture via BlackHole virtual audio device with subtitle overlay
@@ -86,6 +86,9 @@ cd VoiceFlow && swift test
 - `AudioRecorder.swift`: AVCaptureSession-based microphone audio capture with format conversion
 - `SystemAudioRecorder.swift`: System audio capture via BlackHole virtual audio device
 - `ASRClient.swift`: WebSocket client for ASR server communication, supports `voice_input` and `subtitle` modes
+- `ASRBackend.swift`: ASR backend protocol and backend type enum (native/websocket)
+- `ASRManager.swift`: ASR backend switching and management, coordinates between Native and WebSocket backends
+- `NativeASREngine.swift`: Native MLX-based Qwen3-ASR implementation using qwen3-asr-swift package
 - `TextInjector.swift`: CGEvent-based text injection into active apps
 - `TextReplacementEngine.swift`: Applies scene-aware text replacement rules from ReplacementStorage and converts Chinese numbers to Arabic numbers
 - `SettingsManager.swift`: User preferences management
@@ -206,10 +209,12 @@ HotkeyManager detects double-tap Control
 | Configure hotkey presets | `VoiceFlow/Sources/Core/HotkeyConfig.swift` + `UI/HotkeySettingsWindow.swift` |
 | Change mic audio processing | `VoiceFlow/Sources/Core/AudioRecorder.swift` |
 | Change system audio capture | `VoiceFlow/Sources/Core/SystemAudioRecorder.swift` |
+| Switch ASR backend (Native/WebSocket) | `VoiceFlow/Sources/Core/ASRBackend.swift` + `ASRManager.swift` + `NativeASREngine.swift` |
 | Adjust WebSocket protocol | `VoiceFlow/Sources/Core/ASRClient.swift` + `server/main.py` |
 | Add UI elements to menu bar | `VoiceFlow/Sources/UI/StatusBarController.swift` |
 | Modify subtitle display | `VoiceFlow/Sources/UI/SubtitlePanel.swift` |
-| Modify ASR model | `server/mlx_asr.py` |
+| Modify Native ASR model | `VoiceFlow/Sources/Core/NativeASREngine.swift` (via qwen3-asr-swift) |
+| Modify Python ASR model | `server/mlx_asr.py` |
 | Audio denoising & preprocessing | `server/audio_denoiser.py` |
 | Add text post-processing | `server/text_polisher.py` or create new plugin |
 | Scene-aware text transformation | `server/scene_polisher.py` |

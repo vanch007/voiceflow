@@ -74,6 +74,15 @@ mkdir -p "$INSTALL_PATH/Contents/Resources"
 cp "$PROJECT_DIR/Resources/Info.plist" "$INSTALL_PATH/Contents/"
 cp "$PROJECT_DIR/Resources/VoiceFlow.entitlements" "$INSTALL_PATH/Contents/Resources/" 2>/dev/null || true
 
+# 复制 AppIcon.icns（从 .derivedData 或项目资源中）
+DERIVED_DATA_ICON="$PROJECT_DIR/.derivedData/Build/Products/Debug/VoiceFlow.app/Contents/Resources/AppIcon.icns"
+if [ -f "$DERIVED_DATA_ICON" ]; then
+    cp "$DERIVED_DATA_ICON" "$INSTALL_PATH/Contents/Resources/"
+    echo "📦 Installed AppIcon.icns"
+else
+    echo "⚠️  AppIcon.icns not found!"
+fi
+
 # 复制新的可执行文件
 cp .build/debug/VoiceFlow "$INSTALL_PATH/Contents/MacOS/"
 chmod +x "$INSTALL_PATH/Contents/MacOS/VoiceFlow"
