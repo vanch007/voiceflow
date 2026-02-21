@@ -3,19 +3,10 @@
     {
       "identity" : "mlx-swift",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ml-explore/mlx-swift.git",
+      "location" : "https://github.com/ml-explore/mlx-swift",
       "state" : {
         "revision" : "6ba4827fb82c97d012eec9ab4b2de21f85c3b33d",
         "version" : "0.30.6"
-      }
-    },
-    {
-      "identity" : "qwen3-asr-swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ivan-digital/qwen3-asr-swift.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "cc41cddc5dc9cd61fd069d3581cac8e4e03425c0"
       }
     },
     {

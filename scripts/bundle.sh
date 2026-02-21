@@ -2,20 +2,28 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="$PROJECT_DIR/VoiceFlow/.build/debug"
 APP_DIR="$PROJECT_DIR/VoiceFlow.app"
 
-echo "Building..."
+echo "Building with xcodebuild..."
 cd "$PROJECT_DIR/VoiceFlow"
-swift build 2>&1
+xcodebuild -scheme VoiceFlow -destination 'platform=macOS,arch=arm64' build > /dev/null
+
+DERIVED_DATA_DIR=$(ls -td ~/Library/Developer/Xcode/DerivedData/VoiceFlow-*/Build/Products/Debug | head -1)
 
 echo "Creating .app bundle..."
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
-cp "$BUILD_DIR/VoiceFlow" "$APP_DIR/Contents/MacOS/VoiceFlow"
+cp "$DERIVED_DATA_DIR/VoiceFlow" "$APP_DIR/Contents/MacOS/VoiceFlow"
 
+# Copy MLX metal bundle if it exists
+if [ -d "$DERIVED_DATA_DIR/mlx-swift_Cmlx.bundle" ]; then
+    cp -R "$DERIVED_DATA_DIR/mlx-swift_Cmlx.bundle" "$APP_DIR/Contents/Resources/"
+fi
+
+# Also copy Resources/Info.plist if necessary?
+# We construct a minimalist Info.plist
 cat > "$APP_DIR/Contents/Info.plist" << 'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

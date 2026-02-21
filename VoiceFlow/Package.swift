@@ -7,7 +7,7 @@ let package = Package(
         .macOS(.v14)
     ],
     dependencies: [
-        .package(url: "https://github.com/ivan-digital/qwen3-asr-swift.git", branch: "main"),
+        .package(path: "./local_packages/qwen3-asr-swift"),
     ],
     targets: [
         .executableTarget(
