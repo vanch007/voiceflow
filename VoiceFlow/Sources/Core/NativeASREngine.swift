@@ -173,8 +173,8 @@ final class NativeASREngine: ASRBackend {
         audioBuffer.removeAll()
         audioLock.unlock()
 
-        // 最少需要 0.5 秒音频 (16kHz * 0.5s = 8000 样本)，否则 MLX 数组索引可能越界崩溃
-        let minSamples = 8000
+        // 最少需要 1.0 秒音频 (16kHz * 1.0s = 16000 样本)，否则 MLX 数组索引可能越界崩溃
+        let minSamples = 16000
         guard finalAudio.count >= minSamples, let model = self.model else {
             NSLog("[NativeASR] Audio too short (%d samples, need %d) or model nil, skipping", finalAudio.count, minSamples)
             DispatchQueue.main.async { [weak self] in
