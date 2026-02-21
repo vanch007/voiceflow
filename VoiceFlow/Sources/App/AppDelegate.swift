@@ -605,16 +605,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         process.executableURL = URL(fileURLWithPath: Self.pythonPath)
         process.arguments = [Self.serverScriptPath]
 
-        // Capture stderr to see error messages
+        // Capture stderr and stdout to see log messages
         let errorPipe = Pipe()
         process.standardError = errorPipe
-        process.standardOutput = FileHandle.nullDevice
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
 
         // Read errors asynchronously
         errorPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             if !data.isEmpty, let output = String(data: data, encoding: .utf8) {
-                NSLog("[ASRServer] stderr: %@", output.trimmingCharacters(in: .whitespacesAndNewlines))
+                let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty {
+                    NSLog("[ASRServer] stderr: %@", text)
+                    FileLogger.shared.log("[stderr] \(text)", to: "asr_server.log")
+                }
+            }
+        }
+
+        // Read stdout asynchronously
+        outputPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if !data.isEmpty, let output = String(data: data, encoding: .utf8) {
+                let text = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty {
+                    FileLogger.shared.log("[stdout] \(text)", to: "asr_server.log")
+                }
             }
         }
 
