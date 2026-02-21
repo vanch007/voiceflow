@@ -378,6 +378,21 @@ private struct GeneralSettingsTab: View {
             Section("启动选项") {
                 Toggle("开机自动启动", isOn: $settingsManager.autoLaunchEnabled)
             }
+
+            Section("调试与诊断") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("如果遇到无法录音、转录失败等问题，可以查看本地日志排查原因。")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Button("打开本地日志文件夹") {
+                        let logDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+                            .appendingPathComponent("VoiceFlow", isDirectory: true)
+                        NSWorkspace.shared.open(logDir)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
         }
         .formStyle(.grouped)
     }
