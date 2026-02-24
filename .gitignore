@@ -39,3 +39,10 @@ firebase-debug.log
 .worktrees/
 .security-key
 logs/security/
+
+# Local development packages
+VoiceFlow/local_packages/
+
+# Temp files
+*.profraw
+nohup.out
